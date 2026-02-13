@@ -443,10 +443,7 @@ class QuestDBParser extends CstParser {
         GATE: () => this.LA(1).tokenType === Compile && this.LA(2).tokenType === View,
         ALT: () => this.SUBRULE(this.compileViewStatement),
       },
-      {
-        GATE: this.BACKTRACK(this.implicitSelectStatement),
-        ALT: () => this.SUBRULE(this.implicitSelectStatement),
-      },
+      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
     ]);
   });
 
@@ -3035,7 +3032,7 @@ class QuestDBParser extends CstParser {
     this.SUBRULE(this.pivotBody);
     this.CONSUME2(RParen);
     this.OPTION2(() => {
-      this.OPTION3(() => this.CONSUME(As));
+      this.CONSUME(As);
       this.SUBRULE6(this.identifier);
     });
     this.OPTION4(() => this.SUBRULE(this.orderByClause));

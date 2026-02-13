@@ -41,13 +41,14 @@ export function parseToAst(sql: string): ParseResult {
     });
   }
 
-  if (errors.length > 0) {
-    return { ast: [], errors };
+  let ast: Statement[] = [];
+  try {
+    ast = visitor.visit(cst) as Statement[];
+  } catch (e) {
+    // Visitor may fail on incomplete CST — return what we have
   }
 
-  const ast = visitor.visit(cst) as Statement[];
-
-  return { ast, errors: [] };
+  return { ast, errors };
 }
 
 /**

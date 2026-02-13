@@ -1641,6 +1641,38 @@ describe("QuestDB Parser", () => {
     });
   });
 
+  describe("PIVOT multi-statement boundary", () => {
+    it("should parse two consecutive pivot statements as separate statements", () => {
+      const sql = `trades PIVOT (avg(price) FOR symbol IN ('ETH-USDT'))
+trades PIVOT (sum(amount) FOR symbol IN ('BTC-USDT'))`;
+      const result = parseToAst(sql);
+      expect(result.ast).toHaveLength(2);
+      expect(result.ast[0].type).toBe("pivot");
+      expect(result.ast[1].type).toBe("pivot");
+    });
+
+    it("should not consume next table name as alias without AS", () => {
+      const sql = `trades PIVOT (avg(price) FOR symbol IN ('ETH-USDT'))
+orders PIVOT (sum(amount) FOR status IN ('open'))`;
+      const result = parseToAst(sql);
+      expect(result.ast).toHaveLength(2);
+      if (result.ast[0].type === "pivot") {
+        expect(result.ast[0].alias).toBeUndefined();
+      }
+    });
+
+    it("should still support PIVOT alias with AS keyword", () => {
+      const result = parseToAst(
+        "trades PIVOT (avg(price) FOR symbol IN ('ETH-USDT')) AS p"
+      );
+      expect(result.errors).toHaveLength(0);
+      expect(result.ast).toHaveLength(1);
+      if (result.ast[0].type === "pivot") {
+        expect(result.ast[0].alias).toBe("p");
+      }
+    });
+  });
+
   describe("PIVOT round-trip tests", () => {
     const queries = [
       "trades PIVOT (sum(amount) FOR category IN ('food', 'drinks'))",
@@ -3217,6 +3249,40 @@ describe("QuestDB Parser", () => {
       const stmt = result.ast[0] as any;
       expect(stmt.setOperations[0].select.type).toBe("select");
       expect(stmt.setOperations[0].select.where).toBeDefined();
+    });
+  });
+
+  describe("Incomplete implicit SELECT produces partial AST", () => {
+    it("should produce AST for incomplete 'table WHERE'", () => {
+      const result = parseToAst("core_price WHERE ");
+      // Should produce a partial AST even though the query is incomplete
+      expect(result.ast.length).toBeGreaterThan(0);
+      const stmt = result.ast[0] as any;
+      expect(stmt.type).toBe("select");
+      expect(stmt.implicit).toBe(true);
+    });
+
+    it("should produce AST with table reference for incomplete implicit select", () => {
+      const result = parseToAst("trades WHERE price > ");
+      expect(result.ast.length).toBeGreaterThan(0);
+      const stmt = result.ast[0] as any;
+      expect(stmt.type).toBe("select");
+      expect(stmt.implicit).toBe(true);
+    });
+
+    it("should produce AST for bare table name only", () => {
+      const result = parseToAst("trades");
+      expect(result.ast.length).toBeGreaterThan(0);
+      const stmt = result.ast[0] as any;
+      expect(stmt.type).toBe("select");
+      expect(stmt.implicit).toBe(true);
+    });
+
+    it("should produce AST for incomplete implicit select after semicolon", () => {
+      const result = parseToAst("SELECT 1; core_price WHERE ");
+      expect(result.ast.length).toBeGreaterThan(0);
+      // First statement is complete SELECT
+      expect(result.ast[0].type).toBe("select");
     });
   });
 

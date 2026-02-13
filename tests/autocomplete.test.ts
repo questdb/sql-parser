@@ -866,3 +866,24 @@ describe("Expression autocomplete", () => {
     expect(labels).toContain("NOT");
   });
 });
+
+describe("Implicit SELECT autocomplete", () => {
+  it("should suggest columns after implicit select WHERE", () => {
+    const labels = getLabelsAt(provider, "trades WHERE ");
+    expect(labels).toContain("symbol");
+    expect(labels).toContain("price");
+    expect(labels).toContain("NOT");
+    expect(labels).toContain("CASE");
+  });
+
+  it("should suggest keywords after bare table name", () => {
+    const labels = getLabelsAt(provider, "trades ");
+    expect(labels).toContain("WHERE");
+  });
+
+  it("should suggest columns for incomplete implicit select in multi-statement context", () => {
+    const labels = getLabelsAt(provider, "SELECT 1; trades WHERE ");
+    // Should get suggestions even after semicolon with implicit select
+    expect(labels.length).toBeGreaterThan(0);
+  });
+});

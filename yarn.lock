@@ -349,6 +349,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@questdb/questdb-sql-parser@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@questdb/questdb-sql-parser@workspace:."
+  dependencies:
+    "@types/jest": "npm:^30.0.0"
+    "@types/node": "npm:^25.2.0"
+    chevrotain: "npm:^11.1.1"
+    typescript: "npm:^5.9.3"
+    vitest: "npm:^4.0.18"
+  languageName: unknown
+  linkType: soft
+
 "@rollup/rollup-android-arm-eabi@npm:4.57.1":
   version: 4.57.1
   resolution: "@rollup/rollup-android-arm-eabi@npm:4.57.1"
@@ -1545,18 +1557,6 @@ __metadata:
   checksum: 10c0/9c7045a1a2928094b5b9b15336dcd2a7b1c052f674550df63cc3f36cd44028e5080448175b6f6ca32b642de81150f5e7b1a98b728f15cb069f2dd60ac2616b96
   languageName: node
   linkType: hard
-
-"questdb-sql-parser@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "questdb-sql-parser@workspace:."
-  dependencies:
-    "@types/jest": "npm:^30.0.0"
-    "@types/node": "npm:^25.2.0"
-    chevrotain: "npm:^11.1.1"
-    typescript: "npm:^5.9.3"
-    vitest: "npm:^4.0.18"
-  languageName: unknown
-  linkType: soft
 
 "react-is@npm:^18.3.1":
   version: 18.3.1

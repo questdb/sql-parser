@@ -323,25 +323,25 @@ class QuestDBVisitor extends BaseVisitor {
       columns: [{ type: "star" } as AST.SelectItem],
     };
     if (ctx.fromClause) {
-      result.from = this.visit(ctx.fromClause);
+      result.from = this.visitSafe(ctx.fromClause);
     }
     if (ctx.whereClause) {
-      result.where = this.visit(ctx.whereClause);
+      result.where = this.visitSafe(ctx.whereClause);
     }
     if (ctx.sampleByClause) {
-      result.sampleBy = this.visit(ctx.sampleByClause);
+      result.sampleBy = this.visitSafe(ctx.sampleByClause);
     }
     if (ctx.latestOnClause) {
-      result.latestOn = this.visit(ctx.latestOnClause);
+      result.latestOn = this.visitSafe(ctx.latestOnClause);
     }
     if (ctx.groupByClause) {
-      result.groupBy = this.visit(ctx.groupByClause);
+      result.groupBy = this.visitSafe(ctx.groupByClause);
     }
     if (ctx.orderByClause) {
-      result.orderBy = this.visit(ctx.orderByClause);
+      result.orderBy = this.visitSafe(ctx.orderByClause);
     }
     if (ctx.limitClause) {
-      result.limit = this.visit(ctx.limitClause);
+      result.limit = this.visitSafe(ctx.limitClause);
     }
     return result;
   }
@@ -2659,6 +2659,15 @@ class QuestDBVisitor extends BaseVisitor {
     } else {
       // Colon before expression: :end
       return { type: "arraySlice", end: exprs[0] } as AST.ArraySlice;
+    }
+  }
+
+  /** Visit a CST node, returning undefined instead of throwing on incomplete input */
+  private visitSafe(node: any): any {
+    try {
+      return this.visit(node);
+    } catch {
+      return undefined;
     }
   }
 
