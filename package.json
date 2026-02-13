@@ -1,5 +1,5 @@
 {
-  "name": "questdb-sql-parser",
+  "name": "@questdb/questdb-sql-parser",
   "version": "0.1.0",
   "description": "SQL parser for QuestDB syntax using Chevrotain",
   "type": "module",
@@ -31,6 +31,11 @@
     "README.md",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/questdb/questdb-sql-parser.git"
+  },
+  "homepage": "https://questdb.com",
   "license": "Apache-2.0",
   "dependencies": {
     "chevrotain": "^11.1.1"
