@@ -6,28 +6,28 @@
 // NOT duplicate this logic.
 // =============================================================================
 
-import { TokenType } from "chevrotain";
+import { TokenType } from "chevrotain"
 import {
   Suggestion,
   SuggestionKind,
   SuggestionPriority,
   SchemaInfo,
   ColumnInfo,
-} from "./types";
+} from "./types"
 import {
   SKIP_TOKENS,
   PUNCTUATION_TOKENS,
   EXPRESSION_OPERATORS,
   tokenNameToKeyword,
-} from "./token-classification";
-import { functions } from "../grammar/index";
-import type { TableRef } from "./content-assist";
+} from "./token-classification"
+import { functions } from "../grammar/index"
+import type { TableRef } from "./content-assist"
 
 /**
  * Column with table context for detailed suggestions
  */
 interface ColumnWithTable extends ColumnInfo {
-  tableName: string;
+  tableName: string
 }
 
 /**
@@ -35,42 +35,42 @@ interface ColumnWithTable extends ColumnInfo {
  */
 function getColumnsInScope(
   tablesInScope: TableRef[],
-  schema: SchemaInfo
+  schema: SchemaInfo,
 ): ColumnWithTable[] {
-  const columns: ColumnWithTable[] = [];
+  const columns: ColumnWithTable[] = []
 
   for (const tableRef of tablesInScope) {
     // Look up columns by table name (case-insensitive)
-    const tableNameLower = tableRef.table.toLowerCase();
-    const tableColumns = schema.columns[tableNameLower] ?? [];
+    const tableNameLower = tableRef.table.toLowerCase()
+    const tableColumns = schema.columns[tableNameLower] ?? []
 
     for (const col of tableColumns) {
       columns.push({
         ...col,
         tableName: tableRef.table,
-      });
+      })
     }
   }
 
-  return columns;
+  return columns
 }
 
 /**
  * Get all columns from schema (when no tables in scope)
  */
 function getAllColumns(schema: SchemaInfo): ColumnWithTable[] {
-  const columns: ColumnWithTable[] = [];
+  const columns: ColumnWithTable[] = []
 
   for (const [tableName, tableColumns] of Object.entries(schema.columns)) {
     for (const col of tableColumns) {
       columns.push({
         ...col,
         tableName,
-      });
+      })
     }
   }
 
-  return columns;
+  return columns
 }
 
 /**
@@ -85,50 +85,54 @@ export function buildSuggestions(
   tokenTypes: TokenType[],
   schema: SchemaInfo,
   tablesInScope: TableRef[],
-  options?: { includeColumns?: boolean; includeTables?: boolean; isMidWord?: boolean }
+  options?: {
+    includeColumns?: boolean
+    includeTables?: boolean
+    isMidWord?: boolean
+  },
 ): Suggestion[] {
-  const suggestions: Suggestion[] = [];
-  const seenKeywords = new Set<string>();
-  let expectsIdentifier = false;
-  const includeColumns = options?.includeColumns ?? true;
-  const includeTables = options?.includeTables ?? true;
-  const isMidWord = options?.isMidWord ?? false;
+  const suggestions: Suggestion[] = []
+  const seenKeywords = new Set<string>()
+  let expectsIdentifier = false
+  const includeColumns = options?.includeColumns ?? true
+  const includeTables = options?.includeTables ?? true
+  const isMidWord = options?.isMidWord ?? false
 
   // Process each token type from the parser
   for (const tokenType of tokenTypes) {
-    const name = tokenType.name;
+    const name = tokenType.name
 
     // Skip internal tokens (operators, literals, punctuation)
     if (SKIP_TOKENS.has(name)) {
-      continue;
+      continue
     }
 
     // IdentifierKeyword means the parser's `identifier` rule is active,
     // so column/table names are expected. Bare Identifier/QuotedIdentifier
     // alone (e.g., for custom type names) should not trigger schema suggestions.
     if (name === "IdentifierKeyword") {
-      expectsIdentifier = true;
-      continue;
+      expectsIdentifier = true
+      continue
     }
     if (name === "Identifier" || name === "QuotedIdentifier") {
-      continue;
+      continue
     }
 
     // Convert token name to keyword display string
-    const keyword = tokenNameToKeyword(name);
+    const keyword = tokenNameToKeyword(name)
 
     // Skip duplicates
     if (seenKeywords.has(keyword)) {
-      continue;
+      continue
     }
-    seenKeywords.add(keyword);
+    seenKeywords.add(keyword)
 
     // All parser keyword tokens are keywords (not functions).
     // Functions are suggested separately in the functions loop below.
-    const kind = SuggestionKind.Keyword;
+    const kind = SuggestionKind.Keyword
     const priority = EXPRESSION_OPERATORS.has(name)
       ? SuggestionPriority.MediumLow
-      : SuggestionPriority.Medium;
+      : SuggestionPriority.Medium
 
     suggestions.push({
       label: keyword,
@@ -136,7 +140,7 @@ export function buildSuggestions(
       insertText: keyword,
       filterText: name.toLowerCase(),
       priority,
-    });
+    })
   }
 
   // If identifier is expected, add columns and tables
@@ -144,25 +148,26 @@ export function buildSuggestions(
     // Get columns: prefer tables in scope (FROM, JOIN), fall back to all columns.
     // Also fall back when tables are in scope but none have known columns
     // (e.g., FROM read_parquet(...) — function call, not a schema table).
-    const scopedColumns = tablesInScope.length > 0
-      ? getColumnsInScope(tablesInScope, schema)
-      : [];
+    const scopedColumns =
+      tablesInScope.length > 0 ? getColumnsInScope(tablesInScope, schema) : []
     const columnsInScope = includeColumns
-      ? (scopedColumns.length > 0 ? scopedColumns : getAllColumns(schema))
-      : [];
+      ? scopedColumns.length > 0
+        ? scopedColumns
+        : getAllColumns(schema)
+      : []
 
     // Add columns with HIGH priority (they should appear first).
     // Deduplicate by column name, collecting all table names per column.
     if (includeColumns) {
-      const columnMap = new Map<string, { type: string; tables: string[] }>();
+      const columnMap = new Map<string, { type: string; tables: string[] }>()
       for (const col of columnsInScope) {
-        const existing = columnMap.get(col.name);
+        const existing = columnMap.get(col.name)
         if (existing) {
           if (!existing.tables.includes(col.tableName)) {
-            existing.tables.push(col.tableName);
+            existing.tables.push(col.tableName)
           }
         } else {
-          columnMap.set(col.name, { type: col.type, tables: [col.tableName] });
+          columnMap.set(col.name, { type: col.type, tables: [col.tableName] })
         }
       }
       for (const [colName, info] of columnMap) {
@@ -173,7 +178,7 @@ export function buildSuggestions(
           detail: ` (${info.tables.sort().join(", ")})`,
           description: info.tables.length > 1 ? "" : info.type,
           priority: SuggestionPriority.High,
-        });
+        })
       }
     }
 
@@ -183,13 +188,13 @@ export function buildSuggestions(
     // expression context (SELECT md5(...)) and table context (FROM long_sequence(...)).
     if (isMidWord) {
       for (const fn of functions) {
-        if (seenKeywords.has(fn.toUpperCase())) continue;
+        if (seenKeywords.has(fn.toUpperCase())) continue
         suggestions.push({
           label: fn,
           kind: SuggestionKind.Function,
           insertText: fn,
           priority: SuggestionPriority.Low,
-        });
+        })
       }
     }
 
@@ -201,7 +206,7 @@ export function buildSuggestions(
           kind: SuggestionKind.Table,
           insertText: table.name,
           priority: SuggestionPriority.MediumLow,
-        });
+        })
       }
     }
   }
@@ -211,33 +216,31 @@ export function buildSuggestions(
   // Suggest those so Monaco doesn't fall back to junk word-based completions.
   if (suggestions.length === 0 && !expectsIdentifier) {
     for (const tokenType of tokenTypes) {
-      const name = tokenType.name;
-      if (!PUNCTUATION_TOKENS.has(name)) continue;
-      const display = tokenNameToKeyword(name);
+      const name = tokenType.name
+      if (!PUNCTUATION_TOKENS.has(name)) continue
+      const display = tokenNameToKeyword(name)
       suggestions.push({
         label: display,
         kind: SuggestionKind.Keyword,
         insertText: display,
         filterText: name.toLowerCase(),
         priority: SuggestionPriority.Low,
-      });
+      })
     }
   }
 
-  return suggestions;
+  return suggestions
 }
 
 /**
  * Build fallback suggestions when parser can't determine valid tokens.
  * Returns all columns and tables as a generic fallback.
  */
-export function buildFallbackSuggestions(
-  schema: SchemaInfo
-): Suggestion[] {
-  const suggestions: Suggestion[] = [];
+export function buildFallbackSuggestions(schema: SchemaInfo): Suggestion[] {
+  const suggestions: Suggestion[] = []
 
   // Add all columns
-  const allColumns = getAllColumns(schema);
+  const allColumns = getAllColumns(schema)
   for (const col of allColumns) {
     suggestions.push({
       label: col.name,
@@ -245,7 +248,7 @@ export function buildFallbackSuggestions(
       insertText: col.name,
       detail: `${col.tableName}.${col.name} (${col.type})`,
       priority: SuggestionPriority.High,
-    });
+    })
   }
 
   // Add all tables
@@ -255,8 +258,8 @@ export function buildFallbackSuggestions(
       kind: SuggestionKind.Table,
       insertText: table.name,
       priority: SuggestionPriority.MediumLow,
-    });
+    })
   }
 
-  return suggestions;
+  return suggestions
 }

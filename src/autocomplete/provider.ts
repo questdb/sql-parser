@@ -18,10 +18,11 @@
 //   const suggestions = provider.getSuggestions("SELECT ", 7);
 // =============================================================================
 
-import { getContentAssist } from "./content-assist";
-import { buildSuggestions } from "./suggestion-builder";
-import { shouldSkipToken } from "./token-classification";
-import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types";
+import type { IToken } from "chevrotain"
+import { getContentAssist } from "./content-assist"
+import { buildSuggestions } from "./suggestion-builder"
+import { shouldSkipToken } from "./token-classification"
+import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types"
 
 const TABLE_NAME_TOKENS = new Set([
   "From",
@@ -34,38 +35,41 @@ const TABLE_NAME_TOKENS = new Set([
   "Update",
   "Table",
   "View",
-]);
+])
 
-function getLastSignificantTokens(tokens: any[]): string[] {
-  const result: string[] = [];
+function getLastSignificantTokens(tokens: IToken[]): string[] {
+  const result: string[] = []
   for (let i = tokens.length - 1; i >= 0; i--) {
-    const tokenName = tokens[i]?.tokenType?.name;
-    if (!tokenName) continue;
-    if (shouldSkipToken(tokenName)) continue;
-    result.push(tokenName);
+    const tokenName = tokens[i]?.tokenType?.name
+    if (!tokenName) continue
+    if (shouldSkipToken(tokenName)) continue
+    result.push(tokenName)
     if (result.length >= 2) {
-      break;
+      break
     }
   }
-  return result;
+  return result
 }
-function getIdentifierSuggestionScope(lastTokenName?: string, prevTokenName?: string): {
-  includeColumns: boolean;
-  includeTables: boolean;
+function getIdentifierSuggestionScope(
+  lastTokenName?: string,
+  prevTokenName?: string,
+): {
+  includeColumns: boolean
+  includeTables: boolean
 } {
   if (prevTokenName && TABLE_NAME_TOKENS.has(prevTokenName)) {
-    return { includeColumns: false, includeTables: true };
+    return { includeColumns: false, includeTables: true }
   }
   if (lastTokenName && TABLE_NAME_TOKENS.has(lastTokenName)) {
-    return { includeColumns: false, includeTables: true };
+    return { includeColumns: false, includeTables: true }
   }
   // At statement start (no significant tokens before cursor), only suggest
   // tables and keywords, not columns. Identifier is valid here only because
   // of PIVOT syntax (e.g., "trades PIVOT (...)"), not for column references.
   if (!lastTokenName) {
-    return { includeColumns: false, includeTables: true };
+    return { includeColumns: false, includeTables: true }
   }
-  return { includeColumns: true, includeTables: true };
+  return { includeColumns: true, includeTables: true }
 }
 
 /**
@@ -87,7 +91,7 @@ function getIdentifierSuggestionScope(lastTokenName?: string, prevTokenName?: st
  * ```
  */
 export function createAutocompleteProvider(
-  schema: SchemaInfo
+  schema: SchemaInfo,
 ): AutocompleteProvider {
   // Normalize schema: lowercase table names for case-insensitive lookup
   const normalizedSchema: SchemaInfo = {
@@ -96,36 +100,36 @@ export function createAutocompleteProvider(
       Object.entries(schema.columns).map(([tableName, cols]) => [
         tableName.toLowerCase(),
         cols,
-      ])
+      ]),
     ),
-  };
+  }
 
   return {
     getSuggestions(query: string, cursorOffset: number): Suggestion[] {
       // Get content assist from parser
-      const { nextTokenTypes, tablesInScope, tokensBefore, isMidWord } = getContentAssist(
-        query,
-        cursorOffset
-      );
+      const { nextTokenTypes, tablesInScope, tokensBefore, isMidWord } =
+        getContentAssist(query, cursorOffset)
 
       // If parser returned valid next tokens, use them
       if (nextTokenTypes.length > 0) {
         // When mid-word, the last token in tokensBefore is the partial word being typed.
         // For scope detection, we need the tokens BEFORE that partial word.
-        const tokensForScope = isMidWord && tokensBefore.length > 0
-          ? tokensBefore.slice(0, -1)
-          : tokensBefore;
-        const [lastTokenName, prevTokenName] = getLastSignificantTokens(tokensForScope);
-        const scope = getIdentifierSuggestionScope(lastTokenName, prevTokenName);
+        const tokensForScope =
+          isMidWord && tokensBefore.length > 0
+            ? tokensBefore.slice(0, -1)
+            : tokensBefore
+        const [lastTokenName, prevTokenName] =
+          getLastSignificantTokens(tokensForScope)
+        const scope = getIdentifierSuggestionScope(lastTokenName, prevTokenName)
         return buildSuggestions(
           nextTokenTypes,
           normalizedSchema,
           tablesInScope,
-          { ...scope, isMidWord }
-        );
+          { ...scope, isMidWord },
+        )
       }
 
-      return [];
+      return []
     },
-  };
+  }
 }

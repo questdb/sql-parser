@@ -32,19 +32,19 @@ export enum SuggestionPriority {
  */
 export interface Suggestion {
   /** Display label */
-  label: string;
+  label: string
   /** Kind of suggestion */
-  kind: SuggestionKind;
+  kind: SuggestionKind
   /** Text to insert when selected */
-  insertText: string;
+  insertText: string
   /** Text used for filtering (optional, defaults to label) */
-  filterText?: string;
+  filterText?: string
   /** Sort priority (lower = higher priority) */
-  priority: SuggestionPriority;
+  priority: SuggestionPriority
   /** Additional detail text shown inline after label (e.g., " (trades)") */
-  detail?: string;
+  detail?: string
   /** Description text shown on the right side (e.g., "DOUBLE") */
-  description?: string;
+  description?: string
 }
 
 /**
@@ -52,9 +52,9 @@ export interface Suggestion {
  */
 export interface ColumnInfo {
   /** Column name */
-  name: string;
+  name: string
   /** Column data type (e.g., "STRING", "DOUBLE", "TIMESTAMP") */
-  type: string;
+  type: string
 }
 
 /**
@@ -62,9 +62,9 @@ export interface ColumnInfo {
  */
 export interface TableInfo {
   /** Table name */
-  name: string;
+  name: string
   /** Designated timestamp column (if any) */
-  designatedTimestamp?: string;
+  designatedTimestamp?: string
 }
 
 /**
@@ -72,9 +72,9 @@ export interface TableInfo {
  */
 export interface SchemaInfo {
   /** Available tables */
-  tables: TableInfo[];
+  tables: TableInfo[]
   /** Columns indexed by table name (lowercase) */
-  columns: Record<string, ColumnInfo[]>;
+  columns: Record<string, ColumnInfo[]>
 }
 
 /**
@@ -87,5 +87,5 @@ export interface AutocompleteProvider {
    * @param cursorOffset - Cursor position (0-indexed character offset)
    * @returns Array of suggestions
    */
-  getSuggestions(query: string, cursorOffset: number): Suggestion[];
+  getSuggestions(query: string, cursorOffset: number): Suggestion[]
 }

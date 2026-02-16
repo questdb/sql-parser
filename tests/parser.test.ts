@@ -3916,6 +3916,98 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`;
       expect(result.ast[0].type).toBe("select");
     });
 
+    // Gap fix: CURRENT ROW in WINDOW JOIN RANGE BETWEEN
+    it("should parse WINDOW JOIN RANGE BETWEEN with CURRENT ROW as upper bound", () => {
+      const result = parseToAst(
+        "SELECT a.ts, avg(b.val) FROM t1 a WINDOW JOIN t2 b ON a.sym = b.sym RANGE BETWEEN 1 HOURS PRECEDING AND CURRENT ROW"
+      );
+      expect(result.errors).toHaveLength(0);
+      const stmt = result.ast[0];
+      expect(stmt.type).toBe("select");
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0];
+        expect(join?.joinType).toBe("window");
+        expect(join?.range).toBeDefined();
+        expect(join?.range?.start.boundType).toBe("duration");
+        expect(join?.range?.start.direction).toBe("preceding");
+        expect(join?.range?.end.boundType).toBe("currentRow");
+        expect(join?.range?.end.direction).toBeUndefined();
+      }
+    });
+
+    it("should parse WINDOW JOIN RANGE BETWEEN with CURRENT ROW as lower bound", () => {
+      const result = parseToAst(
+        "SELECT a.ts, avg(b.val) FROM t1 a WINDOW JOIN t2 b ON a.sym = b.sym RANGE BETWEEN CURRENT ROW AND 1 HOURS FOLLOWING"
+      );
+      expect(result.errors).toHaveLength(0);
+      const stmt = result.ast[0];
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0];
+        expect(join?.range?.start.boundType).toBe("currentRow");
+        expect(join?.range?.start.direction).toBeUndefined();
+        expect(join?.range?.end.boundType).toBe("duration");
+        expect(join?.range?.end.direction).toBe("following");
+      }
+    });
+
+    it("should parse WINDOW JOIN CURRENT ROW with EXCLUDE PREVAILING", () => {
+      const result = parseToAst(
+        "SELECT a.ts, sum(b.val) FROM t1 a WINDOW JOIN t2 b ON a.sym = b.sym RANGE BETWEEN 1 HOURS PRECEDING AND CURRENT ROW EXCLUDE PREVAILING"
+      );
+      expect(result.errors).toHaveLength(0);
+      const stmt = result.ast[0];
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0];
+        expect(join?.range?.end.boundType).toBe("currentRow");
+        expect(join?.prevailing).toBe("exclude");
+      }
+    });
+
+    it("should roundtrip WINDOW JOIN with CURRENT ROW", () => {
+      const sql = "SELECT a.ts, avg(b.val) FROM t1 a WINDOW JOIN t2 b ON a.sym = b.sym RANGE BETWEEN 1 HOURS PRECEDING AND CURRENT ROW";
+      const result = parseToAst(sql);
+      expect(result.errors).toHaveLength(0);
+      const regenerated = toSql(result.ast[0]);
+      const reparsed = parseToAst(regenerated);
+      expect(reparsed.errors).toHaveLength(0);
+    });
+
+    // Gap fix: ms time unit in o3MaxLag
+    it("should parse INSERT BATCH with o3MaxLag ms unit", () => {
+      const result = parseToAst(
+        "INSERT BATCH 10000 o3MaxLag 500ms INTO t SELECT * FROM other"
+      );
+      expect(result.errors).toHaveLength(0);
+      const stmt = result.ast[0];
+      expect(stmt.type).toBe("insert");
+      if (stmt.type === "insert") {
+        expect(stmt.batch?.size).toBe(10000);
+        expect(stmt.batch?.o3MaxLag).toBe("500ms");
+      }
+    });
+
+    it("should parse CREATE BATCH with o3MaxLag ms unit", () => {
+      const result = parseToAst(
+        "CREATE BATCH 1000 o3MaxLag 250ms TABLE t AS (SELECT * FROM other)"
+      );
+      expect(result.errors).toHaveLength(0);
+      const stmt = result.ast[0];
+      expect(stmt.type).toBe("createTable");
+      if (stmt.type === "createTable") {
+        expect(stmt.batch?.size).toBe(1000);
+        expect(stmt.batch?.o3MaxLag).toBe("250ms");
+      }
+    });
+
+    it("should parse ms duration literal in SAMPLE BY", () => {
+      const result = parseToAst("SELECT avg(price) FROM trades SAMPLE BY 500ms");
+      expect(result.errors).toHaveLength(0);
+      const stmt = result.ast[0];
+      if (stmt.type === "select") {
+        expect(stmt.sampleBy?.duration).toBe("500ms");
+      }
+    });
+
     // Materialized View operations
     it("should parse REFRESH MATERIALIZED VIEW RANGE", () => {
       const result = parseToAst(

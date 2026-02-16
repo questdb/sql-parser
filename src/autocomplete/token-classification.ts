@@ -14,7 +14,11 @@
 /**
  * Token types that represent actual identifiers
  */
-export const IDENTIFIER_TOKENS = new Set(["Identifier", "QuotedIdentifier", "IdentifierKeyword"]);
+export const IDENTIFIER_TOKENS = new Set([
+  "Identifier",
+  "QuotedIdentifier",
+  "IdentifierKeyword",
+])
 
 /**
  * Keywords that can be used as identifiers in the grammar.
@@ -247,15 +251,13 @@ export const IDENTIFIER_KEYWORD_TOKENS = new Set([
   "Linear",
   // LATEST keyword (can be used as identifier/alias)
   "Latest",
-]);
+])
 
 /**
  * Keywords that should always be suggested even when identifiers are allowed.
  * These are context-sensitive keywords that appear in expression positions.
  */
-export const ALWAYS_SUGGEST_KEYWORDS = new Set([
-  "Current",
-]);
+export const ALWAYS_SUGGEST_KEYWORDS = new Set(["Current"])
 
 /**
  * Expression-continuation operators that are valid after any expression but
@@ -277,7 +279,7 @@ export const EXPRESSION_OPERATORS = new Set([
   "Union",
   "Except",
   "Intersect",
-]);
+])
 
 /**
  * Punctuation tokens — worth suggesting in fallback (e.g., "(" after "VALUES (1), ")
@@ -289,7 +291,7 @@ export const PUNCTUATION_TOKENS = new Set([
   "Semicolon",
   "LBracket",
   "RBracket",
-]);
+])
 
 /**
  * Token types that should NOT be suggested (internal/structural tokens)
@@ -315,7 +317,7 @@ export const SKIP_TOKENS = new Set([
   // Arithmetic operators
   "Plus",
   "Minus",
-  "Star",  // Note: Star is also SELECT * - handled specially
+  "Star", // Note: Star is also SELECT * - handled specially
   "Divide",
   "Modulo",
   "Concat",
@@ -340,7 +342,7 @@ export const SKIP_TOKENS = new Set([
   "Nan",
   // Whitespace
   "WhiteSpace",
-]);
+])
 
 /**
  * Operator map for converting token names to display strings
@@ -361,7 +363,7 @@ export const OPERATOR_MAP: Record<string, string> = {
   RParen: ")",
   Comma: ",",
   Semicolon: ";",
-};
+}
 
 /**
  * Convert a token type name to a keyword string for display
@@ -370,12 +372,12 @@ export const OPERATOR_MAP: Record<string, string> = {
 export function tokenNameToKeyword(name: string): string {
   // Check if it's an operator
   if (OPERATOR_MAP[name]) {
-    return OPERATOR_MAP[name];
+    return OPERATOR_MAP[name]
   }
 
   // Convert PascalCase to UPPERCASE with spaces
   // e.g., "PartitionBy" → "PARTITION BY", "LatestOn" → "LATEST ON"
-  return name.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase();
+  return name.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase()
 }
 
 /**
@@ -384,12 +386,12 @@ export function tokenNameToKeyword(name: string): string {
 export function isIdentifierToken(tokenName: string): boolean {
   return (
     IDENTIFIER_TOKENS.has(tokenName) || IDENTIFIER_KEYWORD_TOKENS.has(tokenName)
-  );
+  )
 }
 
 /**
  * Check if a token should be skipped in suggestions
  */
 export function shouldSkipToken(tokenName: string): boolean {
-  return SKIP_TOKENS.has(tokenName);
+  return SKIP_TOKENS.has(tokenName)
 }

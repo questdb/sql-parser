@@ -26,4 +26,4 @@ export const dataTypes: string[] = [
   "timestamp_ns",
   "uuid",
   "varchar",
-];
+]

@@ -2,422 +2,606 @@
 // CST to AST Visitor
 // =============================================================================
 
-import { CstNode, IToken } from "chevrotain";
-import { parser } from "./parser";
-import * as AST from "./ast";
+import { CstNode, CstElement, IToken } from "chevrotain"
+
+/** A record of CstElement arrays — matches both CstChildren types and CstNode.children */
+type CstChildrenRecord = Record<string, CstElement[] | undefined>
+
+import { parser } from "./parser"
+import * as AST from "./ast"
+import type {
+  AddUserStatementCstChildren,
+  AdditiveExpressionCstChildren,
+  AlignToClauseCstChildren,
+  AlterGroupStatementCstChildren,
+  AlterMaterializedViewActionCstChildren,
+  AlterMaterializedViewStatementCstChildren,
+  AlterServiceAccountStatementCstChildren,
+  AlterStatementCstChildren,
+  AlterTableActionCstChildren,
+  AlterTableStatementCstChildren,
+  AlterUserActionCstChildren,
+  AlterUserStatementCstChildren,
+  AlterViewStatementCstChildren,
+  AndExpressionCstChildren,
+  ArrayBracketBodyCstChildren,
+  ArrayElementCstChildren,
+  ArrayLiteralCstChildren,
+  ArraySubscriptCstChildren,
+  AssumeServiceAccountStatementCstChildren,
+  BackupStatementCstChildren,
+  BatchClauseCstChildren,
+  BitAndExpressionCstChildren,
+  BitOrExpressionCstChildren,
+  BitXorExpressionCstChildren,
+  BooleanLiteralCstChildren,
+  CancelQueryStatementCstChildren,
+  CaseExpressionCstChildren,
+  CastDefinitionCstChildren,
+  CastExpressionCstChildren,
+  CheckpointStatementCstChildren,
+  ColumnDefinitionCstChildren,
+  ColumnRefCstChildren,
+  CompileViewStatementCstChildren,
+  ConcatExpressionCstChildren,
+  ConvertPartitionTargetCstChildren,
+  CopyCancelCstChildren,
+  CopyFromCstChildren,
+  CopyOptionCstChildren,
+  CopyOptionsCstChildren,
+  CopyStatementCstChildren,
+  CopyToCstChildren,
+  CreateGroupStatementCstChildren,
+  CreateMaterializedViewBodyCstChildren,
+  CreateServiceAccountStatementCstChildren,
+  CreateStatementCstChildren,
+  CreateTableBodyCstChildren,
+  CreateUserStatementCstChildren,
+  CreateViewBodyCstChildren,
+  CteDefinitionCstChildren,
+  DataTypeCstChildren,
+  DeclareAssignmentCstChildren,
+  DeclareClauseCstChildren,
+  DedupClauseCstChildren,
+  DropGroupStatementCstChildren,
+  DropMaterializedViewStatementCstChildren,
+  DropServiceAccountStatementCstChildren,
+  DropStatementCstChildren,
+  DropTableStatementCstChildren,
+  DropUserStatementCstChildren,
+  DropViewStatementCstChildren,
+  DurationExpressionCstChildren,
+  EqualityExpressionCstChildren,
+  ExitServiceAccountStatementCstChildren,
+  ExplainStatementCstChildren,
+  ExpressionCstChildren,
+  FillClauseCstChildren,
+  FillValueCstChildren,
+  FromClauseCstChildren,
+  FromToClauseCstChildren,
+  FunctionCallCstChildren,
+  FunctionNameCstChildren,
+  GrantAssumeServiceAccountStatementCstChildren,
+  GrantStatementCstChildren,
+  GrantTableTargetCstChildren,
+  GroupByClauseCstChildren,
+  IdentifierCstChildren,
+  IdentifierCstNode,
+  IdentifierExpressionCstChildren,
+  ImplicitSelectBodyCstChildren,
+  ImplicitSelectStatementCstChildren,
+  IndexDefinitionCstChildren,
+  InsertStatementCstChildren,
+  IntervalValueCstChildren,
+  JoinClauseCstChildren,
+  LatestOnClauseCstChildren,
+  LimitClauseCstChildren,
+  LiteralCstChildren,
+  MaterializedViewPartitionCstChildren,
+  MaterializedViewPeriodCstChildren,
+  MaterializedViewRefreshCstChildren,
+  MultiplicativeExpressionCstChildren,
+  NotExpressionCstChildren,
+  OrExpressionCstChildren,
+  OrderByClauseCstChildren,
+  OrderByItemCstChildren,
+  OverClauseCstChildren,
+  PartitionByCstChildren,
+  PermissionListCstChildren,
+  PermissionTokenCstChildren,
+  PivotAggregationCstChildren,
+  PivotBodyCstChildren,
+  PivotForClauseCstChildren,
+  PivotStatementCstChildren,
+  PrimaryExpressionCstChildren,
+  QualifiedNameCstChildren,
+  QualifiedStarCstChildren,
+  ReindexTableStatementCstChildren,
+  RefreshMaterializedViewStatementCstChildren,
+  RelationalExpressionCstChildren,
+  RemoveUserStatementCstChildren,
+  RenameTableStatementCstChildren,
+  ResumeWalStatementCstChildren,
+  RevokeAssumeServiceAccountStatementCstChildren,
+  RevokeStatementCstChildren,
+  SampleByClauseCstChildren,
+  SelectItemCstChildren,
+  SelectListCstChildren,
+  SelectStatementCstChildren,
+  SetClauseCstChildren,
+  SetExpressionCstChildren,
+  SetOperationCstChildren,
+  SetTypeStatementCstChildren,
+  ShowStatementCstChildren,
+  SimpleSelectCstChildren,
+  SnapshotStatementCstChildren,
+  StatementCstChildren,
+  StatementsCstChildren,
+  StringOrIdentifierCstChildren,
+  StringOrQualifiedNameCstChildren,
+  TableFunctionCallCstChildren,
+  TableFunctionNameCstChildren,
+  TableParamCstChildren,
+  TableParamNameCstChildren,
+  TableRefCstChildren,
+  TimeUnitCstChildren,
+  TimeZoneValueCstChildren,
+  TruncateTableStatementCstChildren,
+  TypeCastExpressionCstChildren,
+  UnaryExpressionCstChildren,
+  UpdateStatementCstChildren,
+  VacuumTableStatementCstChildren,
+  ValuesClauseCstChildren,
+  ValuesListCstChildren,
+  WhereClauseCstChildren,
+  WindowDefinitionClauseCstChildren,
+  WindowFrameBoundCstChildren,
+  WindowFrameClauseCstChildren,
+  WindowJoinBoundCstChildren,
+  WindowPartitionByClauseCstChildren,
+  WithClauseCstChildren,
+} from "./cst-types"
+
+type FromToClauseResult = { from?: AST.Expression; to?: AST.Expression }
+type BatchClauseResult = { size: number; o3MaxLag?: string }
+type ConvertPartitionTargetResult = {
+  partitions?: string[]
+  target: string
+  where?: AST.Expression
+}
+type PivotBodyResult = {
+  aggregations: AST.PivotAggregation[]
+  pivots: AST.PivotForClause[]
+  groupBy?: AST.Expression[]
+}
 
 // Get the base visitor class from the parser
-const BaseVisitor = parser.getBaseCstVisitorConstructor();
+const BaseVisitor = parser.getBaseCstVisitorConstructor()
 
 class QuestDBVisitor extends BaseVisitor {
   constructor() {
-    super();
-    this.validateVisitor();
+    super()
+    this.validateVisitor()
   }
 
   // Helper to extract token image
   private tokenImage(token: IToken | undefined): string {
-    return token?.image ?? "";
+    return token?.image ?? ""
   }
 
   // ==========================================================================
   // Entry Points
   // ==========================================================================
 
-  statements(ctx: any): AST.Statement[] {
-    if (!ctx.statement) return [];
-    return ctx.statement.map((s: CstNode) => this.visit(s));
+  statements(ctx: StatementsCstChildren): AST.Statement[] {
+    if (!ctx.statement) return []
+    return ctx.statement.map((s: CstNode) => this.visit(s) as AST.Statement)
   }
 
-  statement(ctx: any): AST.Statement {
+  statement(ctx: StatementCstChildren): AST.Statement {
     if (ctx.selectStatement) {
-      return this.visit(ctx.selectStatement);
+      return this.visit(ctx.selectStatement) as AST.SelectStatement
     }
     if (ctx.insertStatement) {
-      return this.visit(ctx.insertStatement);
+      return this.visit(ctx.insertStatement) as AST.InsertStatement
     }
     if (ctx.updateStatement) {
-      return this.visit(ctx.updateStatement);
+      return this.visit(ctx.updateStatement) as AST.UpdateStatement
     }
     if (ctx.createStatement) {
-      return this.visit(ctx.createStatement);
+      return this.visit(ctx.createStatement) as AST.Statement
     }
     if (ctx.dropStatement) {
-      return this.visit(ctx.dropStatement);
+      return this.visit(ctx.dropStatement) as AST.Statement
     }
     if (ctx.truncateTableStatement) {
-      return this.visit(ctx.truncateTableStatement);
+      return this.visit(
+        ctx.truncateTableStatement,
+      ) as AST.TruncateTableStatement
     }
     if (ctx.renameTableStatement) {
-      return this.visit(ctx.renameTableStatement);
+      return this.visit(ctx.renameTableStatement) as AST.RenameTableStatement
     }
     if (ctx.addUserStatement) {
-      return this.visit(ctx.addUserStatement);
+      return this.visit(ctx.addUserStatement) as AST.AddUserStatement
     }
     if (ctx.removeUserStatement) {
-      return this.visit(ctx.removeUserStatement);
+      return this.visit(ctx.removeUserStatement) as AST.RemoveUserStatement
     }
     if (ctx.assumeServiceAccountStatement) {
-      return this.visit(ctx.assumeServiceAccountStatement);
+      return this.visit(
+        ctx.assumeServiceAccountStatement,
+      ) as AST.AssumeServiceAccountStatement
     }
     if (ctx.exitServiceAccountStatement) {
-      return this.visit(ctx.exitServiceAccountStatement);
+      return this.visit(
+        ctx.exitServiceAccountStatement,
+      ) as AST.ExitServiceAccountStatement
     }
     if (ctx.cancelQueryStatement) {
-      return this.visit(ctx.cancelQueryStatement);
+      return this.visit(ctx.cancelQueryStatement) as AST.CancelQueryStatement
     }
     if (ctx.showStatement) {
-      return this.visit(ctx.showStatement);
+      return this.visit(ctx.showStatement) as AST.ShowStatement
     }
     if (ctx.explainStatement) {
-      return this.visit(ctx.explainStatement);
+      return this.visit(ctx.explainStatement) as AST.ExplainStatement
     }
     if (ctx.alterStatement) {
-      return this.visit(ctx.alterStatement);
+      return this.visit(ctx.alterStatement) as AST.Statement
     }
     if (ctx.copyStatement) {
-      return this.visit(ctx.copyStatement);
+      return this.visit(ctx.copyStatement) as AST.CopyStatement
     }
     if (ctx.checkpointStatement) {
-      return this.visit(ctx.checkpointStatement);
+      return this.visit(ctx.checkpointStatement) as AST.CheckpointStatement
     }
     if (ctx.snapshotStatement) {
-      return this.visit(ctx.snapshotStatement);
+      return this.visit(ctx.snapshotStatement) as AST.SnapshotStatement
     }
     if (ctx.grantStatement) {
-      return this.visit(ctx.grantStatement);
+      return this.visit(ctx.grantStatement) as AST.GrantStatement
     }
     if (ctx.revokeStatement) {
-      return this.visit(ctx.revokeStatement);
+      return this.visit(ctx.revokeStatement) as AST.RevokeStatement
     }
     if (ctx.grantAssumeServiceAccountStatement) {
-      return this.visit(ctx.grantAssumeServiceAccountStatement);
+      return this.visit(
+        ctx.grantAssumeServiceAccountStatement,
+      ) as AST.GrantAssumeServiceAccountStatement
     }
     if (ctx.revokeAssumeServiceAccountStatement) {
-      return this.visit(ctx.revokeAssumeServiceAccountStatement);
+      return this.visit(
+        ctx.revokeAssumeServiceAccountStatement,
+      ) as AST.RevokeAssumeServiceAccountStatement
     }
     if (ctx.vacuumTableStatement) {
-      return this.visit(ctx.vacuumTableStatement);
+      return this.visit(ctx.vacuumTableStatement) as AST.VacuumTableStatement
     }
     if (ctx.resumeWalStatement) {
-      return this.visit(ctx.resumeWalStatement);
+      return this.visit(ctx.resumeWalStatement) as AST.ResumeWalStatement
     }
     if (ctx.setTypeStatement) {
-      return this.visit(ctx.setTypeStatement);
+      return this.visit(ctx.setTypeStatement) as AST.SetTypeStatement
     }
     if (ctx.reindexTableStatement) {
-      return this.visit(ctx.reindexTableStatement);
+      return this.visit(ctx.reindexTableStatement) as AST.ReindexTableStatement
     }
     if (ctx.refreshMaterializedViewStatement) {
-      return this.visit(ctx.refreshMaterializedViewStatement);
+      return this.visit(
+        ctx.refreshMaterializedViewStatement,
+      ) as AST.RefreshMaterializedViewStatement
     }
     if (ctx.pivotStatement) {
-      return this.visit(ctx.pivotStatement);
+      return this.visit(ctx.pivotStatement) as AST.PivotStatement
     }
     if (ctx.backupStatement) {
-      return this.visit(ctx.backupStatement);
+      return this.visit(ctx.backupStatement) as AST.BackupStatement
     }
     if (ctx.compileViewStatement) {
-      return this.visit(ctx.compileViewStatement);
+      return this.visit(ctx.compileViewStatement) as AST.CompileViewStatement
     }
     if (ctx.implicitSelectStatement) {
-      return this.visit(ctx.implicitSelectStatement);
+      return this.visit(ctx.implicitSelectStatement) as AST.SelectStatement
     }
-    throw new Error("Unknown statement type");
+    throw new Error("Unknown statement type")
   }
 
   // ==========================================================================
   // SELECT Statement
   // ==========================================================================
 
-  selectStatement(ctx: any): AST.SelectStatement {
-    const result = this.visit(ctx.simpleSelect) as AST.SelectStatement;
+  selectStatement(ctx: SelectStatementCstChildren): AST.SelectStatement {
+    const result = this.visit(ctx.simpleSelect) as AST.SelectStatement
 
     if (ctx.declareClause) {
-      result.declare = this.visit(ctx.declareClause);
+      result.declare = this.visit(ctx.declareClause) as AST.DeclareClause
     }
 
     if (ctx.withClause) {
-      result.with = this.visit(ctx.withClause);
+      result.with = this.visit(ctx.withClause) as AST.CTE[]
     }
 
     if (ctx.setOperation && ctx.setOperation.length > 0) {
-      result.setOperations = ctx.setOperation.map((op: CstNode) => this.visit(op));
+      result.setOperations = ctx.setOperation.map(
+        (op: CstNode) => this.visit(op) as AST.SetOperation,
+      )
     }
 
-    return result;
+    return result
   }
 
-  withClause(ctx: any): AST.CTE[] {
-    return ctx.cteDefinition.map((cte: CstNode) => this.visit(cte));
+  withClause(ctx: WithClauseCstChildren): AST.CTE[] {
+    return ctx.cteDefinition.map((cte: CstNode) => this.visit(cte) as AST.CTE)
   }
 
-  cteDefinition(ctx: any): AST.CTE {
+  cteDefinition(ctx: CteDefinitionCstChildren): AST.CTE {
     const query = ctx.selectStatement
-      ? this.visit(ctx.selectStatement)
-      : this.visit(ctx.implicitSelectStatement);
+      ? (this.visit(ctx.selectStatement) as AST.SelectStatement)
+      : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement)
     return {
       type: "cte",
       name: this.extractIdentifierName(ctx.identifier[0].children),
       query,
-    };
+    }
   }
 
-  simpleSelect(ctx: any): AST.SelectStatement {
+  simpleSelect(ctx: SimpleSelectCstChildren): AST.SelectStatement {
     const result: AST.SelectStatement = {
       type: "select",
-      columns: this.visit(ctx.selectList),
-    };
+      columns: this.visit(ctx.selectList) as AST.SelectItem[],
+    }
 
     if (ctx.Distinct) {
-      result.distinct = true;
+      result.distinct = true
     }
 
     if (ctx.fromClause) {
-      result.from = this.visit(ctx.fromClause);
+      result.from = this.visit(ctx.fromClause) as AST.TableRef[]
     }
 
     if (ctx.whereClause) {
-      result.where = this.visit(ctx.whereClause);
+      result.where = this.visit(ctx.whereClause) as AST.Expression
     }
 
     if (ctx.sampleByClause) {
-      result.sampleBy = this.visit(ctx.sampleByClause);
+      result.sampleBy = this.visit(ctx.sampleByClause) as AST.SampleByClause
     }
 
     if (ctx.latestOnClause) {
-      result.latestOn = this.visit(ctx.latestOnClause);
+      result.latestOn = this.visit(ctx.latestOnClause) as AST.LatestOnClause
     }
 
     if (ctx.groupByClause) {
-      result.groupBy = this.visit(ctx.groupByClause);
+      result.groupBy = this.visit(ctx.groupByClause) as AST.Expression[]
     }
 
     if (ctx.pivotBody) {
-      const body = this.visit(ctx.pivotBody);
+      const body = this.visit(ctx.pivotBody) as PivotBodyResult
       result.pivot = {
         type: "pivotClause",
         aggregations: body.aggregations,
         pivots: body.pivots,
         groupBy: body.groupBy,
-      };
+      }
     }
 
     if (ctx.orderByClause) {
-      result.orderBy = this.visit(ctx.orderByClause);
+      result.orderBy = this.visit(ctx.orderByClause) as AST.OrderByItem[]
     }
 
     if (ctx.limitClause) {
-      result.limit = this.visit(ctx.limitClause);
+      result.limit = this.visit(ctx.limitClause) as AST.LimitClause
     }
 
-    return result;
+    return result
   }
 
-  setOperation(ctx: any): AST.SetOperation {
-    let operator: "UNION" | "EXCEPT" | "INTERSECT" = "UNION";
-    if (ctx.Union) operator = "UNION";
-    else if (ctx.Except) operator = "EXCEPT";
-    else if (ctx.Intersect) operator = "INTERSECT";
+  setOperation(ctx: SetOperationCstChildren): AST.SetOperation {
+    let operator: "UNION" | "EXCEPT" | "INTERSECT" = "UNION"
+    if (ctx.Union) operator = "UNION"
+    else if (ctx.Except) operator = "EXCEPT"
+    else if (ctx.Intersect) operator = "INTERSECT"
 
     const select = ctx.simpleSelect
-      ? this.visit(ctx.simpleSelect)
-      : this.visit(ctx.implicitSelectBody);
+      ? (this.visit(ctx.simpleSelect) as AST.SelectStatement)
+      : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement)
 
     const result: AST.SetOperation = {
       type: "setOperation",
       operator,
       select,
-    };
+    }
 
     if (ctx.All) {
-      result.all = true;
+      result.all = true
     }
 
-    return result;
+    return result
   }
 
-  selectList(ctx: any): AST.SelectItem[] {
+  selectList(ctx: SelectListCstChildren): AST.SelectItem[] {
     if (ctx.Star) {
-      const items: AST.SelectItem[] = [{ type: "star" }];
+      const items: AST.SelectItem[] = [{ type: "star" }]
       // Additional items after *: SELECT *, rank() OVER () ...
-      const extraItems = ctx.selectItem || ctx.selectItem1 || [];
-      for (const item of extraItems) {
-        items.push(this.visit(item));
-      }
-      return items;
-    }
-    // Collect from all SUBRULE occurrences
-    const items: AST.SelectItem[] = [];
-    for (const key of ["selectItem", "selectItem1", "selectItem2"]) {
-      if (ctx[key]) {
-        for (const item of ctx[key]) {
-          items.push(this.visit(item));
+      if (ctx.selectItem) {
+        for (const item of ctx.selectItem) {
+          items.push(this.visit(item) as AST.SelectItem)
         }
       }
+      return items
     }
-    return items.length > 0 ? items : [];
+    const items: AST.SelectItem[] = []
+    if (ctx.selectItem) {
+      for (const item of ctx.selectItem) {
+        items.push(this.visit(item) as AST.SelectItem)
+      }
+    }
+    return items
   }
 
-  selectItem(ctx: any): AST.SelectItem {
+  selectItem(ctx: SelectItemCstChildren): AST.SelectItem {
     if (ctx.qualifiedStar) {
       const result: AST.QualifiedStarSelectItem = {
         type: "qualifiedStar",
-        qualifier: this.visit(ctx.qualifiedStar),
-      };
-      if (ctx.identifier) {
-        result.alias = this.visit(ctx.identifier).parts[0];
+        qualifier: this.visit(ctx.qualifiedStar) as AST.QualifiedName,
       }
-      return result;
+      if (ctx.identifier) {
+        result.alias = (
+          this.visit(ctx.identifier) as AST.QualifiedName
+        ).parts[0]
+      }
+      return result
     }
 
     const result: AST.ExpressionSelectItem = {
       type: "selectItem",
-      expression: this.visit(ctx.expression),
-    };
-
-    if (ctx.identifier) {
-      result.alias = this.visit(ctx.identifier).parts[0];
+      expression: this.visit(ctx.expression!) as AST.Expression,
     }
 
-    return result;
+    if (ctx.identifier) {
+      result.alias = (this.visit(ctx.identifier) as AST.QualifiedName).parts[0]
+    }
+
+    return result
   }
 
-  qualifiedStar(ctx: any): AST.QualifiedName {
+  qualifiedStar(ctx: QualifiedStarCstChildren): AST.QualifiedName {
     const parts: string[] = ctx.identifier.map((id: CstNode) =>
-      this.extractIdentifierName(id.children)
-    );
+      this.extractIdentifierName(id.children),
+    )
     return {
       type: "qualifiedName",
       parts,
-    };
+    }
   }
 
   // ==========================================================================
   // FROM Clause
   // ==========================================================================
 
-  fromClause(ctx: any): AST.TableRef[] {
-    const tables: AST.TableRef[] = [];
+  fromClause(ctx: FromClauseCstChildren): AST.TableRef[] {
+    const tables: AST.TableRef[] = []
 
     if (ctx.tableRef) {
       // Handle all table refs (first one and any comma-separated ones)
       for (let i = 0; i < ctx.tableRef.length; i++) {
-        const table = this.visit(ctx.tableRef[i]);
-        tables.push(table);
+        const table = this.visit(ctx.tableRef[i]) as AST.TableRef
+        tables.push(table)
       }
 
       // Attach joins to the first table (legacy behavior)
       if (ctx.joinClause && tables.length > 0) {
-        tables[0].joins = ctx.joinClause.map((j: CstNode) => this.visit(j));
+        tables[0].joins = ctx.joinClause.map(
+          (j: CstNode) => this.visit(j) as AST.JoinClause,
+        )
       }
     }
 
-    return tables;
+    return tables
   }
 
-  implicitSelectBody(ctx: any): AST.SelectStatement {
+  implicitSelectBody(ctx: ImplicitSelectBodyCstChildren): AST.SelectStatement {
     const result: AST.SelectStatement = {
       type: "select",
       implicit: true,
       columns: [{ type: "star" } as AST.SelectItem],
-    };
+    }
     if (ctx.fromClause) {
-      result.from = this.visitSafe(ctx.fromClause);
+      result.from = this.visitSafe(ctx.fromClause) as AST.TableRef[]
     }
     if (ctx.whereClause) {
-      result.where = this.visitSafe(ctx.whereClause);
+      result.where = this.visitSafe(ctx.whereClause) as AST.Expression
     }
     if (ctx.sampleByClause) {
-      result.sampleBy = this.visitSafe(ctx.sampleByClause);
+      result.sampleBy = this.visitSafe(ctx.sampleByClause) as AST.SampleByClause
     }
     if (ctx.latestOnClause) {
-      result.latestOn = this.visitSafe(ctx.latestOnClause);
+      result.latestOn = this.visitSafe(ctx.latestOnClause) as AST.LatestOnClause
     }
     if (ctx.groupByClause) {
-      result.groupBy = this.visitSafe(ctx.groupByClause);
+      result.groupBy = this.visitSafe(ctx.groupByClause) as AST.Expression[]
     }
     if (ctx.orderByClause) {
-      result.orderBy = this.visitSafe(ctx.orderByClause);
+      result.orderBy = this.visitSafe(ctx.orderByClause) as AST.OrderByItem[]
     }
     if (ctx.limitClause) {
-      result.limit = this.visitSafe(ctx.limitClause);
+      result.limit = this.visitSafe(ctx.limitClause) as AST.LimitClause
     }
-    return result;
+    return result
   }
 
-  implicitSelectStatement(ctx: any): AST.SelectStatement {
-    const result = this.visit(ctx.implicitSelectBody) as AST.SelectStatement;
+  implicitSelectStatement(
+    ctx: ImplicitSelectStatementCstChildren,
+  ): AST.SelectStatement {
+    const result = this.visit(ctx.implicitSelectBody) as AST.SelectStatement
     if (ctx.setOperation && ctx.setOperation.length > 0) {
-      result.setOperations = ctx.setOperation.map((op: CstNode) =>
-        this.visit(op)
-      );
+      result.setOperations = ctx.setOperation.map(
+        (op: CstNode) => this.visit(op) as AST.SetOperation,
+      )
     }
-    return result;
+    return result
   }
 
-  tableRef(ctx: any): AST.TableRef {
-    let table: AST.TableRef["table"];
+  tableRef(ctx: TableRefCstChildren): AST.TableRef {
+    let table: AST.TableRef["table"]
     if (ctx.selectStatement) {
-      table = this.visit(ctx.selectStatement);
+      table = this.visit(ctx.selectStatement) as AST.SelectStatement
     } else if (ctx.showStatement) {
-      table = this.visit(ctx.showStatement);
+      table = this.visit(ctx.showStatement) as AST.ShowStatement
     } else if (ctx.implicitSelectStatement) {
-      table = this.visit(ctx.implicitSelectStatement);
+      table = this.visit(ctx.implicitSelectStatement) as AST.SelectStatement
     } else if (ctx.tableFunctionCall) {
-      table = this.visit(ctx.tableFunctionCall);
+      table = this.visit(ctx.tableFunctionCall) as AST.TableFunctionCall
     } else if (ctx.VariableReference) {
       // @variable as table source (DECLARE variable reference)
-      const varImage = ctx.VariableReference[0].image; // e.g. "@subquery"
-      table = { type: "qualifiedName", parts: [varImage] } as AST.QualifiedName;
+      const varImage = ctx.VariableReference[0].image // e.g. "@subquery"
+      table = { type: "qualifiedName", parts: [varImage] } as AST.QualifiedName
     } else if (ctx.StringLiteral) {
       // Single-quoted table name: FROM 'sys.copy_export_log'
-      table = { type: "qualifiedName", parts: [ctx.StringLiteral[0].image.slice(1, -1)] } as AST.QualifiedName;
+      table = {
+        type: "qualifiedName",
+        parts: [ctx.StringLiteral[0].image.slice(1, -1)],
+      } as AST.QualifiedName
     } else {
-      table = this.visit(ctx.qualifiedName);
+      table = this.visit(ctx.qualifiedName!) as AST.QualifiedName
     }
 
     const result: AST.TableRef = {
       type: "tableRef",
       table,
-    };
+    }
 
     if (ctx.identifier) {
-      result.alias = this.visit(ctx.identifier).parts[0];
+      result.alias = (this.visit(ctx.identifier) as AST.QualifiedName).parts[0]
     }
 
     if (ctx.columnRef) {
-      const colRef = this.visit(ctx.columnRef);
-      result.timestampDesignation = colRef.name?.parts
-        ? colRef.name.parts.join(".")
-        : colRef.parts
-          ? colRef.parts.join(".")
-          : String(colRef);
+      const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
+      result.timestampDesignation = colRef.name.parts.join(".")
     }
 
-    return result;
+    return result
   }
 
-  tableFunctionCall(ctx: any): AST.TableFunctionCall {
-    let name: string;
+  tableFunctionCall(ctx: TableFunctionCallCstChildren): AST.TableFunctionCall {
+    let name: string
     if (ctx.tableFunctionName) {
-      const fnName = ctx.tableFunctionName[0];
+      const fnName = ctx.tableFunctionName[0]
       if (fnName.children?.identifier) {
-        const id = this.visit(fnName.children.identifier);
-        name = id.parts ? id.parts.join(".") : String(id);
-      } else if (fnName.children?.Tables) {
-        name = "tables";
+        const id = this.visit(fnName.children.identifier) as AST.QualifiedName
+        name = id.parts.join(".")
       } else {
-        name = "unknown";
+        name = "unknown"
       }
     } else {
-      name = "unknown";
+      name = "unknown"
     }
 
-    const args: AST.Expression[] = [];
+    const args: AST.Expression[] = []
     if (ctx.expression) {
       for (const expr of ctx.expression) {
-        args.push(this.visit(expr));
+        args.push(this.visit(expr) as AST.Expression)
       }
     }
 
@@ -425,1130 +609,1249 @@ class QuestDBVisitor extends BaseVisitor {
       type: "tableFunctionCall",
       name,
       args,
-    };
+    }
   }
 
-  tableFunctionName(_ctx: any): any {
+  tableFunctionName(_ctx: TableFunctionNameCstChildren): string | undefined {
     // Handled inline by tableFunctionCall
-    return undefined;
+    return undefined
   }
 
-  joinClause(ctx: any): AST.JoinClause {
+  joinClause(ctx: JoinClauseCstChildren): AST.JoinClause {
     const result: AST.JoinClause = {
       type: "join",
-      table: this.visit(ctx.tableRef),
-    };
+      table: this.visit(ctx.tableRef) as AST.TableRef,
+    }
 
     // Determine join type
-    if (ctx.Inner) result.joinType = "inner";
-    else if (ctx.Left) result.joinType = "left";
-    else if (ctx.Right) result.joinType = "right";
-    else if (ctx.Full) result.joinType = "full";
-    else if (ctx.Cross) result.joinType = "cross";
-    else if (ctx.Asof) result.joinType = "asof";
-    else if (ctx.Lt) result.joinType = "lt";
-    else if (ctx.Splice) result.joinType = "splice";
-    else if (ctx.Window) result.joinType = "window";
+    if (ctx.Inner) result.joinType = "inner"
+    else if (ctx.Left) result.joinType = "left"
+    else if (ctx.Right) result.joinType = "right"
+    else if (ctx.Full) result.joinType = "full"
+    else if (ctx.Cross) result.joinType = "cross"
+    else if (ctx.Asof) result.joinType = "asof"
+    else if (ctx.Lt) result.joinType = "lt"
+    else if (ctx.Splice) result.joinType = "splice"
+    else if (ctx.Window) result.joinType = "window"
 
     if (ctx.Outer) {
-      result.outer = true;
+      result.outer = true
     }
 
     if (ctx.expression) {
-      result.on = this.visit(ctx.expression);
+      result.on = this.visit(ctx.expression) as AST.Expression
     }
 
     // Handle TOLERANCE clause for ASOF/LT joins
     if (ctx.DurationLiteral) {
-      result.tolerance = ctx.DurationLiteral[0].image;
+      result.tolerance = ctx.DurationLiteral[0].image
     }
 
     // Handle RANGE BETWEEN clause for WINDOW JOIN
     if (ctx.windowJoinBound && ctx.windowJoinBound.length >= 2) {
       result.range = {
-        start: this.visit(ctx.windowJoinBound[0]),
-        end: this.visit(ctx.windowJoinBound[1]),
-      };
+        start: this.visit(ctx.windowJoinBound[0]) as AST.WindowJoinBound,
+        end: this.visit(ctx.windowJoinBound[1]) as AST.WindowJoinBound,
+      }
     }
 
     // Handle INCLUDE/EXCLUDE PREVAILING clause for WINDOW JOIN
     if (ctx.Prevailing) {
-      result.prevailing = ctx.Include ? "include" : "exclude";
+      result.prevailing = ctx.Include ? "include" : "exclude"
     }
 
-    return result;
+    return result
   }
 
-  windowJoinBound(ctx: any): AST.WindowJoinBound {
+  windowJoinBound(ctx: WindowJoinBoundCstChildren): AST.WindowJoinBound {
     const result: AST.WindowJoinBound = {
       type: "windowJoinBound",
       boundType: ctx.Current ? "currentRow" : "duration",
-      direction: ctx.Preceding ? "preceding" : "following",
-    };
-    if (ctx.durationExpression) {
-      result.duration = this.visit(ctx.durationExpression);
     }
-    return result;
+    if (ctx.Preceding) {
+      result.direction = "preceding"
+    } else if (ctx.Following) {
+      result.direction = "following"
+    }
+    if (ctx.durationExpression) {
+      result.duration = this.visit(ctx.durationExpression) as string
+    }
+    return result
   }
 
-  durationExpression(ctx: any): string {
+  durationExpression(ctx: DurationExpressionCstChildren): string {
     if (ctx.DurationLiteral) {
-      return ctx.DurationLiteral[0].image;
+      return ctx.DurationLiteral[0].image
     }
     // NumberLiteral/StringLiteral + timeUnit
-    const num = ctx.NumberLiteral?.[0]?.image ?? ctx.StringLiteral?.[0]?.image ?? "0";
-    const unit = this.visit(ctx.timeUnit);
-    return `${num} ${unit}`;
+    const num =
+      ctx.NumberLiteral?.[0]?.image ?? ctx.StringLiteral?.[0]?.image ?? "0"
+    const unit = this.visit(ctx.timeUnit!) as string
+    return `${num} ${unit}`
   }
 
   // ==========================================================================
   // WHERE Clause
   // ==========================================================================
 
-  whereClause(ctx: any): AST.Expression {
-    return this.visit(ctx.expression);
+  whereClause(ctx: WhereClauseCstChildren): AST.Expression {
+    return this.visit(ctx.expression) as AST.Expression
   }
 
   // ==========================================================================
   // QuestDB-specific Clauses
   // ==========================================================================
 
-  sampleByClause(ctx: any): AST.SampleByClause {
+  sampleByClause(ctx: SampleByClauseCstChildren): AST.SampleByClause {
     const result: AST.SampleByClause = {
       type: "sampleBy",
       duration: ctx.DurationLiteral
         ? this.tokenImage(ctx.DurationLiteral[0])
-        : this.tokenImage(ctx.VariableReference[0]),
-    };
+        : this.tokenImage(ctx.VariableReference![0]),
+    }
     if (ctx.fillClause) {
-      result.fill = this.visit(ctx.fillClause);
+      result.fill = this.visit(ctx.fillClause) as string[]
     }
     if (ctx.alignToClause) {
-      result.alignTo = this.visit(ctx.alignToClause);
+      result.alignTo = this.visit(ctx.alignToClause) as AST.AlignToClause
     }
     if (ctx.fromToClause) {
-      const fromTo = this.visit(ctx.fromToClause);
-      result.from = fromTo.from;
-      result.to = fromTo.to;
+      const fromTo = this.visit(ctx.fromToClause) as FromToClauseResult
+      result.from = fromTo.from
+      result.to = fromTo.to
     }
-    return result;
+    return result
   }
 
-  fillClause(ctx: any): string[] {
-    return ctx.fillValue.map((v: CstNode) => this.visit(v));
+  fillClause(ctx: FillClauseCstChildren): string[] {
+    return ctx.fillValue.map((v: CstNode) => this.visit(v) as string)
   }
 
-  fillValue(ctx: any): string {
-    if (ctx.None) return "NONE";
-    if (ctx.Null) return "NULL";
-    if (ctx.NumberLiteral) return this.tokenImage(ctx.NumberLiteral[0]);
+  fillValue(ctx: FillValueCstChildren): string {
+    if (ctx.Null) return "NULL"
+    if (ctx.NumberLiteral) return this.tokenImage(ctx.NumberLiteral[0])
     if (ctx.identifier) {
-      const name = this.extractIdentifierName(ctx.identifier[0].children);
-      return name.toUpperCase();
+      const name = this.extractIdentifierName(ctx.identifier[0].children)
+      return name.toUpperCase()
     }
-    return "";
+    return ""
   }
 
-  alignToClause(ctx: any): AST.AlignToClause {
+  alignToClause(ctx: AlignToClauseCstChildren): AST.AlignToClause {
     const result: AST.AlignToClause = {
       type: "alignTo",
       mode: ctx.Calendar ? "calendar" : "firstObservation",
-    };
+    }
     if (ctx.Zone && ctx.timeZoneValue) {
-      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0]);
+      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0])
     }
     if (ctx.Offset && ctx.stringOrIdentifier) {
-      result.offset = this.extractMaybeString(ctx.stringOrIdentifier[0]);
+      result.offset = this.extractMaybeString(ctx.stringOrIdentifier[0])
     }
-    return result;
+    return result
   }
 
-  fromToClause(ctx: any): { from?: AST.Expression; to?: AST.Expression } {
-    const expressions = ctx.expression?.map((e: CstNode) => this.visit(e)) ?? [];
+  fromToClause(ctx: FromToClauseCstChildren): {
+    from?: AST.Expression
+    to?: AST.Expression
+  } {
+    const expressions =
+      ctx.expression?.map((e: CstNode) => this.visit(e) as AST.Expression) ?? []
     if (ctx.From) {
-      return { from: expressions[0], to: expressions[1] };
+      return { from: expressions[0], to: expressions[1] }
     }
-    return { to: expressions[0] };
+    return { to: expressions[0] }
   }
 
-  latestOnClause(ctx: any): AST.LatestOnClause {
-    const columnRefs = ctx.columnRef.map((c: CstNode) => this.visit(c));
+  latestOnClause(ctx: LatestOnClauseCstChildren): AST.LatestOnClause {
+    const columnRefs = ctx.columnRef!.map(
+      (c: CstNode) => this.visit(c) as AST.ColumnRef,
+    )
 
     if (ctx.On) {
       // LATEST ON timestamp PARTITION BY col1, col2, ...
       return {
         type: "latestOn",
         timestamp: columnRefs[0].name,
-        partitionBy: columnRefs.slice(1).map((c: any) => c.name),
-      };
+        partitionBy: columnRefs.slice(1).map((c: AST.ColumnRef) => c.name),
+      }
     }
     // LATEST BY col1, col2, ...
     return {
       type: "latestOn",
-      partitionBy: columnRefs.map((c: any) => c.name),
-    };
+      partitionBy: columnRefs.map((c: AST.ColumnRef) => c.name),
+    }
   }
 
   // ==========================================================================
   // GROUP BY, HAVING, ORDER BY, LIMIT
   // ==========================================================================
 
-  groupByClause(ctx: any): AST.Expression[] {
-    return ctx.expression.map((e: CstNode) => this.visit(e));
+  groupByClause(ctx: GroupByClauseCstChildren): AST.Expression[] {
+    return ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression)
   }
 
-  orderByClause(ctx: any): AST.OrderByItem[] {
-    return ctx.orderByItem.map((item: CstNode) => this.visit(item));
+  orderByClause(ctx: OrderByClauseCstChildren): AST.OrderByItem[] {
+    return ctx.orderByItem.map(
+      (item: CstNode) => this.visit(item) as AST.OrderByItem,
+    )
   }
 
-  orderByItem(ctx: any): AST.OrderByItem {
+  orderByItem(ctx: OrderByItemCstChildren): AST.OrderByItem {
     const result: AST.OrderByItem = {
       type: "orderByItem",
-      expression: this.visit(ctx.expression),
-    };
+      expression: this.visit(ctx.expression) as AST.Expression,
+    }
 
-    if (ctx.Asc) result.direction = "asc";
-    else if (ctx.Desc) result.direction = "desc";
+    if (ctx.Asc) result.direction = "asc"
+    else if (ctx.Desc) result.direction = "desc"
 
-    return result;
+    return result
   }
 
-  limitClause(ctx: any): AST.LimitClause {
-    const expressions = ctx.expression.map((e: CstNode) => this.visit(e));
+  limitClause(ctx: LimitClauseCstChildren): AST.LimitClause {
+    const expressions = ctx.expression.map(
+      (e: CstNode) => this.visit(e) as AST.Expression,
+    )
 
     const result: AST.LimitClause = {
       type: "limit",
       count: expressions[0],
-    };
-
-    if (expressions.length > 1) {
-      result.offset = expressions[1];
     }
 
-    return result;
+    if (expressions.length > 1) {
+      result.offset = expressions[1]
+    }
+
+    return result
   }
 
   // ==========================================================================
   // INSERT Statement
   // ==========================================================================
 
-  insertStatement(ctx: any): AST.InsertStatement {
+  insertStatement(ctx: InsertStatementCstChildren): AST.InsertStatement {
     const result: AST.InsertStatement = {
       type: "insert",
-      table: this.visit(ctx.qualifiedName),
-    };
+      table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+    }
 
     if (ctx.withClause) {
-      result.with = this.visit(ctx.withClause);
+      result.with = this.visit(ctx.withClause) as AST.CTE[]
     }
     if (ctx.Atomic) {
-      result.atomic = true;
+      result.atomic = true
     }
     if (ctx.batchClause) {
-      result.batch = this.visit(ctx.batchClause[0]);
+      result.batch = this.visit(ctx.batchClause[0]) as BatchClauseResult
     }
 
     if (ctx.identifier) {
       result.columns = ctx.identifier.map((id: CstNode) => {
-        const name = this.visit(id);
-        return name.parts[0];
-      });
+        const name = this.visit(id) as AST.QualifiedName
+        return name.parts[0]
+      })
     }
 
     if (ctx.valuesClause) {
-      result.values = this.visit(ctx.valuesClause);
+      result.values = this.visit(ctx.valuesClause) as AST.Expression[][]
     }
 
     if (ctx.selectStatement) {
-      result.select = this.visit(ctx.selectStatement[0]);
+      result.select = this.visit(ctx.selectStatement[0]) as AST.SelectStatement
     }
 
-    return result;
+    return result
   }
 
-  valuesClause(ctx: any): AST.Expression[][] {
-    return ctx.valuesList.map((v: CstNode) => this.visit(v));
+  valuesClause(ctx: ValuesClauseCstChildren): AST.Expression[][] {
+    return ctx.valuesList.map((v: CstNode) => this.visit(v) as AST.Expression[])
   }
 
-  valuesList(ctx: any): AST.Expression[] {
-    return ctx.expression.map((e: CstNode) => this.visit(e));
+  valuesList(ctx: ValuesListCstChildren): AST.Expression[] {
+    return ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression)
   }
 
-  batchClause(ctx: any): { size: number; o3MaxLag?: string } {
-    const o3MaxLag = ctx.DurationLiteral?.[0]?.image
-      ?? (ctx.StringLiteral?.[0]?.image ? ctx.StringLiteral[0].image.slice(1, -1) : undefined);
+  batchClause(ctx: BatchClauseCstChildren): {
+    size: number
+    o3MaxLag?: string
+  } {
+    const o3MaxLag =
+      ctx.DurationLiteral?.[0]?.image ??
+      (ctx.StringLiteral?.[0]?.image
+        ? ctx.StringLiteral[0].image.slice(1, -1)
+        : undefined)
     return {
       size: parseInt(ctx.NumberLiteral[0].image, 10),
       o3MaxLag,
-    };
+    }
   }
 
   // ==========================================================================
   // UPDATE Statement
   // ==========================================================================
 
-  updateStatement(ctx: any): AST.UpdateStatement {
+  updateStatement(ctx: UpdateStatementCstChildren): AST.UpdateStatement {
     const result: AST.UpdateStatement = {
       type: "update",
-      table: this.visit(ctx.qualifiedName),
-      set: ctx.setClause.map((s: CstNode) => this.visit(s)),
-    };
+      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      set: ctx.setClause.map((s: CstNode) => this.visit(s) as AST.SetClause),
+    }
 
     if (ctx.withClause) {
-      result.with = this.visit(ctx.withClause);
+      result.with = this.visit(ctx.withClause) as AST.CTE[]
     }
 
     if (ctx.identifier) {
-      result.alias = this.extractIdentifierName(ctx.identifier[0].children);
+      result.alias = this.extractIdentifierName(ctx.identifier[0].children)
     }
 
     if (ctx.tableRef) {
-      result.from = this.visit(ctx.tableRef);
+      result.from = this.visit(ctx.tableRef) as AST.TableRef
     }
     if (ctx.joinClause) {
-      result.joins = ctx.joinClause.map((j: CstNode) => this.visit(j));
+      result.joins = ctx.joinClause.map(
+        (j: CstNode) => this.visit(j) as AST.JoinClause,
+      )
     }
 
     if (ctx.whereClause) {
-      result.where = this.visit(ctx.whereClause);
+      result.where = this.visit(ctx.whereClause) as AST.Expression
     }
 
-    return result;
+    return result
   }
 
-  setClause(ctx: any): AST.SetClause {
-    const colRef = this.visit(ctx.columnRef) as AST.ColumnRef;
-    const parts = colRef.name.parts;
+  setClause(ctx: SetClauseCstChildren): AST.SetClause {
+    const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
+    const parts = colRef.name.parts
     return {
       type: "setClause",
       column: parts[parts.length - 1],
-      value: this.visit(ctx.expression),
-    };
+      value: this.visit(ctx.expression) as AST.Expression,
+    }
   }
 
   // ==========================================================================
   // DECLARE Statement
   // ==========================================================================
 
-  declareClause(ctx: any): AST.DeclareClause {
+  declareClause(ctx: DeclareClauseCstChildren): AST.DeclareClause {
     return {
       type: "declareClause",
-      assignments: ctx.declareAssignment.map((a: CstNode) => this.visit(a)),
-    };
+      assignments: ctx.declareAssignment.map(
+        (a: CstNode) => this.visit(a) as AST.DeclareAssignment,
+      ),
+    }
   }
 
-  declareAssignment(ctx: any): AST.DeclareAssignment {
-    const image = ctx.VariableReference[0].image; // e.g. "@limit"
+  declareAssignment(ctx: DeclareAssignmentCstChildren): AST.DeclareAssignment {
+    const image = ctx.VariableReference[0].image // e.g. "@limit"
     const result: AST.DeclareAssignment = {
       type: "declareAssignment",
       name: image.substring(1), // strip leading @
-      value: this.visit(ctx.expression),
-    };
-    if (ctx.Overridable) result.overridable = true;
-    return result;
+      value: this.visit(ctx.expression) as AST.Expression,
+    }
+    if (ctx.Overridable) result.overridable = true
+    return result
   }
 
   // ==========================================================================
   // CREATE Statement
   // ==========================================================================
 
-  createStatement(ctx: any): AST.Statement {
+  createStatement(ctx: CreateStatementCstChildren): AST.Statement {
     if (ctx.createTableBody) {
-      return this.visit(ctx.createTableBody);
+      return this.visit(ctx.createTableBody) as AST.CreateTableStatement
     }
     if (ctx.createMaterializedViewBody) {
-      return this.visit(ctx.createMaterializedViewBody);
+      return this.visit(
+        ctx.createMaterializedViewBody,
+      ) as AST.CreateMaterializedViewStatement
     }
     if (ctx.createViewBody) {
-      return this.visit(ctx.createViewBody);
+      return this.visit(ctx.createViewBody) as AST.CreateViewStatement
     }
     if (ctx.createUserStatement) {
-      return this.visit(ctx.createUserStatement);
+      return this.visit(ctx.createUserStatement) as AST.CreateUserStatement
     }
     if (ctx.createGroupStatement) {
-      return this.visit(ctx.createGroupStatement);
+      return this.visit(ctx.createGroupStatement) as AST.CreateGroupStatement
     }
     if (ctx.createServiceAccountStatement) {
-      return this.visit(ctx.createServiceAccountStatement);
+      return this.visit(
+        ctx.createServiceAccountStatement,
+      ) as AST.CreateServiceAccountStatement
     }
-    throw new Error("Unknown create statement type");
+    throw new Error("Unknown create statement type")
   }
 
   // ==========================================================================
   // CREATE TABLE Statement
   // ==========================================================================
 
-  createTableBody(ctx: any): AST.CreateTableStatement {
+  createTableBody(ctx: CreateTableBodyCstChildren): AST.CreateTableStatement {
     const table = ctx.qualifiedName
-      ? this.visit(ctx.qualifiedName)
-      : { type: "qualifiedName" as const, parts: [ctx.StringLiteral[0].image.slice(1, -1)] };
+      ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+      : {
+          type: "qualifiedName" as const,
+          parts: [ctx.StringLiteral![0].image.slice(1, -1)],
+        }
     const result: AST.CreateTableStatement = {
       type: "createTable",
       table,
-    };
+    }
 
     if (ctx.Atomic) {
-      result.atomic = true;
+      result.atomic = true
     }
     if (ctx.batchClause) {
-      result.batch = this.visit(ctx.batchClause[0]);
+      result.batch = this.visit(ctx.batchClause[0]) as BatchClauseResult
     }
 
     if (ctx.If) {
-      result.ifNotExists = true;
+      result.ifNotExists = true
     }
 
     if (ctx.columnDefinition) {
-      result.columns = ctx.columnDefinition.map((c: any) => this.visit(c));
+      result.columns = ctx.columnDefinition.map(
+        (c: CstNode) => this.visit(c) as AST.ColumnDefinition,
+      )
     }
 
-    if (ctx.Like && ctx.qualifiedName?.length > 1) {
-      result.like = this.visit(ctx.qualifiedName[1]);
+    if (ctx.Like && ctx.qualifiedName && ctx.qualifiedName.length > 1) {
+      result.like = this.visit(ctx.qualifiedName[1]) as AST.QualifiedName
     }
 
     if (ctx.selectStatement) {
-      result.asSelect = this.visit(ctx.selectStatement[0]);
+      result.asSelect = this.visit(
+        ctx.selectStatement[0],
+      ) as AST.SelectStatement
     }
 
     if (ctx.castDefinition) {
-      result.casts = ctx.castDefinition.map((c: any) => this.visit(c));
+      result.casts = ctx.castDefinition.map(
+        (c: CstNode) => this.visit(c) as AST.CastDefinition,
+      )
     }
     if (ctx.indexDefinition) {
-      result.indexes = ctx.indexDefinition.map((i: any) => this.visit(i));
+      result.indexes = ctx.indexDefinition.map(
+        (i: CstNode) => this.visit(i) as AST.IndexDefinition,
+      )
     }
 
     // Timestamp - the identifier after TIMESTAMP keyword
     if (ctx.Timestamp && ctx.columnRef && ctx.columnRef.length > 0) {
-      result.timestamp = this.visit(ctx.columnRef[0]).name.parts.join(".");
+      result.timestamp = (
+        this.visit(ctx.columnRef[0]) as AST.ColumnRef
+      ).name.parts.join(".")
     }
 
     if (ctx.partitionBy) {
-      result.partitionBy = this.visit(ctx.partitionBy);
+      result.partitionBy = this.visit(ctx.partitionBy) as
+        | "NONE"
+        | "HOUR"
+        | "DAY"
+        | "WEEK"
+        | "MONTH"
+        | "YEAR"
     }
 
     if (ctx.Bypass) {
-      result.bypassWal = true;
+      result.bypassWal = true
     } else if (ctx.Wal) {
-      result.wal = true;
+      result.wal = true
     }
 
     if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
-      result.ttl = this.extractTtl(ctx);
+      result.ttl = this.extractTtl(ctx)
     }
 
     if (ctx.tableParam) {
-      result.withParams = ctx.tableParam.map((p: CstNode) => this.visit(p));
+      result.withParams = ctx.tableParam.map(
+        (p: CstNode) => this.visit(p) as AST.TableParam,
+      )
     }
     if (ctx.Volume) {
       result.volume = ctx.StringLiteral?.[0]
         ? ctx.StringLiteral[0].image.slice(1, -1)
         : ctx.identifier?.length
-          ? this.extractIdentifierName(ctx.identifier[ctx.identifier.length - 1].children)
-          : undefined;
+          ? this.extractIdentifierName(
+              ctx.identifier[ctx.identifier.length - 1].children,
+            )
+          : undefined
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
-      result.ownedBy = this.visit(ctx.stringOrIdentifier);
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
 
     if (ctx.dedupClause) {
-      result.dedupKeys = this.visit(ctx.dedupClause);
+      result.dedupKeys = this.visit(ctx.dedupClause) as string[]
     }
 
-    return result;
+    return result
   }
 
-  columnDefinition(ctx: any): AST.ColumnDefinition {
+  columnDefinition(ctx: ColumnDefinitionCstChildren): AST.ColumnDefinition {
     const result: AST.ColumnDefinition = {
       type: "columnDefinition",
       name: this.extractIdentifierName(ctx.identifier[0].children),
-      dataType: this.visit(ctx.dataType),
-    };
+      dataType: this.visit(ctx.dataType) as string,
+    }
 
     // Distinguish symbol CAPACITY (CONSUME) from index CAPACITY (CONSUME1) by position
-    const capacityTokens = ctx.Capacity || [];
-    const numberTokens = ctx.NumberLiteral || [];
-    const indexToken = ctx.Index?.[0];
+    const capacityTokens = ctx.Capacity || []
+    const numberTokens = ctx.NumberLiteral || []
+    const indexToken = ctx.Index?.[0]
 
     if (capacityTokens.length > 0 && numberTokens.length > 0) {
       if (indexToken) {
         // Determine which capacity is for symbol vs index by position relative to INDEX
-        const indexOffset = indexToken.startOffset;
+        const indexOffset = indexToken.startOffset
         for (let i = 0; i < capacityTokens.length; i++) {
-          const capOffset = capacityTokens[i].startOffset;
+          const capOffset = capacityTokens[i].startOffset
           if (capOffset < indexOffset) {
             // Symbol CAPACITY (before INDEX)
-            result.symbolCapacity = parseInt(numberTokens[i].image, 10);
+            result.symbolCapacity = parseInt(numberTokens[i].image, 10)
           } else {
             // INDEX CAPACITY (after INDEX)
-            result.indexCapacity = parseInt(numberTokens[i].image, 10);
+            result.indexCapacity = parseInt(numberTokens[i].image, 10)
           }
         }
       } else {
         // No INDEX, so this is symbol CAPACITY
-        result.symbolCapacity = parseInt(numberTokens[0].image, 10);
+        result.symbolCapacity = parseInt(numberTokens[0].image, 10)
       }
     }
 
     // CACHE / NOCACHE
     if (ctx.Cache) {
-      result.cache = true;
+      result.cache = true
     } else if (ctx.Nocache) {
-      result.cache = false;
+      result.cache = false
     }
 
     // INDEX
     if (indexToken) {
-      result.indexed = true;
+      result.indexed = true
     }
 
-    return result;
+    return result
   }
 
-  castDefinition(ctx: any): AST.CastDefinition {
-    const colRef = this.visit(ctx.columnRef);
+  castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
+    const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
     return {
       type: "castDefinition",
       column: colRef.name ?? colRef,
-      dataType: this.visit(ctx.dataType),
-    };
+      dataType: this.visit(ctx.dataType) as string,
+    }
   }
 
-  indexDefinition(ctx: any): AST.IndexDefinition {
-    const colRef = this.visit(ctx.columnRef);
+  indexDefinition(ctx: IndexDefinitionCstChildren): AST.IndexDefinition {
+    const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
     const result: AST.IndexDefinition = {
       type: "indexDefinition",
       column: colRef.name ?? colRef,
-    };
-    if (ctx.Capacity && ctx.NumberLiteral) {
-      result.capacity = parseInt(ctx.NumberLiteral[0].image, 10);
     }
-    return result;
+    if (ctx.Capacity && ctx.NumberLiteral) {
+      result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+    }
+    return result
   }
 
-  tableParamName(ctx: any): string {
-    if (ctx.identifier) return this.extractIdentifierName(ctx.identifier[0].children);
-    return "";
+  tableParamName(ctx: TableParamNameCstChildren): string {
+    if (ctx.identifier)
+      return this.extractIdentifierName(ctx.identifier[0].children)
+    return ""
   }
 
-  tableParam(ctx: any): AST.TableParam {
+  tableParam(ctx: TableParamCstChildren): AST.TableParam {
     const name = ctx.tableParamName
-      ? this.visit(ctx.tableParamName[0])
-      : "";
+      ? (this.visit(ctx.tableParamName[0]) as string)
+      : ""
     const result: AST.TableParam = {
       type: "tableParam",
       name,
-    };
-    if (ctx.expression) {
-      result.value = this.visit(ctx.expression);
     }
-    return result;
+    if (ctx.expression) {
+      result.value = this.visit(ctx.expression) as AST.Expression
+    }
+    return result
   }
 
-  createViewBody(ctx: any): AST.CreateViewStatement {
+  createViewBody(ctx: CreateViewBodyCstChildren): AST.CreateViewStatement {
     const result: AST.CreateViewStatement = {
       type: "createView",
-      view: this.visit(ctx.stringOrQualifiedName),
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
       query: ctx.selectStatement
-        ? this.visit(ctx.selectStatement[0])
-        : this.visit(ctx.implicitSelectBody),
-    };
+        ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement),
+    }
     if (ctx.LParen) {
-      result.asParens = true;
+      result.asParens = true
     }
     if (ctx.Or) {
-      result.orReplace = true;
+      result.orReplace = true
     }
     if (ctx.If) {
-      result.ifNotExists = true;
+      result.ifNotExists = true
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
-      result.ownedBy = this.visit(ctx.stringOrIdentifier);
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
-    return result;
+    return result
   }
 
-  createUserStatement(ctx: any): AST.CreateUserStatement {
+  createUserStatement(
+    ctx: CreateUserStatementCstChildren,
+  ): AST.CreateUserStatement {
     const result: AST.CreateUserStatement = {
       type: "createUser",
-      user: this.visit(ctx.qualifiedName[0]),
-    };
+      user: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
+    }
     if (ctx.If) {
-      result.ifNotExists = true;
+      result.ifNotExists = true
     }
     if (ctx.No) {
-      result.noPassword = true;
+      result.noPassword = true
     }
     if (ctx.Password) {
       if (ctx.StringLiteral) {
-        result.password = ctx.StringLiteral[0].image.slice(1, -1);
+        result.password = ctx.StringLiteral[0].image.slice(1, -1)
       } else if (ctx.identifier) {
-        result.password = this.extractIdentifierName(ctx.identifier[0].children);
+        result.password = this.extractIdentifierName(ctx.identifier[0].children)
       }
     }
-    return result;
+    return result
   }
 
-  createGroupStatement(ctx: any): AST.CreateGroupStatement {
+  createGroupStatement(
+    ctx: CreateGroupStatementCstChildren,
+  ): AST.CreateGroupStatement {
     const result: AST.CreateGroupStatement = {
       type: "createGroup",
-      group: this.visit(ctx.qualifiedName),
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       ifNotExists: !!ctx.If,
-    };
-    if (ctx.StringLiteral) {
-      result.externalAlias = ctx.StringLiteral[0].image.slice(1, -1);
     }
-    return result;
+    if (ctx.StringLiteral) {
+      result.externalAlias = ctx.StringLiteral[0].image.slice(1, -1)
+    }
+    return result
   }
 
-  createServiceAccountStatement(ctx: any): AST.CreateServiceAccountStatement {
+  createServiceAccountStatement(
+    ctx: CreateServiceAccountStatementCstChildren,
+  ): AST.CreateServiceAccountStatement {
     const result: AST.CreateServiceAccountStatement = {
       type: "createServiceAccount",
-      account: this.visit(ctx.qualifiedName[0]),
-    };
+      account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
+    }
     if (ctx.If) {
-      result.ifNotExists = true;
+      result.ifNotExists = true
     }
     if (ctx.No) {
-      result.noPassword = true;
+      result.noPassword = true
     }
     if (ctx.Password && !ctx.No) {
       if (ctx.StringLiteral) {
-        result.password = ctx.StringLiteral[0].image.slice(1, -1);
+        result.password = ctx.StringLiteral[0].image.slice(1, -1)
       } else if (ctx.identifier) {
-        result.password = this.extractIdentifierName(ctx.identifier[0].children);
+        result.password = this.extractIdentifierName(ctx.identifier[0].children)
       }
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
-      result.ownedBy = this.visit(ctx.stringOrIdentifier);
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
-    return result;
+    return result
   }
 
-  createMaterializedViewBody(ctx: any): AST.CreateMaterializedViewStatement {
+  createMaterializedViewBody(
+    ctx: CreateMaterializedViewBodyCstChildren,
+  ): AST.CreateMaterializedViewStatement {
     const result: AST.CreateMaterializedViewStatement = {
       type: "createMaterializedView",
-      view: this.visit(ctx.stringOrQualifiedName),
-      query: this.visit(ctx.selectStatement[0]),
-    };
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      query: this.visit(ctx.selectStatement[0]) as AST.SelectStatement,
+    }
     if (ctx.LParen) {
-      result.asParens = true;
+      result.asParens = true
     }
     if (ctx.If) {
-      result.ifNotExists = true;
+      result.ifNotExists = true
     }
     if (ctx.Base && ctx.stringOrQualifiedName?.length > 1) {
-      result.baseTable = this.visit(ctx.stringOrQualifiedName[1]);
+      result.baseTable = this.visit(
+        ctx.stringOrQualifiedName[1],
+      ) as AST.QualifiedName
     }
     if (ctx.materializedViewRefresh) {
-      result.refresh = this.visit(ctx.materializedViewRefresh);
+      result.refresh = this.visit(
+        ctx.materializedViewRefresh,
+      ) as AST.MaterializedViewRefresh
     } else if (ctx.Refresh && !ctx.materializedViewRefresh) {
       // REFRESH keyword consumed but no materializedViewRefresh subrule — REFRESH PERIOD path
-      result.refresh = { type: "materializedViewRefresh" };
+      result.refresh = { type: "materializedViewRefresh" }
     }
     if (ctx.materializedViewPeriod) {
-      result.period = this.visit(ctx.materializedViewPeriod[0]);
+      result.period = this.visit(
+        ctx.materializedViewPeriod[0],
+      ) as AST.MaterializedViewPeriod
     }
     if (ctx.Timestamp && ctx.columnRef) {
-      result.timestamp = this.visit(ctx.columnRef[0]);
+      result.timestamp = (this.visit(ctx.columnRef[0]) as AST.ColumnRef).name
     }
     if (ctx.materializedViewPartition) {
-      const partitionCtx = ctx.materializedViewPartition[0].children;
-      if (partitionCtx.Year) result.partitionBy = "YEAR";
-      else if (partitionCtx.Month) result.partitionBy = "MONTH";
-      else if (partitionCtx.Week) result.partitionBy = "WEEK";
-      else if (partitionCtx.Day) result.partitionBy = "DAY";
-      else if (partitionCtx.Hour) result.partitionBy = "HOUR";
+      const partitionCtx = ctx.materializedViewPartition[0].children
+      if (partitionCtx.Year) result.partitionBy = "YEAR"
+      else if (partitionCtx.Month) result.partitionBy = "MONTH"
+      else if (partitionCtx.Week) result.partitionBy = "WEEK"
+      else if (partitionCtx.Day) result.partitionBy = "DAY"
+      else if (partitionCtx.Hour) result.partitionBy = "HOUR"
       if (partitionCtx.Ttl && partitionCtx.NumberLiteral) {
-        result.ttl = this.extractTtl(partitionCtx);
+        result.ttl = this.extractTtl(partitionCtx)
       }
     }
     if (ctx.Volume) {
       result.volume = ctx.StringLiteral?.[0]
         ? ctx.StringLiteral[0].image.slice(1, -1)
         : ctx.identifier?.length
-          ? this.extractIdentifierName(ctx.identifier[ctx.identifier.length - 1].children)
-          : undefined;
+          ? this.extractIdentifierName(
+              ctx.identifier[ctx.identifier.length - 1].children,
+            )
+          : undefined
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
-      result.ownedBy = this.visit(ctx.stringOrIdentifier);
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
-    return result;
+    return result
   }
 
-  materializedViewRefresh(ctx: any): AST.MaterializedViewRefresh {
+  materializedViewRefresh(
+    ctx: MaterializedViewRefreshCstChildren,
+  ): AST.MaterializedViewRefresh {
     const result: AST.MaterializedViewRefresh = {
       type: "materializedViewRefresh",
-    };
-    if (ctx.Immediate) result.mode = "immediate";
-    if (ctx.Manual) result.mode = "manual";
-    if (ctx.intervalValue) {
-      result.every = this.extractMaybeString(ctx.intervalValue[0]);
     }
-    if (ctx.Deferred) result.deferred = true;
+    if (ctx.Immediate) result.mode = "immediate"
+    if (ctx.Manual) result.mode = "manual"
+    if (ctx.intervalValue) {
+      result.every = this.extractMaybeString(ctx.intervalValue[0])
+    }
+    if (ctx.Deferred) result.deferred = true
     if (ctx.Start && ctx.stringOrIdentifier) {
-      result.start = this.extractMaybeString(ctx.stringOrIdentifier[0]);
+      result.start = this.extractMaybeString(ctx.stringOrIdentifier[0])
     }
     if (ctx.Zone && ctx.timeZoneValue) {
-      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0]);
+      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0])
     }
-    return result;
+    return result
   }
 
-  materializedViewPeriod(ctx: any): AST.MaterializedViewPeriod {
+  materializedViewPeriod(
+    ctx: MaterializedViewPeriodCstChildren,
+  ): AST.MaterializedViewPeriod {
     const result: AST.MaterializedViewPeriod = {
       type: "materializedViewPeriod",
-    };
+    }
     if (ctx.Length && ctx.intervalValue) {
-      result.length = this.extractMaybeString(ctx.intervalValue[0]);
+      result.length = this.extractMaybeString(ctx.intervalValue[0])
     }
     if (ctx.Delay && ctx.intervalValue?.[1]) {
-      result.delay = this.extractMaybeString(ctx.intervalValue[1]);
+      result.delay = this.extractMaybeString(ctx.intervalValue[1])
     }
     if (ctx.Zone && ctx.timeZoneValue) {
-      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0]);
+      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0])
     }
     if (ctx.Interval) {
-      result.sampleByInterval = true;
+      result.sampleByInterval = true
     }
-    return result;
+    return result
   }
 
-  materializedViewPartition(ctx: any): { partitionBy?: AST.CreateMaterializedViewStatement["partitionBy"]; ttl?: AST.CreateMaterializedViewStatement["ttl"] } {
-    const result: { partitionBy?: AST.CreateMaterializedViewStatement["partitionBy"]; ttl?: AST.CreateMaterializedViewStatement["ttl"] } = {};
-    if (ctx.Year) result.partitionBy = "YEAR";
-    else if (ctx.Month) result.partitionBy = "MONTH";
-    else if (ctx.Day) result.partitionBy = "DAY";
-    else if (ctx.Hour) result.partitionBy = "HOUR";
+  materializedViewPartition(ctx: MaterializedViewPartitionCstChildren): {
+    partitionBy?: AST.CreateMaterializedViewStatement["partitionBy"]
+    ttl?: AST.CreateMaterializedViewStatement["ttl"]
+  } {
+    const result: {
+      partitionBy?: AST.CreateMaterializedViewStatement["partitionBy"]
+      ttl?: AST.CreateMaterializedViewStatement["ttl"]
+    } = {}
+    if (ctx.Year) result.partitionBy = "YEAR"
+    else if (ctx.Month) result.partitionBy = "MONTH"
+    else if (ctx.Day) result.partitionBy = "DAY"
+    else if (ctx.Hour) result.partitionBy = "HOUR"
     if (ctx.Ttl && ctx.NumberLiteral) {
-      result.ttl = this.extractTtl(ctx);
+      result.ttl = this.extractTtl(ctx)
     }
-    return result;
+    return result
   }
 
-  partitionBy(ctx: any): "NONE" | "HOUR" | "DAY" | "WEEK" | "MONTH" | "YEAR" {
-    if (ctx.None) return "NONE";
-    if (ctx.Hour) return "HOUR";
-    if (ctx.Day) return "DAY";
-    if (ctx.Week) return "WEEK";
-    if (ctx.Month) return "MONTH";
-    if (ctx.Year) return "YEAR";
-    return "NONE";
+  partitionBy(
+    ctx: PartitionByCstChildren,
+  ): "NONE" | "HOUR" | "DAY" | "WEEK" | "MONTH" | "YEAR" {
+    if (ctx.None) return "NONE"
+    if (ctx.Hour) return "HOUR"
+    if (ctx.Day) return "DAY"
+    if (ctx.Week) return "WEEK"
+    if (ctx.Month) return "MONTH"
+    if (ctx.Year) return "YEAR"
+    return "NONE"
   }
 
-  timeUnit(ctx: any): string {
-    if (ctx.Hours) return "HOURS";
-    if (ctx.Days) return "DAYS";
-    if (ctx.Weeks) return "WEEKS";
-    if (ctx.Months) return "MONTHS";
-    if (ctx.Years) return "YEARS";
-    if (ctx.Hour) return "HOUR";
-    if (ctx.Day) return "DAY";
-    if (ctx.Week) return "WEEK";
-    if (ctx.Month) return "MONTH";
-    if (ctx.Year) return "YEAR";
-    if (ctx.Minute) return "MINUTE";
-    if (ctx.Minutes) return "MINUTES";
-    if (ctx.Second) return "SECOND";
-    if (ctx.Seconds) return "SECONDS";
-    if (ctx.Millisecond) return "MILLISECOND";
-    if (ctx.Milliseconds) return "MILLISECONDS";
-    if (ctx.Microsecond) return "MICROSECOND";
-    if (ctx.Microseconds) return "MICROSECONDS";
-    if (ctx.Nanosecond) return "NANOSECOND";
-    if (ctx.Nanoseconds) return "NANOSECONDS";
-    return "DAYS";
+  timeUnit(ctx: TimeUnitCstChildren): string {
+    if (ctx.Hours) return "HOURS"
+    if (ctx.Days) return "DAYS"
+    if (ctx.Weeks) return "WEEKS"
+    if (ctx.Months) return "MONTHS"
+    if (ctx.Years) return "YEARS"
+    if (ctx.Hour) return "HOUR"
+    if (ctx.Day) return "DAY"
+    if (ctx.Week) return "WEEK"
+    if (ctx.Month) return "MONTH"
+    if (ctx.Year) return "YEAR"
+    if (ctx.Minute) return "MINUTE"
+    if (ctx.Minutes) return "MINUTES"
+    if (ctx.Second) return "SECOND"
+    if (ctx.Seconds) return "SECONDS"
+    if (ctx.Millisecond) return "MILLISECOND"
+    if (ctx.Milliseconds) return "MILLISECONDS"
+    if (ctx.Microsecond) return "MICROSECOND"
+    if (ctx.Microseconds) return "MICROSECONDS"
+    if (ctx.Nanosecond) return "NANOSECOND"
+    if (ctx.Nanoseconds) return "NANOSECONDS"
+    return "DAYS"
   }
 
-  dedupClause(ctx: any): string[] {
-    return ctx.identifier.map((id: any) =>
-      this.extractIdentifierName(id.children)
-    );
+  dedupClause(ctx: DedupClauseCstChildren): string[] {
+    return ctx.identifier.map((id: IdentifierCstNode) =>
+      this.extractIdentifierName(id.children),
+    )
   }
 
   // ==========================================================================
   // ALTER TABLE Statement
   // ==========================================================================
 
-  alterStatement(ctx: any): AST.Statement {
+  alterStatement(ctx: AlterStatementCstChildren): AST.Statement {
     if (ctx.alterTableStatement) {
-      return this.visit(ctx.alterTableStatement);
+      return this.visit(ctx.alterTableStatement) as AST.AlterTableStatement
     }
     if (ctx.alterMaterializedViewStatement) {
-      return this.visit(ctx.alterMaterializedViewStatement);
+      return this.visit(
+        ctx.alterMaterializedViewStatement,
+      ) as AST.AlterMaterializedViewStatement
     }
     if (ctx.alterViewStatement) {
-      return this.visit(ctx.alterViewStatement);
+      return this.visit(ctx.alterViewStatement) as AST.AlterViewStatement
     }
     if (ctx.alterUserStatement) {
-      return this.visit(ctx.alterUserStatement);
+      return this.visit(ctx.alterUserStatement) as AST.AlterUserStatement
     }
     if (ctx.alterServiceAccountStatement) {
-      return this.visit(ctx.alterServiceAccountStatement);
+      return this.visit(
+        ctx.alterServiceAccountStatement,
+      ) as AST.AlterServiceAccountStatement
     }
     if (ctx.alterGroupStatement) {
-      return this.visit(ctx.alterGroupStatement);
+      return this.visit(ctx.alterGroupStatement) as AST.AlterGroupStatement
     }
-    throw new Error("Unknown alter statement type");
+    throw new Error("Unknown alter statement type")
   }
 
-  alterViewStatement(ctx: any): AST.AlterViewStatement {
+  alterViewStatement(
+    ctx: AlterViewStatementCstChildren,
+  ): AST.AlterViewStatement {
     return {
       type: "alterView",
-      view: this.visit(ctx.stringOrQualifiedName),
-      query: this.visit(ctx.selectStatement[0]),
-    };
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      query: this.visit(ctx.selectStatement![0]) as AST.SelectStatement,
+    }
   }
 
-  alterGroupStatement(ctx: any): AST.AlterGroupStatement {
-    const alias = ctx.StringLiteral[0].image.slice(1, -1);
+  alterGroupStatement(
+    ctx: AlterGroupStatementCstChildren,
+  ): AST.AlterGroupStatement {
+    const alias = ctx.StringLiteral![0].image.slice(1, -1)
     if (ctx.With) {
       return {
         type: "alterGroup",
-        group: this.visit(ctx.qualifiedName),
+        group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
         action: "setAlias",
         externalAlias: alias,
-      };
+      }
     }
     return {
       type: "alterGroup",
-      group: this.visit(ctx.qualifiedName),
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       action: "dropAlias",
       externalAlias: alias,
-    };
+    }
   }
 
-  alterTableStatement(ctx: any): AST.AlterTableStatement {
+  alterTableStatement(
+    ctx: AlterTableStatementCstChildren,
+  ): AST.AlterTableStatement {
     const table = ctx.qualifiedName
-      ? this.visit(ctx.qualifiedName)
-      : { type: "qualifiedName" as const, parts: [ctx.StringLiteral[0].image.slice(1, -1)] };
+      ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+      : {
+          type: "qualifiedName" as const,
+          parts: [ctx.StringLiteral![0].image.slice(1, -1)],
+        }
     return {
       type: "alterTable",
       table,
-      action: this.visit(ctx.alterTableAction),
-    };
+      action: this.visit(ctx.alterTableAction) as AST.AlterTableAction,
+    }
   }
 
-  alterMaterializedViewStatement(ctx: any): AST.AlterMaterializedViewStatement {
+  alterMaterializedViewStatement(
+    ctx: AlterMaterializedViewStatementCstChildren,
+  ): AST.AlterMaterializedViewStatement {
     return {
       type: "alterMaterializedView",
-      view: this.visit(ctx.qualifiedName),
-      action: this.visit(ctx.alterMaterializedViewAction),
-    };
+      view: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      action: this.visit(
+        ctx.alterMaterializedViewAction,
+      ) as AST.AlterMaterializedViewAction,
+    }
   }
 
-  alterMaterializedViewAction(ctx: any): AST.AlterMaterializedViewAction {
+  alterMaterializedViewAction(
+    ctx: AlterMaterializedViewActionCstChildren,
+  ): AST.AlterMaterializedViewAction {
     if (ctx.Add && ctx.Index) {
       const result: AST.AlterMaterializedViewAddIndex = {
         actionType: "addIndex",
-        column: this.extractIdentifierName(ctx.identifier[0].children),
-      };
-      if (ctx.Capacity && ctx.NumberLiteral) {
-        result.capacity = parseInt(ctx.NumberLiteral[0].image, 10);
+        column: this.extractIdentifierName(ctx.identifier![0].children),
       }
-      return result;
+      if (ctx.Capacity && ctx.NumberLiteral) {
+        result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+      }
+      return result
     }
 
     if (ctx.Symbol && ctx.Capacity) {
       return {
         actionType: "symbolCapacity",
-        column: this.extractIdentifierName(ctx.identifier[0].children),
-        capacity: parseInt(ctx.NumberLiteral[0].image, 10),
-      };
+        column: this.extractIdentifierName(ctx.identifier![0].children),
+        capacity: parseInt(ctx.NumberLiteral![0].image, 10),
+      }
     }
 
     if (ctx.Ttl) {
       return {
         actionType: "setTtl",
         ttl: this.extractTtl(ctx),
-      };
+      }
     }
 
     if (ctx.Limit) {
       return {
         actionType: "setRefreshLimit",
         limit: this.extractTtl(ctx),
-      };
+      }
     }
 
     // ALTER COLUMN x DROP INDEX
     if (ctx.Alter && ctx.Drop && ctx.Index) {
       return {
         actionType: "dropIndex",
-        column: this.extractIdentifierName(ctx.identifier[0].children),
-      };
+        column: this.extractIdentifierName(ctx.identifier![0].children),
+      }
     }
 
     // RESUME WAL [FROM TRANSACTION n]
     if (ctx.Resume) {
-      const result: any = { actionType: "resumeWal" };
+      const result: AST.ResumeWalAction = { actionType: "resumeWal" }
       if (ctx.NumberLiteral) {
-        result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10);
+        result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10)
       }
-      return result;
+      return result
     }
 
     // SUSPEND WAL
     if (ctx.Suspend) {
-      return { actionType: "suspendWal" };
+      return { actionType: "suspendWal" }
     }
 
     return {
       actionType: "setRefresh",
       refresh: ctx.materializedViewRefresh
-        ? this.visit(ctx.materializedViewRefresh)
+        ? (this.visit(
+            ctx.materializedViewRefresh,
+          ) as AST.MaterializedViewRefresh)
         : undefined,
       period: ctx.materializedViewPeriod
-        ? this.visit(ctx.materializedViewPeriod)
+        ? (this.visit(ctx.materializedViewPeriod) as AST.MaterializedViewPeriod)
         : undefined,
-    };
+    }
   }
 
-  alterUserStatement(ctx: any): AST.AlterUserStatement {
+  alterUserStatement(
+    ctx: AlterUserStatementCstChildren,
+  ): AST.AlterUserStatement {
     return {
       type: "alterUser",
-      user: this.visit(ctx.qualifiedName),
-      action: this.visit(ctx.alterUserAction),
-    };
+      user: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      action: this.visit(ctx.alterUserAction) as AST.AlterUserAction,
+    }
   }
 
-  alterServiceAccountStatement(ctx: any): AST.AlterServiceAccountStatement {
+  alterServiceAccountStatement(
+    ctx: AlterServiceAccountStatementCstChildren,
+  ): AST.AlterServiceAccountStatement {
     return {
       type: "alterServiceAccount",
-      account: this.visit(ctx.qualifiedName),
-      action: this.visit(ctx.alterUserAction),
-    };
+      account: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      action: this.visit(ctx.alterUserAction) as AST.AlterUserAction,
+    }
   }
 
-  alterUserAction(ctx: any): AST.AlterUserAction {
+  alterUserAction(ctx: AlterUserActionCstChildren): AST.AlterUserAction {
     if (ctx.Enable) {
-      return { actionType: "enable" };
+      return { actionType: "enable" }
     }
     if (ctx.Disable) {
-      return { actionType: "disable" };
+      return { actionType: "disable" }
     }
     if (ctx.Password || ctx.No) {
       return {
         actionType: "password",
         noPassword: !!ctx.No,
         password: ctx.StringLiteral?.[0]?.image?.slice(1, -1),
-      };
+      }
     }
     if (ctx.Create && ctx.Token) {
-      let ttl: string | undefined;
+      let ttl: string | undefined
       if (ctx.DurationLiteral) {
-        ttl = ctx.DurationLiteral[0].image;
+        ttl = ctx.DurationLiteral[0].image
       } else if (ctx.Ttl && ctx.StringLiteral) {
-        ttl = ctx.StringLiteral[0].image.slice(1, -1);
+        ttl = ctx.StringLiteral[0].image.slice(1, -1)
       }
       return {
         actionType: "createToken",
         tokenType: ctx.Jwk ? "JWK" : "REST",
         ttl,
         refresh: !!ctx.Refresh,
-      };
+      }
     }
     return {
       actionType: "dropToken",
       tokenType: ctx.Jwk ? "JWK" : "REST",
-      token: ctx.Identifier?.[0]?.image ?? ctx.StringLiteral?.[0]?.image?.slice(1, -1),
-    };
+      token:
+        ctx.Identifier?.[0]?.image ??
+        ctx.StringLiteral?.[0]?.image?.slice(1, -1),
+    }
   }
 
-  alterTableAction(ctx: any): AST.AlterTableAction {
+  alterTableAction(ctx: AlterTableActionCstChildren): AST.AlterTableAction {
     // ADD COLUMN
     if (ctx.Add && ctx.columnDefinition) {
       const result: AST.AddColumnAction = {
         actionType: "addColumn",
-        columns: ctx.columnDefinition.map((c: any) => this.visit(c)),
-      };
-      if (ctx.If) {
-        result.ifNotExists = true;
+        columns: ctx.columnDefinition.map(
+          (c: CstNode) => this.visit(c) as AST.ColumnDefinition,
+        ),
       }
-      return result;
+      if (ctx.If) {
+        result.ifNotExists = true
+      }
+      return result
     }
 
     // DROP COLUMN (when Drop token exists but no Partition and no Alter — Alter + Drop = ALTER COLUMN DROP INDEX)
     if (ctx.Drop && ctx.identifier && !ctx.Partition && !ctx.Alter) {
       return {
         actionType: "dropColumn",
-        columns: ctx.identifier.map((id: any) =>
-          this.extractIdentifierName(id.children)
+        columns: ctx.identifier.map((id: IdentifierCstNode) =>
+          this.extractIdentifierName(id.children),
         ),
-      };
+      }
     }
 
     // RENAME COLUMN
     if (ctx.Rename) {
-      const identifiers = ctx.identifier.map((id: any) =>
-        this.extractIdentifierName(id.children)
-      );
+      const identifiers = ctx.identifier!.map((id: IdentifierCstNode) =>
+        this.extractIdentifierName(id.children),
+      )
       return {
         actionType: "renameColumn",
         oldName: identifiers[0],
         newName: identifiers[1],
-      };
+      }
     }
 
     // ALTER COLUMN
     if (ctx.Alter && ctx.identifier) {
-      const column = this.extractIdentifierName(ctx.identifier[0].children);
+      const column = this.extractIdentifierName(ctx.identifier[0].children)
       let alterType:
         | "type"
         | "addIndex"
         | "dropIndex"
         | "cache"
         | "nocache"
-        | "symbolCapacity" = "type";
-      let newType: string | undefined;
-      let capacity: number | undefined;
+        | "symbolCapacity" = "type"
+      let newType: string | undefined
+      let capacity: number | undefined
 
       if (ctx.Type) {
-        alterType = "type";
-        newType = this.visit(ctx.dataType);
+        alterType = "type"
+        newType = this.visit(ctx.dataType!) as string
         if (ctx.Capacity && ctx.NumberLiteral) {
-          capacity = parseInt(ctx.NumberLiteral[0].image, 10);
+          capacity = parseInt(ctx.NumberLiteral[0].image, 10)
         }
       } else if (ctx.Add && ctx.Index) {
-        alterType = "addIndex";
+        alterType = "addIndex"
       } else if (ctx.Drop && ctx.Index) {
-        alterType = "dropIndex";
+        alterType = "dropIndex"
       } else if (ctx.Symbol && ctx.Capacity) {
-        alterType = "symbolCapacity";
-        capacity = parseInt(ctx.NumberLiteral[0].image, 10);
+        alterType = "symbolCapacity"
+        capacity = parseInt(ctx.NumberLiteral![0].image, 10)
       } else if (ctx.Cache) {
-        alterType = "cache";
+        alterType = "cache"
       } else if (ctx.Nocache) {
-        alterType = "nocache";
+        alterType = "nocache"
       }
 
       const result: AST.AlterColumnAction = {
         actionType: "alterColumn",
         column,
         alterType,
-      };
+      }
       if (newType) {
-        result.newType = newType;
+        result.newType = newType
       }
       if (capacity !== undefined) {
-        result.capacity = capacity;
+        result.capacity = capacity
       }
       if (alterType === "type") {
-        if (ctx.Cache) result.cache = true;
-        else if (ctx.Nocache) result.cache = false;
+        if (ctx.Cache) result.cache = true
+        else if (ctx.Nocache) result.cache = false
       }
-      return result;
+      return result
     }
 
     // DROP PARTITION
     if (ctx.Drop && ctx.Partition) {
-      const result: any = {
+      const result: AST.DropPartitionAction = {
         actionType: "dropPartition",
-      };
+      }
       if (ctx.StringLiteral) {
-        result.partitions = ctx.StringLiteral.map((s: any) => s.image.slice(1, -1));
+        result.partitions = ctx.StringLiteral.map((s: IToken) =>
+          s.image.slice(1, -1),
+        )
       }
       if (ctx.Where && ctx.expression) {
-        result.where = this.visit(ctx.expression);
+        result.where = this.visit(ctx.expression) as AST.Expression
       }
-      return result;
+      return result
     }
 
     // ATTACH PARTITION
     if (ctx.Attach) {
       return {
         actionType: "attachPartition",
-        partitions: ctx.StringLiteral.map((s: any) => s.image.slice(1, -1)),
-      };
+        partitions: ctx.StringLiteral!.map((s: IToken) => s.image.slice(1, -1)),
+      }
     }
 
     // DETACH PARTITION
     if (ctx.Detach) {
       const result: AST.DetachPartitionAction = {
         actionType: "detachPartition",
-      };
+      }
       if (ctx.StringLiteral) {
-        result.partitions = ctx.StringLiteral.map((s: any) => s.image.slice(1, -1));
+        result.partitions = ctx.StringLiteral.map((s: IToken) =>
+          s.image.slice(1, -1),
+        )
       }
       if (ctx.Where && ctx.expression) {
-        result.where = this.visit(ctx.expression);
+        result.where = this.visit(ctx.expression) as AST.Expression
       }
-      return result;
+      return result
     }
 
     // SQUASH PARTITIONS
     if (ctx.Squash) {
       return {
         actionType: "squashPartitions",
-      };
+      }
     }
 
     if (ctx.Set && ctx.Param) {
       return {
         actionType: "setParam",
-        params: ctx.tableParam.map((p: CstNode) => this.visit(p)),
-      };
+        params: ctx.tableParam!.map(
+          (p: CstNode) => this.visit(p) as AST.TableParam,
+        ),
+      }
     }
 
     if (ctx.Set && ctx.Ttl) {
       return {
         actionType: "setTtl",
         ttl: this.extractTtl(ctx),
-      };
+      }
     }
 
     if (ctx.Dedup && ctx.Disable) {
       return {
         actionType: "dedupDisable",
-      };
+      }
     }
 
     if (ctx.Dedup && ctx.Enable) {
       return {
         actionType: "dedupEnable",
-        keys: ctx.identifier.map((id: any) => this.extractIdentifierName(id.children)),
-      };
+        keys: ctx.identifier!.map((id: IdentifierCstNode) =>
+          this.extractIdentifierName(id.children),
+        ),
+      }
     }
 
     // SUSPEND WAL [WITH code, 'message']
     if (ctx.Suspend) {
-      const result: AST.SuspendWalAction = { actionType: "suspendWal" };
+      const result: AST.SuspendWalAction = { actionType: "suspendWal" }
       if (ctx.With) {
         // Code can be a NumberLiteral or StringLiteral
         if (ctx.NumberLiteral) {
-          result.code = ctx.NumberLiteral[0].image;
+          result.code = ctx.NumberLiteral[0].image
         } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-          result.code = ctx.StringLiteral[0].image.slice(1, -1);
+          result.code = ctx.StringLiteral[0].image.slice(1, -1)
         }
         // Message is the last StringLiteral
-        const strings = ctx.StringLiteral || [];
+        const strings = ctx.StringLiteral || []
         if (strings.length > 0) {
-          result.message = strings[strings.length - 1].image.slice(1, -1);
+          result.message = strings[strings.length - 1].image.slice(1, -1)
         }
       }
-      return result;
+      return result
     }
 
     // RESUME WAL [FROM TXN/TRANSACTION number]
     if (ctx.Resume) {
-      const result: AST.ResumeWalAction = { actionType: "resumeWal" };
+      const result: AST.ResumeWalAction = { actionType: "resumeWal" }
       if (ctx.NumberLiteral) {
-        const num = parseInt(ctx.NumberLiteral[0].image, 10);
+        const num = parseInt(ctx.NumberLiteral[0].image, 10)
         if (ctx.Txn) {
-          result.fromTxn = num;
+          result.fromTxn = num
         } else if (ctx.Transaction) {
-          result.fromTransaction = num;
+          result.fromTransaction = num
         }
       }
-      return result;
+      return result
     }
 
     // CONVERT PARTITION
     if (ctx.Convert) {
-      const target = this.visit(ctx.convertPartitionTarget);
+      const target = this.visit(
+        ctx.convertPartitionTarget!,
+      ) as ConvertPartitionTargetResult
       return {
         actionType: "convertPartition",
         ...target,
-      } as AST.ConvertPartitionAction;
+      } as AST.ConvertPartitionAction
     }
 
     // SET TYPE [BYPASS] WAL
@@ -1556,200 +1859,228 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         actionType: "setTypeWal",
         bypass: !!ctx.Bypass,
-      } as AST.SetTypeWalAction;
+      } as AST.SetTypeWalAction
     }
 
-    throw new Error("Unknown alter table action");
+    throw new Error("Unknown alter table action")
   }
 
   // ==========================================================================
   // DROP TABLE Statement
   // ==========================================================================
 
-  dropStatement(ctx: any): AST.Statement {
+  dropStatement(ctx: DropStatementCstChildren): AST.Statement {
     if (ctx.dropTableStatement) {
-      return this.visit(ctx.dropTableStatement);
+      return this.visit(ctx.dropTableStatement) as AST.DropTableStatement
     }
     if (ctx.dropMaterializedViewStatement) {
-      return this.visit(ctx.dropMaterializedViewStatement);
+      return this.visit(
+        ctx.dropMaterializedViewStatement,
+      ) as AST.DropMaterializedViewStatement
     }
     if (ctx.dropViewStatement) {
-      return this.visit(ctx.dropViewStatement);
+      return this.visit(ctx.dropViewStatement) as AST.DropViewStatement
     }
     if (ctx.dropUserStatement) {
-      return this.visit(ctx.dropUserStatement);
+      return this.visit(ctx.dropUserStatement) as AST.DropUserStatement
     }
     if (ctx.dropGroupStatement) {
-      return this.visit(ctx.dropGroupStatement);
+      return this.visit(ctx.dropGroupStatement) as AST.DropGroupStatement
     }
     if (ctx.dropServiceAccountStatement) {
-      return this.visit(ctx.dropServiceAccountStatement);
+      return this.visit(
+        ctx.dropServiceAccountStatement,
+      ) as AST.DropServiceAccountStatement
     }
-    throw new Error("Unknown drop statement type");
+    throw new Error("Unknown drop statement type")
   }
 
-  dropTableStatement(ctx: any): AST.DropTableStatement {
+  dropTableStatement(
+    ctx: DropTableStatementCstChildren,
+  ): AST.DropTableStatement {
     const result: AST.DropTableStatement = {
       type: "dropTable",
-    };
+    }
 
     if (ctx.All) {
-      result.allTables = true;
+      result.allTables = true
     } else {
-      result.table = this.visit(ctx.qualifiedName);
+      result.table = this.visit(ctx.qualifiedName!) as AST.QualifiedName
       if (ctx.If) {
-        result.ifExists = true;
+        result.ifExists = true
       }
     }
 
-    return result;
+    return result
   }
 
-  dropMaterializedViewStatement(ctx: any): AST.DropMaterializedViewStatement {
+  dropMaterializedViewStatement(
+    ctx: DropMaterializedViewStatementCstChildren,
+  ): AST.DropMaterializedViewStatement {
     return {
       type: "dropMaterializedView",
-      view: this.visit(ctx.stringOrQualifiedName),
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
       ifExists: !!ctx.If,
-    };
+    }
   }
 
-  dropViewStatement(ctx: any): AST.DropViewStatement {
+  dropViewStatement(ctx: DropViewStatementCstChildren): AST.DropViewStatement {
     return {
       type: "dropView",
-      view: this.visit(ctx.stringOrQualifiedName),
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
       ifExists: !!ctx.If,
-    };
+    }
   }
 
-  dropUserStatement(ctx: any): AST.DropUserStatement {
+  dropUserStatement(ctx: DropUserStatementCstChildren): AST.DropUserStatement {
     return {
       type: "dropUser",
-      user: this.visit(ctx.qualifiedName),
+      user: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       ifExists: !!ctx.If,
-    };
+    }
   }
 
-  dropGroupStatement(ctx: any): AST.DropGroupStatement {
+  dropGroupStatement(
+    ctx: DropGroupStatementCstChildren,
+  ): AST.DropGroupStatement {
     return {
       type: "dropGroup",
-      group: this.visit(ctx.qualifiedName),
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       ifExists: !!ctx.If,
-    };
+    }
   }
 
-  dropServiceAccountStatement(ctx: any): AST.DropServiceAccountStatement {
+  dropServiceAccountStatement(
+    ctx: DropServiceAccountStatementCstChildren,
+  ): AST.DropServiceAccountStatement {
     return {
       type: "dropServiceAccount",
-      account: this.visit(ctx.qualifiedName),
+      account: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       ifExists: !!ctx.If,
-    };
+    }
   }
 
   // ==========================================================================
   // TRUNCATE TABLE Statement
   // ==========================================================================
 
-  truncateTableStatement(ctx: any): AST.TruncateTableStatement {
+  truncateTableStatement(
+    ctx: TruncateTableStatementCstChildren,
+  ): AST.TruncateTableStatement {
     const result: AST.TruncateTableStatement = {
       type: "truncateTable",
-      table: this.visit(ctx.qualifiedName),
-    };
-
-    if (ctx.If) {
-      result.ifExists = true;
+      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
     }
 
-    return result;
+    if (ctx.If) {
+      result.ifExists = true
+    }
+
+    return result
   }
 
   // ==========================================================================
   // RENAME TABLE Statement
   // ==========================================================================
 
-  renameTableStatement(ctx: any): AST.RenameTableStatement {
+  renameTableStatement(
+    ctx: RenameTableStatementCstChildren,
+  ): AST.RenameTableStatement {
     const extractName = (index: number): AST.QualifiedName => {
       if (ctx.qualifiedName?.[index]) {
-        return this.visit(ctx.qualifiedName[index]);
+        return this.visit(ctx.qualifiedName[index]) as AST.QualifiedName
       }
       // Handle StringLiteral alternative (e.g., RENAME TABLE 'old' TO 'new')
       if (ctx.StringLiteral?.[index]) {
-        const raw = ctx.StringLiteral[index].image;
-        return { type: "qualifiedName", parts: [raw.slice(1, -1)] };
+        const raw = ctx.StringLiteral[index].image
+        return { type: "qualifiedName", parts: [raw.slice(1, -1)] }
       }
-      return { type: "qualifiedName", parts: [""] };
-    };
+      return { type: "qualifiedName", parts: [""] }
+    }
     return {
       type: "renameTable",
       from: extractName(0),
       to: extractName(1),
-    };
+    }
   }
 
-  addUserStatement(ctx: any): AST.AddUserStatement {
+  addUserStatement(ctx: AddUserStatementCstChildren): AST.AddUserStatement {
     return {
       type: "addUser",
-      user: this.visit(ctx.qualifiedName[0]),
-      groups: ctx.qualifiedName.slice(1).map((q: CstNode) => this.visit(q)),
-    };
+      user: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
+      groups: ctx.qualifiedName
+        .slice(1)
+        .map((q: CstNode) => this.visit(q) as AST.QualifiedName),
+    }
   }
 
-  removeUserStatement(ctx: any): AST.RemoveUserStatement {
+  removeUserStatement(
+    ctx: RemoveUserStatementCstChildren,
+  ): AST.RemoveUserStatement {
     return {
       type: "removeUser",
-      user: this.visit(ctx.qualifiedName[0]),
-      groups: ctx.qualifiedName.slice(1).map((q: CstNode) => this.visit(q)),
-    };
+      user: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
+      groups: ctx.qualifiedName
+        .slice(1)
+        .map((q: CstNode) => this.visit(q) as AST.QualifiedName),
+    }
   }
 
-  assumeServiceAccountStatement(ctx: any): AST.AssumeServiceAccountStatement {
+  assumeServiceAccountStatement(
+    ctx: AssumeServiceAccountStatementCstChildren,
+  ): AST.AssumeServiceAccountStatement {
     return {
       type: "assumeServiceAccount",
-      account: this.visit(ctx.qualifiedName),
-    };
+      account: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
   }
 
-  exitServiceAccountStatement(ctx: any): AST.ExitServiceAccountStatement {
+  exitServiceAccountStatement(
+    ctx: ExitServiceAccountStatementCstChildren,
+  ): AST.ExitServiceAccountStatement {
     return {
       type: "exitServiceAccount",
-      account: this.visit(ctx.qualifiedName),
-    };
+      account: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+    }
   }
 
-  cancelQueryStatement(ctx: any): AST.CancelQueryStatement {
+  cancelQueryStatement(
+    ctx: CancelQueryStatementCstChildren,
+  ): AST.CancelQueryStatement {
     const token =
-      ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0] ?? ctx.StringLiteral?.[0];
+      ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0] ?? ctx.StringLiteral?.[0]
     return {
       type: "cancelQuery",
       queryId: token?.image?.replace(/^'|'$/g, "") ?? "",
-    };
+    }
   }
 
   // ==========================================================================
   // SHOW Statement
   // ==========================================================================
 
-  showStatement(ctx: any): AST.ShowStatement {
+  showStatement(ctx: ShowStatementCstChildren): AST.ShowStatement {
     if (ctx.Tables) {
       return {
         type: "show",
         showType: "tables",
-      };
+      }
     }
 
     if (ctx.Columns) {
       return {
         type: "show",
         showType: "columns",
-        table: this.visit(ctx.qualifiedName),
-      };
+        table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+      }
     }
 
     if (ctx.Partitions) {
       return {
         type: "show",
         showType: "partitions",
-        table: this.visit(ctx.qualifiedName),
-      };
+        table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+      }
     }
 
     if (ctx.Create) {
@@ -1757,35 +2088,35 @@ class QuestDBVisitor extends BaseVisitor {
         return {
           type: "show",
           showType: "createMaterializedView",
-          table: this.visit(ctx.qualifiedName),
-        };
+          table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+        }
       }
       if (ctx.View) {
         return {
           type: "show",
           showType: "createView",
-          table: this.visit(ctx.qualifiedName),
-        };
+          table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+        }
       }
       return {
         type: "show",
         showType: "createTable",
-        table: this.visit(ctx.qualifiedName),
-      };
+        table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+      }
     }
 
     if (ctx.Time && ctx.Zone) {
       return {
         type: "show",
         showType: "timeZone",
-      };
+      }
     }
 
     if (ctx.Default && ctx.Transaction) {
       return {
         type: "show",
         showType: "defaultTransactionReadOnly",
-      };
+      }
     }
 
     if (ctx.Transaction) {
@@ -1793,154 +2124,164 @@ class QuestDBVisitor extends BaseVisitor {
         return {
           type: "show",
           showType: "transactionIsolationLevel",
-        };
+        }
       }
       return {
         type: "show",
         showType: "transaction",
-      };
+      }
     }
 
     if (ctx.User) {
       return {
         type: "show",
         showType: "user",
-        name: ctx.qualifiedName ? this.visit(ctx.qualifiedName) : undefined,
-      };
+        name: ctx.qualifiedName
+          ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+          : undefined,
+      }
     }
 
     if (ctx.Users) {
       return {
         type: "show",
         showType: "users",
-      };
+      }
     }
 
     if (ctx.Groups) {
       return {
         type: "show",
         showType: "groups",
-        name: ctx.qualifiedName ? this.visit(ctx.qualifiedName) : undefined,
-      };
+        name: ctx.qualifiedName
+          ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+          : undefined,
+      }
     }
 
     if (ctx.Service && ctx.Account) {
       return {
         type: "show",
         showType: "serviceAccount",
-        name: ctx.qualifiedName ? this.visit(ctx.qualifiedName) : undefined,
-      };
+        name: ctx.qualifiedName
+          ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+          : undefined,
+      }
     }
 
     if (ctx.Service && ctx.Accounts) {
       return {
         type: "show",
         showType: "serviceAccounts",
-        name: ctx.qualifiedName ? this.visit(ctx.qualifiedName) : undefined,
-      };
+        name: ctx.qualifiedName
+          ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+          : undefined,
+      }
     }
 
     if (ctx.Permissions) {
       return {
         type: "show",
         showType: "permissions",
-        name: ctx.qualifiedName ? this.visit(ctx.qualifiedName) : undefined,
-      };
+        name: ctx.qualifiedName
+          ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
+          : undefined,
+      }
     }
 
     if (ctx.ServerVersion) {
       return {
         type: "show",
         showType: "serverVersion",
-      };
+      }
     }
 
     if (ctx.Parameters) {
       return {
         type: "show",
         showType: "parameters",
-      };
+      }
     }
 
-    throw new Error("Unknown show type");
+    throw new Error("Unknown show type")
   }
 
   // ==========================================================================
   // EXPLAIN Statement
   // ==========================================================================
 
-  explainStatement(ctx: any): AST.ExplainStatement {
+  explainStatement(ctx: ExplainStatementCstChildren): AST.ExplainStatement {
     const result: AST.ExplainStatement = {
       type: "explain",
-      statement: this.visit(ctx.statement),
-    };
-    if (ctx.Format && ctx.Identifier) {
-      result.format = ctx.Identifier[0].image.toUpperCase();
+      statement: this.visit(ctx.statement) as AST.Statement,
     }
-    return result;
+    if (ctx.Format && ctx.Identifier) {
+      result.format = ctx.Identifier[0].image.toUpperCase()
+    }
+    return result
   }
 
   // ==========================================================================
   // COPY, CHECKPOINT, SNAPSHOT Statements
   // ==========================================================================
 
-  copyStatement(ctx: any): AST.CopyStatement {
+  copyStatement(ctx: CopyStatementCstChildren): AST.CopyStatement {
     if (ctx.copyCancel) {
-      return this.visit(ctx.copyCancel);
+      return this.visit(ctx.copyCancel) as AST.CopyCancelStatement
     }
     if (ctx.copyFrom) {
-      return this.visit(ctx.copyFrom);
+      return this.visit(ctx.copyFrom) as AST.CopyFromStatement
     }
-    return this.visit(ctx.copyTo);
+    return this.visit(ctx.copyTo!) as AST.CopyToStatement
   }
 
-  copyCancel(ctx: any): AST.CopyCancelStatement {
-    let id = "";
+  copyCancel(ctx: CopyCancelCstChildren): AST.CopyCancelStatement {
+    let id = ""
     if (ctx.StringLiteral) {
-      id = ctx.StringLiteral[0].image.slice(1, -1);
+      id = ctx.StringLiteral[0].image.slice(1, -1)
     } else if (ctx.NumberLiteral) {
-      id = ctx.NumberLiteral[0].image;
+      id = ctx.NumberLiteral[0].image
     } else if (ctx.Identifier) {
-      id = ctx.Identifier[0].image;
+      id = ctx.Identifier[0].image
     }
     return {
       type: "copyCancel",
       id,
-    };
+    }
   }
 
-  copyFrom(ctx: any): AST.CopyFromStatement {
+  copyFrom(ctx: CopyFromCstChildren): AST.CopyFromStatement {
     const result: AST.CopyFromStatement = {
       type: "copyFrom",
-      table: this.visit(ctx.qualifiedName),
+      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       file: this.extractMaybeString(ctx.stringOrIdentifier[0]),
-    };
-    if (ctx.copyOptions) {
-      result.options = this.visit(ctx.copyOptions);
     }
-    return result;
+    if (ctx.copyOptions) {
+      result.options = this.visit(ctx.copyOptions) as AST.CopyOption[]
+    }
+    return result
   }
 
-  copyTo(ctx: any): AST.CopyToStatement {
+  copyTo(ctx: CopyToCstChildren): AST.CopyToStatement {
     const source = ctx.selectStatement
-      ? this.visit(ctx.selectStatement[0])
-      : this.visit(ctx.qualifiedName);
+      ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+      : (this.visit(ctx.qualifiedName!) as AST.QualifiedName)
     const result: AST.CopyToStatement = {
       type: "copyTo",
       source,
       destination: this.extractMaybeString(ctx.stringOrIdentifier[0]),
-    };
-    if (ctx.copyOptions) {
-      result.options = this.visit(ctx.copyOptions);
     }
-    return result;
+    if (ctx.copyOptions) {
+      result.options = this.visit(ctx.copyOptions) as AST.CopyOption[]
+    }
+    return result
   }
 
-  copyOptions(ctx: any): AST.CopyOption[] {
-    return ctx.copyOption.map((o: CstNode) => this.visit(o));
+  copyOptions(ctx: CopyOptionsCstChildren): AST.CopyOption[] {
+    return ctx.copyOption.map((o: CstNode) => this.visit(o) as AST.CopyOption)
   }
 
-  copyOption(ctx: any): AST.CopyOption {
+  copyOption(ctx: CopyOptionCstChildren): AST.CopyOption {
     const keyToken =
       ctx.Header?.[0] ??
       ctx.Timestamp?.[0] ??
@@ -1955,35 +2296,44 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.StatisticsEnabled?.[0] ??
       ctx.ParquetVersion?.[0] ??
       ctx.RawArrayEncoding?.[0] ??
-      (ctx.On ? ctx.On[0] : undefined);
+      (ctx.On ? ctx.On[0] : undefined)
 
-    let key = keyToken?.image ?? "OPTION";
-    if (ctx.On && ctx.Error) key = "ON ERROR";
+    let key = keyToken?.image ?? "OPTION"
+    if (ctx.On && ctx.Error) key = "ON ERROR"
     const result: AST.CopyOption = {
       type: "copyOption",
       key,
-    };
+    }
 
     if (ctx.booleanLiteral) {
-      result.value = this.visit(ctx.booleanLiteral);
+      result.value = this.visit(ctx.booleanLiteral) as boolean
     } else if (ctx.stringOrIdentifier) {
-      result.value = this.extractMaybeString(ctx.stringOrIdentifier[0]);
+      result.value = this.extractMaybeString(ctx.stringOrIdentifier[0])
     } else if (ctx.StringLiteral) {
-      result.value = ctx.StringLiteral[0].image.slice(1, -1);
-    } else if (ctx.NumberLiteral) {
-      result.value = parseFloat(ctx.NumberLiteral[0].image);
+      result.value = ctx.StringLiteral[0].image.slice(1, -1)
     } else if (ctx.expression) {
-      const expr = this.visit(ctx.expression);
+      const expr = this.visit(ctx.expression) as AST.Expression
       if (expr?.type === "literal" && expr.literalType === "number") {
-        result.value = expr.value as number;
+        result.value = expr.value as number
       } else if (expr?.type === "literal" && expr.literalType === "string") {
-        result.value = expr.value as string;
+        result.value = expr.value as string
+      } else if (expr?.type === "literal") {
+        result.value = expr.raw ?? String(expr.value ?? "")
       } else {
-        result.value = expr?.raw ?? String(expr?.value ?? "");
+        result.value = ""
       }
     } else if (ctx.identifier) {
-      result.value = this.extractIdentifierName(ctx.identifier[0].children);
-    } else if (ctx.Uncompressed || ctx.Snappy || ctx.Gzip || ctx.Lz4 || ctx.Zstd || ctx.Lz4Raw || ctx.Brotli || ctx.Lzo) {
+      result.value = this.extractIdentifierName(ctx.identifier[0].children)
+    } else if (
+      ctx.Uncompressed ||
+      ctx.Snappy ||
+      ctx.Gzip ||
+      ctx.Lz4 ||
+      ctx.Zstd ||
+      ctx.Lz4Raw ||
+      ctx.Brotli ||
+      ctx.Lzo
+    ) {
       const codecToken =
         ctx.Uncompressed?.[0] ??
         ctx.Snappy?.[0] ??
@@ -1992,343 +2342,406 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.Zstd?.[0] ??
         ctx.Lz4Raw?.[0] ??
         ctx.Brotli?.[0] ??
-        ctx.Lzo?.[0];
-      result.value = codecToken?.image;
+        ctx.Lzo?.[0]
+      result.value = codecToken?.image
     } else if (ctx.Partition || ctx.PartitionBy) {
-      result.value = this.visit(ctx.partitionBy);
+      result.value = this.visit(ctx.partitionBy!) as
+        | "NONE"
+        | "HOUR"
+        | "DAY"
+        | "WEEK"
+        | "MONTH"
+        | "YEAR"
     } else if (ctx.SkipRow || ctx.SkipColumn || ctx.Abort) {
-      result.value =
-        ctx.SkipRow ? "SKIP_ROW" : ctx.SkipColumn ? "SKIP_COLUMN" : "ABORT";
+      result.value = ctx.SkipRow
+        ? "SKIP_ROW"
+        : ctx.SkipColumn
+          ? "SKIP_COLUMN"
+          : "ABORT"
     }
 
-    return result;
+    return result
   }
 
-  checkpointStatement(ctx: any): AST.CheckpointStatement {
+  checkpointStatement(
+    ctx: CheckpointStatementCstChildren,
+  ): AST.CheckpointStatement {
     return {
       type: "checkpoint",
       action: ctx.Create ? "create" : "release",
-    };
+    }
   }
 
-  snapshotStatement(ctx: any): AST.SnapshotStatement {
+  snapshotStatement(ctx: SnapshotStatementCstChildren): AST.SnapshotStatement {
     return {
       type: "snapshot",
       action: ctx.Prepare ? "prepare" : "complete",
-    };
+    }
   }
 
-  backupStatement(ctx: any): AST.BackupStatement {
+  backupStatement(ctx: BackupStatementCstChildren): AST.BackupStatement {
     if (ctx.Database) {
-      return { type: "backup", action: "database" };
+      return { type: "backup", action: "database" }
     }
     if (ctx.Abort) {
-      return { type: "backup", action: "abort" };
+      return { type: "backup", action: "abort" }
     }
     return {
       type: "backup",
       action: "table",
-      table: this.visit(ctx.qualifiedName),
-    };
+      table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+    }
   }
 
-  compileViewStatement(ctx: any): AST.CompileViewStatement {
+  compileViewStatement(
+    ctx: CompileViewStatementCstChildren,
+  ): AST.CompileViewStatement {
     return {
       type: "compileView",
-      view: this.visit(ctx.qualifiedName),
-    };
+      view: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
   }
 
-  convertPartitionTarget(ctx: any): { partitions?: string[]; target: string; where?: AST.Expression } {
-    const result: { partitions?: string[]; target: string; where?: AST.Expression } = {
+  convertPartitionTarget(ctx: ConvertPartitionTargetCstChildren): {
+    partitions?: string[]
+    target: string
+    where?: AST.Expression
+  } {
+    const result: {
+      partitions?: string[]
+      target: string
+      where?: AST.Expression
+    } = {
       target: "TABLE",
-    };
+    }
 
     // Optional LIST of partition names
     if (ctx.StringLiteral) {
-      result.partitions = ctx.StringLiteral.map((s: any) => s.image.slice(1, -1));
+      result.partitions = ctx.StringLiteral.map((s: IToken) =>
+        s.image.slice(1, -1),
+      )
     }
 
     // Target: TABLE or identifier (e.g., Parquet, NATIVE)
     if (ctx.Table) {
-      result.target = "TABLE";
+      result.target = "TABLE"
     } else if (ctx.identifier) {
-      result.target = this.extractIdentifierName(ctx.identifier[0].children).toUpperCase();
+      result.target = this.extractIdentifierName(
+        ctx.identifier[0].children,
+      ).toUpperCase()
     }
 
     // Optional WHERE clause
     if (ctx.expression) {
-      result.where = this.visit(ctx.expression[0]);
+      result.where = this.visit(ctx.expression[0]) as AST.Expression
     }
 
-    return result;
+    return result
   }
 
   // ==========================================================================
   // GRANT / REVOKE Statements
   // ==========================================================================
 
-  grantStatement(ctx: any): AST.GrantStatement {
+  grantStatement(ctx: GrantStatementCstChildren): AST.GrantStatement {
     const result: AST.GrantStatement = {
       type: "grant",
-      permissions: ctx.permissionList
-        ? this.visit(ctx.permissionList)
-        : ctx.identifier.map((id: any) => this.extractIdentifierName(id.children)),
-      to: this.visit(ctx.qualifiedName),
-    };
+      permissions: this.visit(ctx.permissionList) as string[],
+      to: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
     if (ctx.All) {
-      result.on = { type: "grantOn", allTables: true };
+      result.on = { type: "grantOn", allTables: true }
     } else if (ctx.grantTableTarget) {
       result.on = {
         type: "grantOn",
-        tables: ctx.grantTableTarget.map((t: CstNode) => this.visit(t)),
-      };
+        tables: ctx.grantTableTarget.map(
+          (t: CstNode) => this.visit(t) as AST.GrantTableTarget,
+        ),
+      }
     }
     if (ctx.Option) {
-      result.grantOption = true;
+      result.grantOption = true
     }
     if (ctx.Verification) {
-      result.verification = true;
+      result.verification = true
     }
-    return result;
+    return result
   }
 
-  revokeStatement(ctx: any): AST.RevokeStatement {
+  revokeStatement(ctx: RevokeStatementCstChildren): AST.RevokeStatement {
     const result: AST.RevokeStatement = {
       type: "revoke",
-      permissions: ctx.permissionList
-        ? this.visit(ctx.permissionList)
-        : ctx.identifier.map((id: any) => this.extractIdentifierName(id.children)),
-      from: this.visit(ctx.qualifiedName),
-    };
+      permissions: this.visit(ctx.permissionList) as string[],
+      from: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
     if (ctx.On) {
       if (ctx.All && ctx.Tables) {
-        result.on = { type: "grantOn", allTables: true };
+        result.on = { type: "grantOn", allTables: true }
       } else if (ctx.grantTableTarget) {
         result.on = {
           type: "grantOn",
-          tables: ctx.grantTableTarget.map((t: CstNode) => this.visit(t)),
-        };
+          tables: ctx.grantTableTarget.map(
+            (t: CstNode) => this.visit(t) as AST.GrantTableTarget,
+          ),
+        }
       }
     }
-    return result;
+    return result
   }
 
-  permissionList(ctx: any): string[] {
-    return ctx.permissionToken.map((token: CstNode) => this.visit(token));
+  permissionList(ctx: PermissionListCstChildren): string[] {
+    return ctx.permissionToken.map(
+      (token: CstNode) => this.visit(token) as string,
+    )
   }
 
-  permissionToken(ctx: any): string {
+  permissionToken(ctx: PermissionTokenCstChildren): string {
     // Collect all tokens and identifiers, sort by position, join with space.
     // The parser rule has a required first word + optional second word(s).
-    const parts: { image: string; offset: number }[] = [];
+    const parts: { image: string; offset: number }[] = []
 
     for (const key of Object.keys(ctx)) {
-      const items = ctx[key];
-      if (!Array.isArray(items)) continue;
+      const items = (ctx as Record<string, unknown[]>)[key]
+      if (!Array.isArray(items)) continue
       for (const item of items) {
-        if (item.image) {
+        const tok = item as IToken
+        const node = item as CstNode
+        if (tok.image) {
           // Direct token
-          parts.push({ image: item.image, offset: item.startOffset });
-        } else if (item.children) {
+          parts.push({ image: tok.image, offset: tok.startOffset })
+        } else if (node.children) {
           // Identifier subrule — extract the name
-          const name = this.extractIdentifierName(item.children);
-          const firstChild = Object.values(item.children).flat().find((c: any) => c?.startOffset != null) as any;
-          parts.push({ image: name, offset: firstChild?.startOffset ?? 0 });
+          const name = this.extractIdentifierName(node.children)
+          const firstChild = Object.values(node.children)
+            .flat()
+            .find((c): c is IToken => (c as IToken)?.startOffset != null)
+          parts.push({ image: name, offset: firstChild?.startOffset ?? 0 })
         }
       }
     }
 
-    parts.sort((a, b) => a.offset - b.offset);
-    return parts.map((p) => p.image).join(" ");
+    parts.sort((a, b) => a.offset - b.offset)
+    return parts.map((p) => p.image).join(" ")
   }
 
-  grantTableTarget(ctx: any): AST.GrantTableTarget {
+  grantTableTarget(ctx: GrantTableTargetCstChildren): AST.GrantTableTarget {
     const result: AST.GrantTableTarget = {
       type: "grantTableTarget",
-      table: this.visit(ctx.qualifiedName),
-    };
-    if (ctx.identifier && ctx.identifier.length > 0) {
-      result.columns = ctx.identifier.map((id: any) =>
-        this.extractIdentifierName(id.children)
-      );
+      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
     }
-    return result;
+    if (ctx.identifier && ctx.identifier.length > 0) {
+      result.columns = ctx.identifier.map((id: IdentifierCstNode) =>
+        this.extractIdentifierName(id.children),
+      )
+    }
+    return result
   }
 
-  grantAssumeServiceAccountStatement(ctx: any): AST.GrantAssumeServiceAccountStatement {
+  grantAssumeServiceAccountStatement(
+    ctx: GrantAssumeServiceAccountStatementCstChildren,
+  ): AST.GrantAssumeServiceAccountStatement {
     return {
       type: "grantAssumeServiceAccount",
-      account: this.visit(ctx.qualifiedName[0]),
-      to: this.visit(ctx.qualifiedName[1]),
+      account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
+      to: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
       grantOption: !!ctx.Option,
-    };
+    }
   }
 
-  revokeAssumeServiceAccountStatement(ctx: any): AST.RevokeAssumeServiceAccountStatement {
+  revokeAssumeServiceAccountStatement(
+    ctx: RevokeAssumeServiceAccountStatementCstChildren,
+  ): AST.RevokeAssumeServiceAccountStatement {
     return {
       type: "revokeAssumeServiceAccount",
-      account: this.visit(ctx.qualifiedName[0]),
-      from: this.visit(ctx.qualifiedName[1]),
-    };
+      account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
+      from: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
+    }
   }
 
   // ==========================================================================
   // VACUUM / RESUME WAL / SET TYPE / REINDEX
   // ==========================================================================
 
-  vacuumTableStatement(ctx: any): AST.VacuumTableStatement {
+  vacuumTableStatement(
+    ctx: VacuumTableStatementCstChildren,
+  ): AST.VacuumTableStatement {
     return {
       type: "vacuumTable",
-      table: this.visit(ctx.qualifiedName),
-    };
+      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
   }
 
-  resumeWalStatement(ctx: any): AST.ResumeWalStatement {
+  resumeWalStatement(
+    ctx: ResumeWalStatementCstChildren,
+  ): AST.ResumeWalStatement {
     const result: AST.ResumeWalStatement = {
       type: "resumeWal",
-    };
+    }
     if (ctx.Transaction && (ctx.NumberLiteral || ctx.Identifier)) {
-      const token = ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0];
-      result.fromTransaction = token?.image;
+      const token = ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0]
+      result.fromTransaction = token?.image
     }
     if (ctx.Txn && (ctx.NumberLiteral || ctx.Identifier)) {
-      const token = ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0];
-      result.fromTxn = token?.image;
+      const token = ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0]
+      result.fromTxn = token?.image
     }
-    return result;
+    return result
   }
 
-  setTypeStatement(ctx: any): AST.SetTypeStatement {
+  setTypeStatement(ctx: SetTypeStatementCstChildren): AST.SetTypeStatement {
     return {
       type: "setType",
       bypass: !!ctx.Bypass,
       wal: !!ctx.Wal,
-    };
+    }
   }
 
-  reindexTableStatement(ctx: any): AST.ReindexTableStatement {
+  reindexTableStatement(
+    ctx: ReindexTableStatementCstChildren,
+  ): AST.ReindexTableStatement {
     const result: AST.ReindexTableStatement = {
       type: "reindexTable",
-      table: this.visit(ctx.qualifiedName),
-    };
+      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
     if (ctx.Column && ctx.identifier) {
-      result.columns = ctx.identifier.map((id: any) =>
-        this.extractIdentifierName(id.children)
-      );
+      result.columns = ctx.identifier.map((id: IdentifierCstNode) =>
+        this.extractIdentifierName(id.children),
+      )
     }
     if (ctx.Partition && ctx.stringOrIdentifier) {
-      result.partitions = ctx.stringOrIdentifier.map((s: any) =>
-        this.visit(s) as string
-      );
+      result.partitions = ctx.stringOrIdentifier.map(
+        (s: CstNode) => this.visit(s) as string,
+      )
     }
     if (ctx.Exclusive) {
-      result.lockExclusive = true;
+      result.lockExclusive = true
     }
-    return result;
+    return result
   }
 
-  refreshMaterializedViewStatement(ctx: any): AST.RefreshMaterializedViewStatement {
+  refreshMaterializedViewStatement(
+    ctx: RefreshMaterializedViewStatementCstChildren,
+  ): AST.RefreshMaterializedViewStatement {
     const result: AST.RefreshMaterializedViewStatement = {
       type: "refreshMaterializedView",
-      view: this.visit(ctx.qualifiedName),
-    };
-    if (ctx.Full) result.mode = "full";
-    if (ctx.Incremental) result.mode = "incremental";
+      view: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
+    if (ctx.Full) result.mode = "full"
+    if (ctx.Incremental) result.mode = "incremental"
     if (ctx.Range) {
-      result.mode = "range";
+      result.mode = "range"
       if (ctx.stringOrIdentifier) {
-        result.from = this.extractMaybeString(ctx.stringOrIdentifier[0]);
-        result.to = this.extractMaybeString(ctx.stringOrIdentifier[1]);
+        result.from = this.extractMaybeString(ctx.stringOrIdentifier[0])
+        result.to = this.extractMaybeString(ctx.stringOrIdentifier[1])
       }
     }
-    return result;
+    return result
   }
 
   // ==========================================================================
   // PIVOT Statement
   // ==========================================================================
 
-  pivotStatement(ctx: any): AST.PivotStatement {
+  pivotStatement(ctx: PivotStatementCstChildren): AST.PivotStatement {
     const source = ctx.selectStatement
-      ? this.visit(ctx.selectStatement[0])
-      : this.visit(ctx.qualifiedName);
-    const body = ctx.pivotBody ? this.visit(ctx.pivotBody) : {};
+      ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+      : (this.visit(ctx.qualifiedName!) as AST.QualifiedName)
+    const body: Partial<PivotBodyResult> = ctx.pivotBody
+      ? (this.visit(ctx.pivotBody) as PivotBodyResult)
+      : {}
     const result: AST.PivotStatement = {
       type: "pivot",
       source,
       aggregations: body.aggregations || [],
       pivots: body.pivots || [],
-    };
+    }
     if (ctx.whereClause) {
-      result.where = this.visit(ctx.whereClause);
+      result.where = this.visit(ctx.whereClause) as AST.Expression
     }
     if (body.groupBy) {
-      result.groupBy = body.groupBy;
+      result.groupBy = body.groupBy
     }
     if (ctx.orderByClause) {
-      result.orderBy = this.visit(ctx.orderByClause);
+      result.orderBy = this.visit(ctx.orderByClause) as AST.OrderByItem[]
     }
     if (ctx.limitClause) {
-      result.limit = this.visit(ctx.limitClause);
+      result.limit = this.visit(ctx.limitClause) as AST.LimitClause
     }
     if (ctx.identifier) {
-      result.alias = this.extractIdentifierName(ctx.identifier[0].children);
+      result.alias = this.extractIdentifierName(ctx.identifier[0].children)
     }
-    return result;
+    return result
   }
 
-  pivotBody(ctx: any): { aggregations: AST.PivotAggregation[]; pivots: AST.PivotForClause[]; groupBy?: AST.Expression[] } {
+  pivotBody(ctx: PivotBodyCstChildren): {
+    aggregations: AST.PivotAggregation[]
+    pivots: AST.PivotForClause[]
+    groupBy?: AST.Expression[]
+  } {
     const aggregations = ctx.pivotAggregation
-      ? ctx.pivotAggregation.map((p: CstNode) => this.visit(p))
-      : [];
+      ? ctx.pivotAggregation.map(
+          (p: CstNode) => this.visit(p) as AST.PivotAggregation,
+        )
+      : []
     const pivots = ctx.pivotForClause
-      ? ctx.pivotForClause.map((p: CstNode) => this.visit(p))
-      : [];
-    const result: { aggregations: AST.PivotAggregation[]; pivots: AST.PivotForClause[]; groupBy?: AST.Expression[] } = {
+      ? ctx.pivotForClause.map(
+          (p: CstNode) => this.visit(p) as AST.PivotForClause,
+        )
+      : []
+    const result: {
+      aggregations: AST.PivotAggregation[]
+      pivots: AST.PivotForClause[]
+      groupBy?: AST.Expression[]
+    } = {
       aggregations,
       pivots,
-    };
-    if (ctx.Group && ctx.expression) {
-      result.groupBy = ctx.expression.map((e: CstNode) => this.visit(e));
     }
-    return result;
+    if (ctx.Group && ctx.expression) {
+      result.groupBy = ctx.expression.map(
+        (e: CstNode) => this.visit(e) as AST.Expression,
+      )
+    }
+    return result
   }
 
-  pivotAggregation(ctx: any): AST.PivotAggregation {
+  pivotAggregation(ctx: PivotAggregationCstChildren): AST.PivotAggregation {
     return {
       type: "pivotAggregation",
-      expression: this.visit(ctx.expression),
-      alias: ctx.identifier ? this.visit(ctx.identifier).parts[0] : undefined,
-    };
+      expression: this.visit(ctx.expression) as AST.Expression,
+      alias: ctx.identifier
+        ? (this.visit(ctx.identifier) as AST.QualifiedName).parts[0]
+        : undefined,
+    }
   }
 
-  pivotForClause(ctx: any): AST.PivotForClause {
+  pivotForClause(ctx: PivotForClauseCstChildren): AST.PivotForClause {
     const result: AST.PivotForClause = {
       type: "pivotFor",
-      expression: this.visit(ctx.columnRef),
+      expression: this.visit(ctx.columnRef) as AST.ColumnRef,
       in: {
         type: "pivotIn",
       },
-    };
-    if (ctx.selectStatement) {
-      result.in.select = this.visit(ctx.selectStatement);
-    } else if (ctx.expression && ctx.expression.length > 0) {
-      result.in.values = ctx.expression.map((e: CstNode) => this.visit(e));
     }
-    return result;
+    if (ctx.selectStatement) {
+      result.in.select = this.visit(ctx.selectStatement) as AST.SelectStatement
+    } else if (ctx.expression && ctx.expression.length > 0) {
+      result.in.values = ctx.expression.map(
+        (e: CstNode) => this.visit(e) as AST.Expression,
+      )
+    }
+    return result
   }
 
   // ==========================================================================
   // Expressions
   // ==========================================================================
 
-  expression(ctx: any): AST.Expression {
-    return this.visit(ctx.orExpression);
+  expression(ctx: ExpressionCstChildren): AST.Expression {
+    return this.visit(ctx.orExpression) as AST.Expression
   }
 
-  orExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.andExpression[0]);
+  orExpression(ctx: OrExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.andExpression[0]) as AST.Expression
 
     if (ctx.andExpression.length > 1) {
       for (let i = 1; i < ctx.andExpression.length; i++) {
@@ -2336,16 +2749,16 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "OR",
           left: result,
-          right: this.visit(ctx.andExpression[i]),
-        };
+          right: this.visit(ctx.andExpression[i]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  andExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.notExpression[0]);
+  andExpression(ctx: AndExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.notExpression[0]) as AST.Expression
 
     if (ctx.notExpression.length > 1) {
       for (let i = 1; i < ctx.notExpression.length; i++) {
@@ -2353,54 +2766,54 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "AND",
           left: result,
-          right: this.visit(ctx.notExpression[i]),
-        };
+          right: this.visit(ctx.notExpression[i]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  notExpression(ctx: any): AST.Expression {
-    const inner = this.visit(ctx.equalityExpression);
+  notExpression(ctx: NotExpressionCstChildren): AST.Expression {
+    const inner = this.visit(ctx.equalityExpression) as AST.Expression
 
     if (ctx.Not) {
       return {
         type: "unary",
         operator: "NOT",
         operand: inner,
-      };
+      }
     }
 
-    return inner;
+    return inner
   }
 
-  equalityExpression(ctx: any): AST.Expression {
-    const left = this.visit(ctx.relationalExpression[0]);
+  equalityExpression(ctx: EqualityExpressionCstChildren): AST.Expression {
+    const left = this.visit(ctx.relationalExpression[0]) as AST.Expression
 
     if (ctx.relationalExpression && ctx.relationalExpression.length > 1) {
-      let operator = "";
-      if (ctx.Equals) operator = "=";
-      else if (ctx.NotEquals) operator = "!=";
-      else if (ctx.Like) operator = "LIKE";
-      else if (ctx.Ilike) operator = "ILIKE";
-      else if (ctx.RegexMatch) operator = "~";
-      else if (ctx.RegexNotMatch) operator = "!~";
-      else if (ctx.RegexNotEquals) operator = "~=";
+      let operator = ""
+      if (ctx.Equals) operator = "="
+      else if (ctx.NotEquals) operator = "!="
+      else if (ctx.Like) operator = "LIKE"
+      else if (ctx.Ilike) operator = "ILIKE"
+      else if (ctx.RegexMatch) operator = "~"
+      else if (ctx.RegexNotMatch) operator = "!~"
+      else if (ctx.RegexNotEquals) operator = "~="
 
       return {
         type: "binary",
         operator,
         left,
-        right: this.visit(ctx.relationalExpression[1]),
-      };
+        right: this.visit(ctx.relationalExpression[1]) as AST.Expression,
+      }
     }
 
-    return left;
+    return left
   }
 
-  relationalExpression(ctx: any): AST.Expression {
-    const left = this.visit(ctx.setExpression[0]);
+  relationalExpression(ctx: RelationalExpressionCstChildren): AST.Expression {
+    const left = this.visit(ctx.setExpression[0]) as AST.Expression
 
     // Check for IS [NOT] NULL
     if (ctx.Is) {
@@ -2408,43 +2821,45 @@ class QuestDBVisitor extends BaseVisitor {
         type: "isNull",
         expression: left,
         not: !!ctx.Not,
-      };
+      }
     }
 
     // Check for relational operators (<, <=, >, >=)
     if (ctx.setExpression && ctx.setExpression.length > 1) {
-      let operator = "";
-      if (ctx.LessThan) operator = "<";
-      else if (ctx.LessThanOrEqual) operator = "<=";
-      else if (ctx.GreaterThan) operator = ">";
-      else if (ctx.GreaterThanOrEqual) operator = ">=";
+      let operator = ""
+      if (ctx.LessThan) operator = "<"
+      else if (ctx.LessThanOrEqual) operator = "<="
+      else if (ctx.GreaterThan) operator = ">"
+      else if (ctx.GreaterThanOrEqual) operator = ">="
 
       return {
         type: "binary",
         operator,
         left,
-        right: this.visit(ctx.setExpression[1]),
-      };
+        right: this.visit(ctx.setExpression[1]) as AST.Expression,
+      }
     }
 
-    return left;
+    return left
   }
 
-  setExpression(ctx: any): AST.Expression {
-    const left = this.visit(ctx.bitOrExpression[0]);
+  setExpression(ctx: SetExpressionCstChildren): AST.Expression {
+    const left = this.visit(ctx.bitOrExpression[0]) as AST.Expression
 
     // Check for [NOT] IN
     if (ctx.In) {
       const result: AST.InExpression = {
         type: "in",
         expression: left,
-        values: ctx.expression.map((e: CstNode) => this.visit(e)),
+        values: ctx.expression!.map(
+          (e: CstNode) => this.visit(e) as AST.Expression,
+        ),
         not: !!ctx.Not,
-      };
-      if (ctx.LParen) {
-        result.parenthesized = true;
       }
-      return result;
+      if (ctx.LParen) {
+        result.parenthesized = true
+      }
+      return result
     }
 
     // Check for [NOT] BETWEEN
@@ -2452,10 +2867,10 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         type: "between",
         expression: left,
-        low: this.visit(ctx.betweenLow[0]),
-        high: this.visit(ctx.betweenHigh[0]),
+        low: this.visit(ctx.betweenLow![0]) as AST.Expression,
+        high: this.visit(ctx.betweenHigh![0]) as AST.Expression,
         not: !!ctx.Not,
-      };
+      }
     }
 
     // Check for WITHIN
@@ -2463,15 +2878,17 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         type: "within",
         expression: left,
-        values: ctx.expression.map((e: CstNode) => this.visit(e)),
-      };
+        values: ctx.expression!.map(
+          (e: CstNode) => this.visit(e) as AST.Expression,
+        ),
+      }
     }
 
-    return left;
+    return left
   }
 
-  bitOrExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.bitXorExpression[0]);
+  bitOrExpression(ctx: BitOrExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.bitXorExpression[0]) as AST.Expression
 
     if (ctx.bitXorExpression.length > 1) {
       for (let i = 1; i < ctx.bitXorExpression.length; i++) {
@@ -2479,16 +2896,16 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "|",
           left: result,
-          right: this.visit(ctx.bitXorExpression[i]),
-        };
+          right: this.visit(ctx.bitXorExpression[i]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  bitXorExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.bitAndExpression[0]);
+  bitXorExpression(ctx: BitXorExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.bitAndExpression[0]) as AST.Expression
 
     if (ctx.bitAndExpression.length > 1) {
       for (let i = 1; i < ctx.bitAndExpression.length; i++) {
@@ -2496,16 +2913,16 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "^",
           left: result,
-          right: this.visit(ctx.bitAndExpression[i]),
-        };
+          right: this.visit(ctx.bitAndExpression[i]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  bitAndExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.concatExpression[0]);
+  bitAndExpression(ctx: BitAndExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.concatExpression[0]) as AST.Expression
 
     if (ctx.concatExpression.length > 1) {
       for (let i = 1; i < ctx.concatExpression.length; i++) {
@@ -2513,16 +2930,16 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "&",
           left: result,
-          right: this.visit(ctx.concatExpression[i]),
-        };
+          right: this.visit(ctx.concatExpression[i]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  concatExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.additiveExpression[0]);
+  concatExpression(ctx: ConcatExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.additiveExpression[0]) as AST.Expression
 
     if (ctx.additiveExpression.length > 1) {
       for (let i = 1; i < ctx.additiveExpression.length; i++) {
@@ -2530,70 +2947,89 @@ class QuestDBVisitor extends BaseVisitor {
           type: "binary",
           operator: "||",
           left: result,
-          right: this.visit(ctx.additiveExpression[i]),
-        };
+          right: this.visit(ctx.additiveExpression[i]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  additiveExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.multiplicativeExpression[0]);
+  additiveExpression(ctx: AdditiveExpressionCstChildren): AST.Expression {
+    let result = this.visit(ctx.multiplicativeExpression[0]) as AST.Expression
 
     if (ctx.multiplicativeExpression.length > 1) {
       // Collect all operator tokens and sort by position for correct association
       const ops = [
-        ...(ctx.Plus || []).map((t: any) => ({ op: "+", offset: t.startOffset })),
-        ...(ctx.Minus || []).map((t: any) => ({ op: "-", offset: t.startOffset })),
-      ].sort((a: any, b: any) => a.offset - b.offset);
+        ...(ctx.Plus || []).map((t: IToken) => ({
+          op: "+",
+          offset: t.startOffset,
+        })),
+        ...(ctx.Minus || []).map((t: IToken) => ({
+          op: "-",
+          offset: t.startOffset,
+        })),
+      ].sort((a, b) => a.offset - b.offset)
 
       for (let i = 0; i < ops.length; i++) {
         result = {
           type: "binary",
           operator: ops[i].op,
           left: result,
-          right: this.visit(ctx.multiplicativeExpression[i + 1]),
-        };
+          right: this.visit(
+            ctx.multiplicativeExpression[i + 1],
+          ) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  multiplicativeExpression(ctx: any): AST.Expression {
-    let result = this.visit(ctx.unaryExpression[0]);
+  multiplicativeExpression(
+    ctx: MultiplicativeExpressionCstChildren,
+  ): AST.Expression {
+    let result = this.visit(ctx.unaryExpression[0]) as AST.Expression
 
     if (ctx.unaryExpression.length > 1) {
       // Collect all operator tokens and sort by position for correct association
       const ops = [
-        ...(ctx.Star || []).map((t: any) => ({ op: "*", offset: t.startOffset })),
-        ...(ctx.Divide || []).map((t: any) => ({ op: "/", offset: t.startOffset })),
-        ...(ctx.Modulo || []).map((t: any) => ({ op: "%", offset: t.startOffset })),
-      ].sort((a: any, b: any) => a.offset - b.offset);
+        ...(ctx.Star || []).map((t: IToken) => ({
+          op: "*",
+          offset: t.startOffset,
+        })),
+        ...(ctx.Divide || []).map((t: IToken) => ({
+          op: "/",
+          offset: t.startOffset,
+        })),
+        ...(ctx.Modulo || []).map((t: IToken) => ({
+          op: "%",
+          offset: t.startOffset,
+        })),
+      ].sort((a, b) => a.offset - b.offset)
 
       for (let i = 0; i < ops.length; i++) {
         result = {
           type: "binary",
           operator: ops[i].op,
           left: result,
-          right: this.visit(ctx.unaryExpression[i + 1]),
-        };
+          right: this.visit(ctx.unaryExpression[i + 1]) as AST.Expression,
+        }
       }
     }
 
-    return result;
+    return result
   }
 
-  unaryExpression(ctx: any): AST.Expression {
-    const inner = this.visit(ctx.typeCastExpression);
+  unaryExpression(ctx: UnaryExpressionCstChildren): AST.Expression {
+    const inner = this.visit(ctx.typeCastExpression) as AST.Expression
 
     if (ctx.Minus) {
       return {
         type: "unary",
         operator: "-",
         operand: inner,
-      };
+      }
     }
 
     if (ctx.RegexMatch) {
@@ -2601,14 +3037,14 @@ class QuestDBVisitor extends BaseVisitor {
         type: "unary",
         operator: "~",
         operand: inner,
-      };
+      }
     }
 
-    return inner;
+    return inner
   }
 
-  typeCastExpression(ctx: any): AST.Expression {
-    let inner = this.visit(ctx.primaryExpression);
+  typeCastExpression(ctx: TypeCastExpressionCstChildren): AST.Expression {
+    let inner = this.visit(ctx.primaryExpression) as AST.Expression
 
     // Handle array subscripts: expr[i], expr[i:j], expr[i, j]
     if (ctx.arraySubscript) {
@@ -2616,8 +3052,8 @@ class QuestDBVisitor extends BaseVisitor {
         inner = {
           type: "arrayAccess",
           array: inner,
-          subscripts: [this.visit(sub)],
-        } as AST.ArrayAccessExpression;
+          subscripts: [this.visit(sub) as AST.Expression | AST.ArraySlice],
+        } as AST.ArrayAccessExpression
       }
     }
 
@@ -2625,278 +3061,301 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         type: "typeCast",
         expression: inner,
-        dataType: this.visit(ctx.dataType),
-      };
+        dataType: this.visit(ctx.dataType!) as string,
+      }
     }
 
-    return inner;
+    return inner
   }
 
-  arraySubscript(ctx: any): any {
-    const exprs = ctx.expression ? ctx.expression.map((e: any) => this.visit(e)) : [];
+  arraySubscript(
+    ctx: ArraySubscriptCstChildren,
+  ): AST.Expression | AST.ArraySlice {
+    const exprs = ctx.expression
+      ? ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression)
+      : []
 
     if (!ctx.Colon) {
       // Simple subscript: expr
-      return exprs[0];
+      return exprs[0]
     }
 
     // It's a slice — determine start/end based on token positions
     if (exprs.length === 0) {
-      return { type: "arraySlice" } as AST.ArraySlice;
+      return { type: "arraySlice" } as AST.ArraySlice
     }
 
     if (exprs.length === 2) {
       // start:end
-      return { type: "arraySlice", start: exprs[0], end: exprs[1] } as AST.ArraySlice;
+      return {
+        type: "arraySlice",
+        start: exprs[0],
+        end: exprs[1],
+      } as AST.ArraySlice
     }
 
     // 1 expression + colon — disambiguate start: vs :end using offsets
-    const colonOffset = ctx.Colon[0].startOffset;
-    const exprOffset = this.getFirstTokenOffset(ctx.expression[0]);
+    const colonOffset = ctx.Colon[0].startOffset
+    const exprOffset = this.getFirstTokenOffset(ctx.expression![0])
     if (exprOffset < colonOffset) {
       // Expression before colon: start:
-      return { type: "arraySlice", start: exprs[0] } as AST.ArraySlice;
+      return { type: "arraySlice", start: exprs[0] } as AST.ArraySlice
     } else {
       // Colon before expression: :end
-      return { type: "arraySlice", end: exprs[0] } as AST.ArraySlice;
+      return { type: "arraySlice", end: exprs[0] } as AST.ArraySlice
     }
   }
 
   /** Visit a CST node, returning undefined instead of throwing on incomplete input */
-  private visitSafe(node: any): any {
+  private visitSafe(node: CstNode | CstNode[]): unknown {
     try {
-      return this.visit(node);
+      return this.visit(node) as unknown
     } catch {
-      return undefined;
+      return undefined
     }
   }
 
   /** Get the startOffset of the first token in a CstNode */
-  private getFirstTokenOffset(node: any): number {
-    if (node.startOffset !== undefined) return node.startOffset;
-    if (!node.children) return Infinity;
-    let min = Infinity;
+  private getFirstTokenOffset(node: CstNode | IToken): number {
+    if ("startOffset" in node) return node.startOffset
+    let min = Infinity
     for (const children of Object.values(node.children)) {
       if (Array.isArray(children)) {
-        for (const child of children as any[]) {
-          const offset = this.getFirstTokenOffset(child);
-          if (offset < min) min = offset;
+        for (const child of children) {
+          const offset = this.getFirstTokenOffset(child)
+          if (offset < min) min = offset
         }
       }
     }
-    return min;
+    return min
   }
 
-  primaryExpression(ctx: any): AST.Expression {
+  primaryExpression(ctx: PrimaryExpressionCstChildren): AST.Expression {
     if (ctx.arrayLiteral) {
-      return this.visit(ctx.arrayLiteral);
+      return this.visit(ctx.arrayLiteral) as AST.ArrayLiteral
     }
     if (ctx.castExpression) {
-      return this.visit(ctx.castExpression);
+      return this.visit(ctx.castExpression) as AST.CastExpression
     }
     if (ctx.caseExpression) {
-      return this.visit(ctx.caseExpression);
+      return this.visit(ctx.caseExpression) as AST.CaseExpression
     }
     if (ctx.functionCall) {
-      return this.visit(ctx.functionCall);
+      return this.visit(ctx.functionCall) as AST.FunctionCall
     }
     if (ctx.literal) {
-      return this.visit(ctx.literal);
+      return this.visit(ctx.literal) as AST.Literal
     }
     if (ctx.VariableReference) {
-      const image = ctx.VariableReference[0].image; // e.g. "@limit"
+      const image = ctx.VariableReference[0].image // e.g. "@limit"
       return {
         type: "variable",
         name: image.substring(1), // strip leading @
-      };
+      }
     }
     if (ctx.identifierExpression) {
-      return this.visit(ctx.identifierExpression);
+      return this.visit(ctx.identifierExpression) as AST.Expression
     }
     if (ctx.selectStatement) {
       return {
         type: "subquery",
-        query: this.visit(ctx.selectStatement),
-      } as AST.SubqueryExpression;
+        query: this.visit(ctx.selectStatement) as AST.SelectStatement,
+      } as AST.SubqueryExpression
     }
     if (ctx.expression) {
       const result: AST.ParenExpression = {
         type: "paren",
-        expression: this.visit(ctx.expression[0]),
-      };
+        expression: this.visit(ctx.expression[0]) as AST.Expression,
+      }
       if (ctx.expression.length > 1) {
         result.additionalExpressions = ctx.expression
           .slice(1)
-          .map((e: any) => this.visit(e));
+          .map((e: CstNode) => this.visit(e) as AST.Expression)
       }
-      return result;
+      return result
     }
-    throw new Error("Unknown primary expression");
+    throw new Error("Unknown primary expression")
   }
 
-  arrayLiteral(ctx: any): AST.ArrayLiteral {
-    const result = this.visit(ctx.arrayBracketBody);
-    result.hasArrayKeyword = true;
-    return result;
+  arrayLiteral(ctx: ArrayLiteralCstChildren): AST.ArrayLiteral {
+    const result = this.visit(ctx.arrayBracketBody) as AST.ArrayLiteral
+    result.hasArrayKeyword = true
+    return result
   }
 
-  arrayBracketBody(ctx: any): AST.ArrayLiteral {
-    const elements: (AST.Expression | AST.ArrayLiteral)[] = [];
+  arrayBracketBody(ctx: ArrayBracketBodyCstChildren): AST.ArrayLiteral {
+    const elements: (AST.Expression | AST.ArrayLiteral)[] = []
     if (ctx.arrayElement) {
       for (const elem of ctx.arrayElement) {
-        elements.push(this.visit(elem));
+        elements.push(this.visit(elem) as AST.Expression | AST.ArrayLiteral)
       }
     }
     return {
       type: "arrayLiteral",
       elements,
-    };
-  }
-
-  arrayElement(ctx: any): AST.Expression | AST.ArrayLiteral {
-    if (ctx.arrayBracketBody) {
-      return this.visit(ctx.arrayBracketBody);
     }
-    return this.visit(ctx.expression);
   }
 
-  castExpression(ctx: any): AST.CastExpression {
+  arrayElement(
+    ctx: ArrayElementCstChildren,
+  ): AST.Expression | AST.ArrayLiteral {
+    if (ctx.arrayBracketBody) {
+      return this.visit(ctx.arrayBracketBody) as AST.ArrayLiteral
+    }
+    return this.visit(ctx.expression!) as AST.Expression
+  }
+
+  castExpression(ctx: CastExpressionCstChildren): AST.CastExpression {
     return {
       type: "cast",
-      expression: this.visit(ctx.expression),
-      dataType: this.visit(ctx.dataType),
-    };
+      expression: this.visit(ctx.expression) as AST.Expression,
+      dataType: this.visit(ctx.dataType) as string,
+    }
   }
 
-  dataType(ctx: any): string {
+  dataType(ctx: DataTypeCstChildren): string {
     // GEOHASH with precision: GEOHASH(8c)
     if (ctx.Geohash) {
-      let result = "GEOHASH";
+      let result = "GEOHASH"
       if (ctx.NumberLiteral && ctx.identifier) {
-        const precision = ctx.NumberLiteral[0].image;
-        const unit = this.extractIdentifierName(ctx.identifier[0].children);
-        result += `(${precision}${unit})`;
+        const precision = ctx.NumberLiteral[0].image
+        const unit = this.extractIdentifierName(ctx.identifier[0].children)
+        result += `(${precision}${unit})`
       }
       // Append array dimensions
       if (ctx.LBracket) {
-        for (let i = 0; i < ctx.LBracket.length; i++) result += "[]";
+        for (let i = 0; i < ctx.LBracket.length; i++) result += "[]"
       }
-      return result;
+      return result
     }
 
     // DECIMAL with optional precision: DECIMAL(18, 2) or DECIMAL(18)
     if (ctx.Decimal) {
-      let result = "DECIMAL";
+      let result = "DECIMAL"
       if (ctx.NumberLiteral && ctx.NumberLiteral.length > 0) {
-        const nums = ctx.NumberLiteral.map((n: any) => n.image);
-        result += `(${nums.join(", ")})`;
+        const nums = ctx.NumberLiteral.map((n: IToken) => n.image)
+        result += `(${nums.join(", ")})`
       }
       if (ctx.LBracket) {
-        for (let i = 0; i < ctx.LBracket.length; i++) result += "[]";
+        for (let i = 0; i < ctx.LBracket.length; i++) result += "[]"
       }
-      return result;
+      return result
     }
 
     // All other types: find the first token image, then append array dims
-    let baseType = "UNKNOWN";
+    let baseType = "UNKNOWN"
     for (const key of Object.keys(ctx)) {
-      if (key === "LBracket" || key === "RBracket" || key === "LParen" || key === "RParen"
-          || key === "Comma" || key === "NumberLiteral" || key === "identifier") continue;
-      const tokens = ctx[key];
+      if (
+        key === "LBracket" ||
+        key === "RBracket" ||
+        key === "LParen" ||
+        key === "RParen" ||
+        key === "Comma" ||
+        key === "NumberLiteral" ||
+        key === "identifier"
+      )
+        continue
+      const tokens = (ctx as Record<string, IToken[]>)[key]
       if (Array.isArray(tokens) && tokens.length > 0 && tokens[0].image) {
-        baseType = tokens[0].image.toUpperCase();
-        break;
+        baseType = tokens[0].image.toUpperCase()
+        break
       }
     }
 
     // Append array dimensions: DOUBLE[], DOUBLE[][]
     if (ctx.LBracket) {
-      for (let i = 0; i < ctx.LBracket.length; i++) baseType += "[]";
+      for (let i = 0; i < ctx.LBracket.length; i++) baseType += "[]"
     }
 
-    return baseType;
+    return baseType
   }
 
-  caseExpression(ctx: any): AST.CaseExpression {
-    const whenClauses: { when: AST.Expression; then: AST.Expression }[] = [];
-    const expressions = ctx.expression || [];
-    const whenCount = ctx.When ? ctx.When.length : 0;
-    const hasElse = !!ctx.Else;
+  caseExpression(ctx: CaseExpressionCstChildren): AST.CaseExpression {
+    const whenClauses: { when: AST.Expression; then: AST.Expression }[] = []
+    const expressions = ctx.expression || []
+    const whenCount = ctx.When ? ctx.When.length : 0
+    const hasElse = !!ctx.Else
 
     // Simple CASE has: operand + whenCount*2 pairs + optional else = operand + whenCount*2 [+ 1]
     // Searched CASE has: whenCount*2 pairs + optional else = whenCount*2 [+ 1]
-    const expectedWithoutOperand = whenCount * 2 + (hasElse ? 1 : 0);
-    const hasOperand = expressions.length > expectedWithoutOperand;
+    const expectedWithoutOperand = whenCount * 2 + (hasElse ? 1 : 0)
+    const hasOperand = expressions.length > expectedWithoutOperand
 
-    let offset = 0;
-    const result: AST.CaseExpression = { type: "case", whenClauses };
+    let offset = 0
+    const result: AST.CaseExpression = { type: "case", whenClauses }
 
     if (hasOperand) {
-      result.operand = this.visit(expressions[0]);
-      offset = 1;
+      result.operand = this.visit(expressions[0]) as AST.Expression
+      offset = 1
     }
 
     for (let i = 0; i < whenCount; i++) {
-      const whenIdx = offset + i * 2;
-      const thenIdx = offset + i * 2 + 1;
+      const whenIdx = offset + i * 2
+      const thenIdx = offset + i * 2 + 1
       if (expressions[whenIdx] && expressions[thenIdx]) {
         whenClauses.push({
-          when: this.visit(expressions[whenIdx]),
-          then: this.visit(expressions[thenIdx]),
-        });
+          when: this.visit(expressions[whenIdx]) as AST.Expression,
+          then: this.visit(expressions[thenIdx]) as AST.Expression,
+        })
       }
     }
 
     if (hasElse) {
-      result.elseClause = this.visit(expressions[expressions.length - 1]);
+      result.elseClause = this.visit(
+        expressions[expressions.length - 1],
+      ) as AST.Expression
     }
 
-    return result;
+    return result
   }
 
-  functionName(ctx: any): string {
+  functionName(ctx: FunctionNameCstChildren): string {
     if (ctx.identifier) {
-      return this.visit(ctx.identifier).parts[0];
+      return (this.visit(ctx.identifier) as AST.QualifiedName).parts[0]
     }
-    if (ctx.Left) return ctx.Left[0].image;
-    if (ctx.Right) return ctx.Right[0].image;
-    return "";
+    if (ctx.Left) return ctx.Left[0].image
+    if (ctx.Right) return ctx.Right[0].image
+    return ""
   }
 
-  functionCall(ctx: any): AST.FunctionCall {
+  functionCall(ctx: FunctionCallCstChildren): AST.FunctionCall {
     const result: AST.FunctionCall = {
       type: "function",
-      name: this.visit(ctx.functionName),
+      name: this.visit(ctx.functionName) as string,
       args: [],
-    };
+    }
 
     if (ctx.Star) {
-      result.star = true;
+      result.star = true
     } else if (ctx.expression) {
-      result.args = ctx.expression.map((e: CstNode) => this.visit(e));
+      result.args = ctx.expression.map(
+        (e: CstNode) => this.visit(e) as AST.Expression,
+      )
     }
 
     if (ctx.Distinct) {
-      result.distinct = true;
+      result.distinct = true
     }
 
     if (ctx.From) {
-      result.fromSeparator = true;
+      result.fromSeparator = true
     }
 
     if (ctx.Ignore) {
-      result.ignoreNulls = true;
+      result.ignoreNulls = true
     }
 
     if (ctx.overClause) {
-      result.over = this.visit(ctx.overClause);
+      result.over = this.visit(ctx.overClause) as AST.WindowSpecification
     }
 
-    return result;
+    return result
   }
 
-  identifierExpression(ctx: any): AST.Expression {
-    const qualName: AST.QualifiedName = this.visit(ctx.qualifiedName);
+  identifierExpression(ctx: IdentifierExpressionCstChildren): AST.Expression {
+    const qualName: AST.QualifiedName = this.visit(
+      ctx.qualifiedName,
+    ) as AST.QualifiedName
 
     if (ctx.LParen) {
       // Function call (possibly schema-qualified)
@@ -2904,339 +3363,370 @@ class QuestDBVisitor extends BaseVisitor {
         type: "function",
         name: qualName.parts.join("."),
         args: [],
-      };
+      }
       if (ctx.Star) {
-        result.star = true;
+        result.star = true
       } else if (ctx.expression) {
-        result.args = ctx.expression.map((e: CstNode) => this.visit(e));
+        result.args = ctx.expression.map(
+          (e: CstNode) => this.visit(e) as AST.Expression,
+        )
       }
       if (ctx.Distinct) {
-        result.distinct = true;
+        result.distinct = true
       }
       if (ctx.From) {
-        result.fromSeparator = true;
+        result.fromSeparator = true
       }
       if (ctx.Ignore) {
-        result.ignoreNulls = true;
+        result.ignoreNulls = true
       }
       if (ctx.selectStatement) {
-        result.subquery = this.visit(ctx.selectStatement[0]);
+        result.subquery = this.visit(
+          ctx.selectStatement[0],
+        ) as AST.SelectStatement
       }
       if (ctx.overClause) {
-        result.over = this.visit(ctx.overClause);
+        result.over = this.visit(ctx.overClause) as AST.WindowSpecification
       }
-      return result;
+      return result
     }
 
     // Column reference
-    return { type: "column", name: qualName };
+    return { type: "column", name: qualName }
   }
 
-  overClause(ctx: any): AST.WindowSpecification {
+  overClause(ctx: OverClauseCstChildren): AST.WindowSpecification {
     const result: AST.WindowSpecification = {
       type: "windowSpec",
-    };
+    }
 
     if (ctx.windowPartitionByClause) {
-      result.partitionBy = this.visit(ctx.windowPartitionByClause);
+      result.partitionBy = this.visit(
+        ctx.windowPartitionByClause,
+      ) as AST.Expression[]
     }
 
     if (ctx.orderByClause) {
-      result.orderBy = this.visit(ctx.orderByClause);
+      result.orderBy = this.visit(ctx.orderByClause) as AST.OrderByItem[]
     }
 
     if (ctx.windowFrameClause) {
-      result.frame = this.visit(ctx.windowFrameClause);
+      result.frame = this.visit(ctx.windowFrameClause) as AST.WindowFrame
     }
 
-    return result;
+    return result
   }
 
-  windowPartitionByClause(ctx: any): AST.Expression[] {
-    return ctx.expression.map((e: CstNode) => this.visit(e));
+  windowPartitionByClause(
+    ctx: WindowPartitionByClauseCstChildren,
+  ): AST.Expression[] {
+    return ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression)
   }
 
-  windowFrameClause(ctx: any): AST.WindowFrame {
-    let mode: string;
-    if (ctx.Rows) mode = "rows";
-    else if (ctx.Range) mode = "range";
-    else if (ctx.Groups) mode = "groups";
-    else mode = "cumulative";
+  windowFrameClause(ctx: WindowFrameClauseCstChildren): AST.WindowFrame {
+    let mode: string
+    if (ctx.Rows) mode = "rows"
+    else if (ctx.Range) mode = "range"
+    else if (ctx.Groups) mode = "groups"
+    else mode = "cumulative"
 
     const result: AST.WindowFrame = {
       type: "windowFrame",
       mode,
-    } as AST.WindowFrame;
+    } as AST.WindowFrame
 
     if (ctx.windowFrameBound && ctx.windowFrameBound.length > 0) {
-      result.start = this.visit(ctx.windowFrameBound[0]);
+      result.start = this.visit(ctx.windowFrameBound[0]) as AST.WindowFrameBound
       if (ctx.windowFrameBound.length > 1) {
-        result.end = this.visit(ctx.windowFrameBound[1]);
+        result.end = this.visit(ctx.windowFrameBound[1]) as AST.WindowFrameBound
       }
     }
 
     if (ctx.Exclude) {
       if (ctx.Current && ctx.Row) {
-        result.exclude = "currentRow";
+        result.exclude = "currentRow"
       } else if (ctx.No && ctx.Others) {
-        result.exclude = "noOthers";
+        result.exclude = "noOthers"
       } else if (ctx.Groups) {
-        result.exclude = "groups";
+        result.exclude = "groups"
       }
     }
 
-    return result;
+    return result
   }
 
-  windowDefinitionClause(_ctx: any): any {
+  windowDefinitionClause(_ctx: WindowDefinitionClauseCstChildren): undefined {
     // Handled at a higher level; this just satisfies the visitor validation
-    return undefined;
+    return undefined
   }
 
-  windowFrameBound(ctx: any): AST.WindowFrameBound {
+  windowFrameBound(ctx: WindowFrameBoundCstChildren): AST.WindowFrameBound {
     if (ctx.Unbounded) {
       return {
         type: "windowFrameBound",
         kind: ctx.Preceding ? "unboundedPreceding" : "unboundedFollowing",
-      };
+      }
     }
 
     if (ctx.Current) {
       return {
         type: "windowFrameBound",
         kind: "currentRow",
-      };
+      }
     }
 
     if (ctx.durationExpression) {
       return {
         type: "windowFrameBound",
         kind: ctx.Preceding ? "preceding" : "following",
-        duration: this.visit(ctx.durationExpression),
-      };
+        duration: this.visit(ctx.durationExpression) as string,
+      }
     }
 
     return {
       type: "windowFrameBound",
       kind: ctx.Preceding ? "preceding" : "following",
-      value: this.visit(ctx.expression),
-    };
+      value: this.visit(ctx.expression!) as AST.Expression,
+    }
   }
 
   // ==========================================================================
   // Basic Elements
   // ==========================================================================
 
-  literal(ctx: any): AST.Literal {
+  literal(ctx: LiteralCstChildren): AST.Literal {
     if (ctx.NumberLiteral) {
-      const image = this.tokenImage(ctx.NumberLiteral[0]);
+      const image = this.tokenImage(ctx.NumberLiteral[0])
       return {
         type: "literal",
         value: image.includes(".") ? parseFloat(image) : parseInt(image, 10),
         literalType: "number",
         raw: image,
-      };
+      }
     }
     if (ctx.StringLiteral) {
-      const raw = this.tokenImage(ctx.StringLiteral[0]);
+      const raw = this.tokenImage(ctx.StringLiteral[0])
       // Remove outer quotes and unescape '' to '
-      const value = raw.slice(1, -1).replace(/''/g, "'");
+      const value = raw.slice(1, -1).replace(/''/g, "'")
       return {
         type: "literal",
         value,
         literalType: "string",
-      };
+      }
     }
     if (ctx.True) {
-      return { type: "literal", value: true, literalType: "boolean" };
+      return { type: "literal", value: true, literalType: "boolean" }
     }
     if (ctx.False) {
-      return { type: "literal", value: false, literalType: "boolean" };
+      return { type: "literal", value: false, literalType: "boolean" }
     }
     if (ctx.Null) {
-      return { type: "literal", value: null, literalType: "null" };
+      return { type: "literal", value: null, literalType: "null" }
     }
     if (ctx.LongLiteral) {
-      const image = this.tokenImage(ctx.LongLiteral[0]);
+      const image = this.tokenImage(ctx.LongLiteral[0])
       return {
         type: "literal",
         value: parseInt(image.replace(/[Ll_]/g, ""), 10),
         literalType: "number",
         raw: image,
-      };
+      }
     }
     if (ctx.DecimalLiteral) {
-      const image = this.tokenImage(ctx.DecimalLiteral[0]);
+      const image = this.tokenImage(ctx.DecimalLiteral[0])
       return {
         type: "literal",
         value: parseFloat(image.replace(/[m_]/g, "")),
         literalType: "number",
         raw: image,
-      };
+      }
     }
     if (ctx.GeohashLiteral) {
       return {
         type: "literal",
         value: this.tokenImage(ctx.GeohashLiteral[0]),
         literalType: "geohash",
-      };
+      }
     }
     if (ctx.GeohashBinaryLiteral) {
       return {
         type: "literal",
         value: this.tokenImage(ctx.GeohashBinaryLiteral[0]),
         literalType: "geohash",
-      };
+      }
     }
     if (ctx.DurationLiteral) {
       return {
         type: "literal",
         value: this.tokenImage(ctx.DurationLiteral[0]),
         literalType: "duration",
-      };
+      }
     }
-    if (ctx.NaN) {
+    if (ctx.Nan) {
       return {
         type: "literal",
         value: NaN,
         literalType: "number",
-      };
+      }
     }
-    throw new Error("Unknown literal type");
+    throw new Error("Unknown literal type")
   }
 
-  booleanLiteral(ctx: any): boolean {
-    return !!ctx.True;
+  booleanLiteral(ctx: BooleanLiteralCstChildren): boolean {
+    return !!ctx.True
   }
 
-  stringOrIdentifier(ctx: any): string {
+  stringOrIdentifier(ctx: StringOrIdentifierCstChildren): string {
     if (ctx.StringLiteral) {
-      return ctx.StringLiteral[0].image.slice(1, -1);
+      return ctx.StringLiteral[0].image.slice(1, -1)
     }
     if (ctx.identifier) {
-      return this.extractIdentifierName(ctx.identifier[0].children);
+      return this.extractIdentifierName(ctx.identifier[0].children)
     }
-    return this.extractMaybeString(ctx);
+    return this.extractMaybeString(ctx)
   }
 
-  stringOrQualifiedName(ctx: any): AST.QualifiedName {
+  stringOrQualifiedName(
+    ctx: StringOrQualifiedNameCstChildren,
+  ): AST.QualifiedName {
     if (ctx.StringLiteral) {
-      return { type: "qualifiedName", parts: [ctx.StringLiteral[0].image.slice(1, -1)] };
+      return {
+        type: "qualifiedName",
+        parts: [ctx.StringLiteral[0].image.slice(1, -1)],
+      }
     }
-    if (ctx.qualifiedName) return this.visit(ctx.qualifiedName);
-    return { type: "qualifiedName", parts: [] };
+    if (ctx.qualifiedName)
+      return this.visit(ctx.qualifiedName) as AST.QualifiedName
+    return { type: "qualifiedName", parts: [] }
   }
 
-  intervalValue(ctx: any): string {
-    return this.extractMaybeString(ctx);
+  intervalValue(ctx: IntervalValueCstChildren): string {
+    return this.extractMaybeString(ctx)
   }
 
-  timeZoneValue(ctx: any): string {
-    return this.extractMaybeString(ctx);
+  timeZoneValue(ctx: TimeZoneValueCstChildren): string {
+    return this.extractMaybeString(ctx)
   }
 
-  columnRef(ctx: any): AST.ColumnRef {
+  columnRef(ctx: ColumnRefCstChildren): AST.ColumnRef {
     return {
       type: "column",
-      name: this.visit(ctx.qualifiedName),
-    };
+      name: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
   }
 
-  qualifiedName(ctx: any): AST.QualifiedName {
+  qualifiedName(ctx: QualifiedNameCstChildren): AST.QualifiedName {
     const parts: string[] = ctx.identifier.map((id: CstNode) => {
-      return this.extractIdentifierName(id.children);
-    });
+      return this.extractIdentifierName(id.children)
+    })
 
     return {
       type: "qualifiedName",
       parts,
-    };
+    }
   }
 
-  private extractMaybeString(node: any): string {
-    if (!node) return "";
-    const ctx = node.children ?? node;
+  private extractMaybeString(node: CstNode | CstChildrenRecord): string {
+    if (!node) return ""
+    const ctx: CstChildrenRecord =
+      "name" in node && "children" in node ? (node as CstNode).children : node
     if (ctx.StringLiteral) {
-      const raw = this.tokenImage(ctx.StringLiteral[0]);
-      return raw.slice(1, -1);
+      const raw = this.tokenImage(ctx.StringLiteral[0] as IToken)
+      return raw.slice(1, -1)
     }
     if (ctx.NumberLiteral) {
-      return this.tokenImage(ctx.NumberLiteral[0]);
+      return this.tokenImage(ctx.NumberLiteral[0] as IToken)
     }
     if (ctx.DurationLiteral) {
-      return this.tokenImage(ctx.DurationLiteral[0]);
+      return this.tokenImage(ctx.DurationLiteral[0] as IToken)
     }
     if (ctx.Identifier) {
-      return this.tokenImage(ctx.Identifier[0]);
+      return this.tokenImage(ctx.Identifier[0] as IToken)
     }
     if (ctx.QuotedIdentifier) {
-      const raw = this.tokenImage(ctx.QuotedIdentifier[0]);
-      return raw.slice(1, -1);
+      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
+      return raw.slice(1, -1)
     }
-    return "";
+    return ""
   }
 
-  private extractTtl(ctx: any): { value: number; unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" } {
+  private extractTtl(ctx: CstChildrenRecord): {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  } {
     // Handle DurationLiteral (e.g., "2w", "12h", "30d")
     if (ctx.DurationLiteral) {
-      const img = ctx.DurationLiteral[0].image;
-      const match = img.match(/^(\d+)(.+)$/);
+      const img = (ctx.DurationLiteral[0] as IToken).image
+      const match = img.match(/^(\d+)(.+)$/)
       if (match) {
-        const DURATION_UNIT_MAP: Record<string, "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"> = {
-          h: "HOURS", d: "DAYS", w: "WEEKS", M: "MONTHS", y: "YEARS",
-        };
-        return { value: parseInt(match[1], 10), unit: DURATION_UNIT_MAP[match[2]] ?? "DAYS" };
+        const DURATION_UNIT_MAP: Record<
+          string,
+          "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+        > = {
+          h: "HOURS",
+          d: "DAYS",
+          w: "WEEKS",
+          M: "MONTHS",
+          y: "YEARS",
+        }
+        return {
+          value: parseInt(match[1], 10),
+          unit: DURATION_UNIT_MAP[match[2]] ?? "DAYS",
+        }
       }
     }
     // Handle NumberLiteral + optional timeUnit (e.g., "2 WEEKS")
-    const value = parseInt(ctx.NumberLiteral?.[0]?.image ?? "0", 10);
-    let unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" = "DAYS";
+    const value = parseInt(
+      (ctx.NumberLiteral?.[0] as IToken | undefined)?.image ?? "0",
+      10,
+    )
+    let unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" = "DAYS"
     if (ctx.timeUnit) {
-      unit = this.visit(ctx.timeUnit) as typeof unit;
-    // Check plural forms first (TTL units) before singular (which may be PARTITION BY units)
-    } else if (ctx.Hours) unit = "HOURS";
-    else if (ctx.Days) unit = "DAYS";
-    else if (ctx.Weeks) unit = "WEEKS";
-    else if (ctx.Months) unit = "MONTHS";
-    else if (ctx.Years) unit = "YEARS";
-    else if (ctx.Hour) unit = "HOURS";
-    else if (ctx.Day) unit = "DAYS";
-    else if (ctx.Week) unit = "WEEKS";
-    else if (ctx.Month) unit = "MONTHS";
-    else if (ctx.Year) unit = "YEARS";
-    return { value, unit };
+      unit = this.visit(ctx.timeUnit as CstNode[]) as typeof unit
+      // Check plural forms first (TTL units) before singular (which may be PARTITION BY units)
+    } else if (ctx.Hours) unit = "HOURS"
+    else if (ctx.Days) unit = "DAYS"
+    else if (ctx.Weeks) unit = "WEEKS"
+    else if (ctx.Months) unit = "MONTHS"
+    else if (ctx.Years) unit = "YEARS"
+    else if (ctx.Hour) unit = "HOURS"
+    else if (ctx.Day) unit = "DAYS"
+    else if (ctx.Week) unit = "WEEKS"
+    else if (ctx.Month) unit = "MONTHS"
+    else if (ctx.Year) unit = "YEARS"
+    return { value, unit }
   }
 
-  // Helper to extract identifier name from any token (regular, quoted, or keyword)
-  private extractIdentifierName(ctx: any): string {
+  // Helper to extract identifier name from token (regular, quoted, or keyword)
+  private extractIdentifierName(ctx: CstChildrenRecord): string {
     if (ctx.Identifier) {
-      return this.tokenImage(ctx.Identifier[0] as IToken);
+      return this.tokenImage(ctx.Identifier[0] as IToken)
     }
     if (ctx.QuotedIdentifier) {
-      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken);
-      return raw.slice(1, -1);
+      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
+      return raw.slice(1, -1)
     }
     // Handle keyword tokens used as identifiers
     // Find the first token in the context
     for (const key of Object.keys(ctx)) {
-      const tokens = ctx[key];
+      const tokens = ctx[key]
       if (Array.isArray(tokens) && tokens.length > 0) {
-        const token = tokens[0];
-        if (token && typeof token.image === "string") {
-          return token.image;
+        const token = tokens[0]
+        if (token && "image" in token && typeof token.image === "string") {
+          return token.image
         }
       }
     }
-    return "";
+    return ""
   }
 
-  identifier(ctx: any): AST.QualifiedName {
-    const name = this.extractIdentifierName(ctx);
+  identifier(ctx: IdentifierCstChildren): AST.QualifiedName {
+    const name = this.extractIdentifierName(ctx)
     return {
       type: "qualifiedName",
       parts: [name],
-    };
+    }
   }
 }
 
-export const visitor = new QuestDBVisitor();
+export const visitor = new QuestDBVisitor()

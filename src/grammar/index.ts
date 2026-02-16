@@ -6,8 +6,8 @@
 // 2. Code completion (autocomplete suggestions)
 // =============================================================================
 
-export { keywords } from "./keywords";
-export { dataTypes } from "./dataTypes";
-export { constants } from "./constants";
-export { functions } from "./functions";
-export { operators } from "./operators";
+export { keywords } from "./keywords"
+export { dataTypes } from "./dataTypes"
+export { constants } from "./constants"
+export { functions } from "./functions"
+export { operators } from "./operators"

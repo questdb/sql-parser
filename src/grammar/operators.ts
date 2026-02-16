@@ -53,4 +53,4 @@ export const operators: string[] = [
 
   // Query explanation
   "EXPLAIN",
-];
+]

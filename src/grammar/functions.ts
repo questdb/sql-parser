@@ -362,4 +362,4 @@ export const functions: string[] = [
 
   // information_schema
   "information_schema._pg_expandarray",
-];
+]

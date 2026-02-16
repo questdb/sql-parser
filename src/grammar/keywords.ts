@@ -209,4 +209,4 @@ export const keywords: string[] = [
   "writer",
   "zone",
   "raw_array_encoding",
-];
+]

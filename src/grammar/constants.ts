@@ -67,4 +67,4 @@ export const constants: string[] = [
   "year",
   "years",
   "zstd",
-];
+]

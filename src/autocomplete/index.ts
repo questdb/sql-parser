@@ -6,7 +6,7 @@
 // =============================================================================
 
 // Main factory function
-export { createAutocompleteProvider } from "./provider";
+export { createAutocompleteProvider } from "./provider"
 
 // Types for UI integration
 export type {
@@ -15,9 +15,9 @@ export type {
   SchemaInfo,
   TableInfo,
   ColumnInfo,
-} from "./types";
+} from "./types"
 
-export { SuggestionKind, SuggestionPriority } from "./types";
+export { SuggestionKind, SuggestionPriority } from "./types"
 
 // Token classification (for advanced use cases)
 export {
@@ -27,10 +27,10 @@ export {
   tokenNameToKeyword,
   isIdentifierToken,
   shouldSkipToken,
-} from "./token-classification";
+} from "./token-classification"
 
 // Suggestion building (for advanced use cases)
 export {
   buildSuggestions,
   buildFallbackSuggestions,
-} from "./suggestion-builder";
+} from "./suggestion-builder"
