@@ -70,9 +70,10 @@ function normalizeSql(sql: string): string {
   s = s.replace(/VALUES\s*\(/g, "VALUES (")
   // N4: Normalize keyword-paren spacing: KEYS( → KEYS (, JOIN( → JOIN (
   s = s.replace(/([A-Z])\(/g, "$1 (")
-  // N5: Normalize quoted identifiers: "FOO" → FOO, "FOO.BAR" → FOO.BAR (quoting is stylistic)
-  // Also handles unicode identifiers like "日本語ビュー"
+  // N5: Normalize quoted identifiers: "FOO" → FOO, 'FOO' → FOO (quoting is stylistic)
+  // QuestDB accepts both single and double quotes for identifiers.
   s = s.replace(/"([^"]+)"/g, "$1")
+  s = s.replace(/'([^']+)'/g, "$1")
   // N6: Normalize duration shorthand: 2W → 2 WEEKS, 12H → 12 HOURS, 20S → 20 SECONDS, etc.
   const durationMap: Record<string, string> = {
     H: "HOURS",

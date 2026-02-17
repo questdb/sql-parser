@@ -87,14 +87,16 @@ export function parseToAst(sql: string): ParseResult {
   }
 
   let ast: Statement[] = []
-  try {
+  if (errors.length > 0) {
+    try {
+      ast = visitor.visit(cst) as Statement[]
+    } catch {
+      // The visitor may throw on incomplete CST nodes produced by error recovery
+      // (e.g. "Unknown primary expression", null dereferences on missing children).
+      // Since we already have parse errors, return them with whatever AST was built.
+    }
+  } else {
     ast = visitor.visit(cst) as Statement[]
-  } catch {
-    // The visitor throws on incomplete CST nodes produced by error recovery
-    // (e.g. "Unknown primary expression", null dereferences on missing children).
-    // Rather than making every visitor method resilient to partial CSTs, we catch
-    // here and return whatever AST was successfully built, along with the parse
-    // errors that already describe what went wrong.
   }
 
   return { ast, errors }

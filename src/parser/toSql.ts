@@ -1568,9 +1568,6 @@ function windowFrameToSql(frame: AST.WindowFrame): string {
       case "noOthers":
         sql += " EXCLUDE NO OTHERS"
         break
-      case "groups":
-        sql += " EXCLUDE GROUPS"
-        break
     }
   }
   return sql
@@ -1704,5 +1701,5 @@ function escapeIdentifier(name: string): string {
   ) {
     return name
   }
-  return `"${name.replace(/"/g, '""')}"`
+  return `'${name.replace(/'/g, "''")}'`
 }

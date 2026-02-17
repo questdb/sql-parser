@@ -106,7 +106,6 @@ export const keywords: string[] = [
   "lt",
   "materialized",
   "maxUncommittedRows",
-  "natural",
   "no",
   "nocache",
   "not",

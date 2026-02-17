@@ -300,7 +300,6 @@ import {
   Exclude,
   Cumulative,
   Others,
-  Natural,
   Database,
   Backup,
   Prevailing,
@@ -417,8 +416,11 @@ class QuestDBParser extends CstParser {
   public statements = this.RULE("statements", () => {
     this.MANY(() => {
       this._semicolonBoundedRecovery = true
-      this.SUBRULE(this.statement)
-      this._semicolonBoundedRecovery = false
+      try {
+        this.SUBRULE(this.statement)
+      } finally {
+        this._semicolonBoundedRecovery = false
+      }
       this.OPTION(() => this.CONSUME(Semicolon))
     })
   })
@@ -785,7 +787,6 @@ class QuestDBParser extends CstParser {
         { ALT: () => this.CONSUME(Lt) },
         { ALT: () => this.CONSUME(Splice) },
         { ALT: () => this.CONSUME(Window) },
-        { ALT: () => this.CONSUME(Natural) },
         { ALT: () => this.CONSUME(Prevailing) },
       ])
       this.OPTION1(() => this.CONSUME(Outer))
@@ -3705,7 +3706,6 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(Rows) },
       { ALT: () => this.CONSUME(Range) },
-      { ALT: () => this.CONSUME(Groups) },
       { ALT: () => this.CONSUME(Cumulative) },
     ])
     this.OPTION(() => {
@@ -3723,7 +3723,7 @@ class QuestDBParser extends CstParser {
         },
       ])
     })
-    // Optional EXCLUDE clause
+    // Optional EXCLUDE clause (QuestDB supports EXCLUDE CURRENT ROW and EXCLUDE NO OTHERS)
     this.OPTION1(() => {
       this.CONSUME(Exclude)
       this.OR2([
@@ -3739,7 +3739,6 @@ class QuestDBParser extends CstParser {
             this.CONSUME(Others)
           },
         },
-        { ALT: () => this.CONSUME1(Groups) },
       ])
     })
   })

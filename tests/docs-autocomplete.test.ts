@@ -38,6 +38,16 @@ function isTokenExpectedAtPosition(
     if (actualTokenType === "QuotedIdentifier") return true
   }
 
+  // When the token limit fallback fires, computeSuggestions returns only
+  // [IdentifierKeyword]. This is a performance trade-off for large queries,
+  // not an autocomplete bug — accept any token in this degraded mode.
+  if (
+    expectedTokenNames.length === 1 &&
+    expectedTokenNames[0] === "IdentifierKeyword"
+  ) {
+    return true
+  }
+
   return false
 }
 

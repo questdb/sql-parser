@@ -1,9 +1,51 @@
 import { type ILexingError, IToken, TokenType } from "chevrotain"
 import { parser, parse as parseRaw } from "../parser/parser"
 import { visitor } from "../parser/visitor"
-import { QuestDBLexer } from "../parser/lexer"
+import { QuestDBLexer, IdentifierKeyword } from "../parser/lexer"
 import type { Statement } from "../parser/ast"
 import { IDENTIFIER_KEYWORD_TOKENS } from "./token-classification"
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * When the token count exceeds this threshold, skip Chevrotain's
+ * computeContentAssist (which is exponential on deeply nested CTEs)
+ * and return IdentifierKeyword to trigger table/column suggestions.
+ */
+const CONTENT_ASSIST_TOKEN_LIMIT = 150
+
+const WORD_BOUNDARY_CHARS = new Set([
+  " ",
+  "\n",
+  "\t",
+  "\r",
+  "(",
+  ")",
+  ",",
+  ";",
+  ".",
+  "=",
+  "<",
+  ">",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "'",
+  '"',
+  "|",
+  "&",
+  "^",
+  "~",
+  "!",
+  "@",
+  ":",
+  "[",
+  "]",
+])
 
 // =============================================================================
 // Types
@@ -315,6 +357,13 @@ function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
  * from all WITH-capable statement types.
  */
 function computeSuggestions(tokens: IToken[]): TokenType[] {
+  // For large token sequences (deeply nested CTEs), Chevrotain's
+  // computeContentAssist becomes exponentially slow. Fall back to a
+  // generic set of suggestions to avoid freezing the editor.
+  if (tokens.length > CONTENT_ASSIST_TOKEN_LIMIT) {
+    return [IdentifierKeyword]
+  }
+
   const ruleName = tokens.some((t) => t.tokenType.name === "Semicolon")
     ? "statements"
     : "statement"
@@ -428,6 +477,26 @@ export function getContentAssist(
   fullSql: string,
   cursorOffset: number,
 ): ContentAssistResult {
+  // Tokenize the full SQL to check if the cursor is inside a string literal.
+  // If so, suppress suggestions — the user is editing a value, not SQL syntax.
+  // This also covers single-quoted identifiers (FROM 'table'), which is an
+  // acceptable trade-off to avoid fragile context-detection heuristics.
+  const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
+  for (const token of fullTokens) {
+    if (token.tokenType.name !== "StringLiteral") continue
+    const start = token.startOffset
+    const end = token.startOffset + token.image.length
+    if (cursorOffset > start && cursorOffset < end) {
+      return {
+        nextTokenTypes: [],
+        tablesInScope: [],
+        tokensBefore: [],
+        isMidWord: true,
+        lexErrors: [],
+      }
+    }
+  }
+
   // Split the text at cursor position
   const beforeCursor = fullSql.substring(0, cursorOffset)
 
@@ -444,36 +513,6 @@ export function getContentAssist(
     cursorOffset > 0 && cursorOffset <= fullSql.length
       ? fullSql[cursorOffset - 1]
       : " "
-  const WORD_BOUNDARY_CHARS = new Set([
-    " ",
-    "\n",
-    "\t",
-    "\r",
-    "(",
-    ")",
-    ",",
-    ";",
-    ".",
-    "=",
-    "<",
-    ">",
-    "+",
-    "-",
-    "*",
-    "/",
-    "%",
-    "'",
-    '"',
-    "|",
-    "&",
-    "^",
-    "~",
-    "!",
-    "@",
-    ":",
-    "[",
-    "]",
-  ])
   const isMidWord = !WORD_BOUNDARY_CHARS.has(lastChar)
   const tokensForAssist =
     isMidWord && tokens.length > 0 ? tokens.slice(0, -1) : tokens
@@ -487,8 +526,7 @@ export function getContentAssist(
     // This can happen with malformed input
   }
 
-  // Extract tables from the full query
-  const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
+  // Extract tables from the full query (reuses fullTokens from above)
   const tablesInScope = extractTables(fullSql, fullTokens)
 
   if (tablesInScope.length === 0) {

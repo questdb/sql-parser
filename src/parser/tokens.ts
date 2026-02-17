@@ -97,7 +97,7 @@ const allGeneratedTokens = new Map<string, TokenType>([
 // Reserved keywords NOT included (would cause parsing ambiguity):
 //   Structural:  Select, From, Where, As, By, With, If, Exists, Into,
 //                Values, Set, For, Table, To, Declare, Rename
-//   Joins:       Join, Inner, Left, Right, Full, Outer, Cross, Natural,
+//   Joins:       Join, Inner, Left, Right, Full, Outer, Cross,
 //                Asof, Lt, Splice, On
 //   Operators:   And, Or, Not, In, Between, Like, Ilike, Is
 //   Expressions: Case, When, Then, Else, End, Cast, True, False, Null, NaN,
@@ -484,7 +484,6 @@ export const Lt = getToken("Lt")
 export const Materialized = getToken("Materialized")
 export const Manual = getToken("Manual")
 export const MaxUncommittedRows = getToken("MaxUncommittedRows")
-export const Natural = getToken("Natural")
 export const No = getToken("No")
 export const Nocache = getToken("Nocache")
 export const Not = getToken("Not")

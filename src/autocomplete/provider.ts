@@ -23,6 +23,7 @@ import { getContentAssist } from "./content-assist"
 import { buildSuggestions } from "./suggestion-builder"
 import { shouldSkipToken } from "./token-classification"
 import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types"
+import { SuggestionKind, SuggestionPriority } from "./types"
 
 const TABLE_NAME_TOKENS = new Set([
   "From",
@@ -127,6 +128,27 @@ export function createAutocompleteProvider(
           tablesInScope,
           { ...scope, isMidWord },
         )
+      }
+
+      // Fallback: when Chevrotain returns no suggestions (malformed SQL like
+      // "SELECT FROM |" where columns are missing), check if the cursor follows
+      // a table-introducing keyword. If so, suggest table names directly.
+      const fallbackTokens =
+        isMidWord && tokensBefore.length > 0
+          ? tokensBefore.slice(0, -1)
+          : tokensBefore
+      const [lastFallback] = getLastSignificantTokens(fallbackTokens)
+      if (lastFallback && TABLE_NAME_TOKENS.has(lastFallback)) {
+        const suggestions: Suggestion[] = []
+        for (const table of normalizedSchema.tables) {
+          suggestions.push({
+            label: table.name,
+            kind: SuggestionKind.Table,
+            insertText: table.name,
+            priority: SuggestionPriority.MediumLow,
+          })
+        }
+        return suggestions
       }
 
       return []

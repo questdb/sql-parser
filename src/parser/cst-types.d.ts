@@ -252,7 +252,6 @@ export type JoinClauseCstChildren = {
   Lt?: IToken[];
   Splice?: IToken[];
   Window?: IToken[];
-  Natural?: IToken[];
   Prevailing?: (IToken)[];
   Outer?: IToken[];
   Join: IToken[];
@@ -2146,7 +2145,6 @@ export interface WindowFrameClauseCstNode extends CstNode {
 export type WindowFrameClauseCstChildren = {
   Rows?: IToken[];
   Range?: IToken[];
-  Groups?: (IToken)[];
   Cumulative?: IToken[];
   Between?: IToken[];
   windowFrameBound?: (WindowFrameBoundCstNode)[];

@@ -129,4 +129,16 @@ describe("QuestDB Lexer", () => {
       expect(durationToken?.image).toBe(duration)
     }
   })
+
+  // BUG: NumberLiteral regex /(\d[\d_]*\.?[\d_]*|...)/ consumes trailing dot.
+  // "1." is tokenized as a single NumberLiteral, not "1" + Dot.
+  // This means incomplete input like "SELECT 1." (user about to type a column ref)
+  // has the dot consumed into the number.
+  it("should consume trailing dot into NumberLiteral", () => {
+    const result = tokenize("1.")
+    const tokens = result.tokens.filter((t) => t.tokenType.name !== "WhiteSpace")
+    expect(tokens).toHaveLength(1)
+    expect(tokens[0].tokenType.name).toBe("NumberLiteral")
+    expect(tokens[0].image).toBe("1.")
+  })
 })

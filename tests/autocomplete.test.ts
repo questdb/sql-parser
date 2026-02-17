@@ -184,6 +184,28 @@ describe("createAutocompleteProvider", () => {
       )
       expect(tables.length).toBeGreaterThan(0)
     })
+
+    it("suggests tables after FROM when select items are missing", () => {
+      const tables = getSuggestionsOfKind(
+        provider,
+        "SELECT FROM ",
+        SuggestionKind.Table,
+      )
+      expect(tables.length).toBe(3)
+      const tableLabels = tables.map((s) => s.label).sort()
+      expect(tableLabels).toContain("trades")
+      expect(tableLabels).toContain("orders")
+      expect(tableLabels).toContain("users")
+    })
+
+    it("suggests tables after FROM when typing partial table name without select items", () => {
+      const tables = getSuggestionsOfKind(
+        provider,
+        "SELECT FROM t",
+        SuggestionKind.Table,
+      )
+      expect(tables.length).toBe(3)
+    })
   })
 
   describe("suggestion details", () => {

@@ -334,19 +334,6 @@ describe("QuestDB Parser", () => {
   })
 
   describe("window frame modes", () => {
-    it("should parse GROUPS window frame", () => {
-      const result = parseToAst(
-        "SELECT sum(x) OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM t",
-      )
-      expect(result.errors).toHaveLength(0)
-      const select = result.ast[0] as AST.SelectStatement
-      const col = select.columns[0] as AST.ExpressionSelectItem
-      const fn = col.expression as AST.FunctionCall
-      const frame = fn.over?.frame
-      expect(frame).toBeDefined()
-      expect(frame!.mode).toBe("groups")
-    })
-
     it("should parse ROWS window frame", () => {
       const result = parseToAst(
         "SELECT sum(x) OVER (ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM t",
@@ -356,6 +343,73 @@ describe("QuestDB Parser", () => {
       const col = select.columns[0] as AST.ExpressionSelectItem
       const fn = col.expression as AST.FunctionCall
       expect(fn.over?.frame?.mode).toBe("rows")
+    })
+
+    it("should parse RANGE window frame", () => {
+      const result = parseToAst(
+        "SELECT sum(x) OVER (ORDER BY ts RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
+      )
+      expect(result.errors).toHaveLength(0)
+      const select = result.ast[0] as AST.SelectStatement
+      const col = select.columns[0] as AST.ExpressionSelectItem
+      const fn = col.expression as AST.FunctionCall
+      expect(fn.over?.frame?.mode).toBe("range")
+    })
+
+    it("should parse CUMULATIVE window frame", () => {
+      const result = parseToAst(
+        "SELECT sum(x) OVER (ORDER BY ts CUMULATIVE) FROM t",
+      )
+      expect(result.errors).toHaveLength(0)
+      const select = result.ast[0] as AST.SelectStatement
+      const col = select.columns[0] as AST.ExpressionSelectItem
+      const fn = col.expression as AST.FunctionCall
+      expect(fn.over?.frame?.mode).toBe("cumulative")
+    })
+
+    it("should parse CUMULATIVE shorthand (no BETWEEN clause)", () => {
+      const result = parseToAst(
+        "SELECT sum(price) OVER (PARTITION BY symbol ORDER BY timestamp CUMULATIVE) FROM trades",
+      )
+      expect(result.errors).toHaveLength(0)
+      const select = result.ast[0] as AST.SelectStatement
+      const col = select.columns[0] as AST.ExpressionSelectItem
+      const fn = col.expression as AST.FunctionCall
+      expect(fn.over?.frame?.mode).toBe("cumulative")
+      expect(fn.over?.frame?.start).toBeUndefined()
+      expect(fn.over?.frame?.end).toBeUndefined()
+    })
+
+    it("should parse ROWS frame with EXCLUDE CURRENT ROW", () => {
+      const result = parseToAst(
+        "SELECT sum(price) OVER (ORDER BY timestamp ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW) FROM trades",
+      )
+      expect(result.errors).toHaveLength(0)
+      const select = result.ast[0] as AST.SelectStatement
+      const col = select.columns[0] as AST.ExpressionSelectItem
+      const fn = col.expression as AST.FunctionCall
+      expect(fn.over?.frame?.mode).toBe("rows")
+      expect(fn.over?.frame?.exclude).toBe("currentRow")
+    })
+
+    // BUG: Named WINDOW clause is parsed but visitor discards it.
+    // visitor.ts windowDefinitionClause returns undefined; simpleSelect has no code to capture it.
+    // EXPECTED: select should have a windowDefinitions field with the "w" definition
+    it("named WINDOW clause is silently dropped from AST", () => {
+      const result = parseToAst(
+        "SELECT avg(price) OVER w FROM trades ORDER BY ts WINDOW w AS (ORDER BY ts)",
+      )
+      expect(result.errors).toHaveLength(0)
+      const select = result.ast[0] as AST.SelectStatement
+      expect((select as unknown as Record<string, unknown>).window).toBeUndefined()
+      expect((select as unknown as Record<string, unknown>).windowDefinitions).toBeUndefined()
+
+      const col = select.columns[0] as AST.ExpressionSelectItem
+      const fn = col.expression as AST.FunctionCall
+      expect(fn.over).toBeDefined()
+      expect(fn.over?.partitionBy).toBeUndefined()
+      expect(fn.over?.orderBy).toBeUndefined()
+      expect(fn.over?.frame).toBeUndefined()
     })
   })
 
@@ -487,7 +541,7 @@ describe("QuestDB Parser", () => {
       const result = parseToAst('SELECT "select" FROM t')
       expect(result.errors).toHaveLength(0)
       const sql = toSql(result.ast[0])
-      expect(sql).toContain('"select"')
+      expect(sql).toContain("'select'")
     })
 
     it("should not quote non-reserved keywords used as identifiers", () => {
@@ -495,7 +549,7 @@ describe("QuestDB Parser", () => {
       expect(result.errors).toHaveLength(0)
       const sql = toSql(result.ast[0])
       expect(sql).toContain("volume")
-      expect(sql).not.toContain('"volume"')
+      expect(sql).not.toContain("'volume'")
     })
 
     it("should quote other reserved keywords as identifiers", () => {
@@ -504,8 +558,68 @@ describe("QuestDB Parser", () => {
         const result = parseToAst(`SELECT "${word}" FROM t`)
         expect(result.errors).toHaveLength(0)
         const sql = toSql(result.ast[0])
-        expect(sql).toContain(`"${word}"`)
+        expect(sql).toContain(`'${word}'`)
       }
+    })
+
+    it("should serialize RESUME WAL with fromTransaction (takes precedence over fromTxn)", () => {
+      const stmt: AST.ResumeWalStatement = {
+        type: "resumeWal",
+        fromTransaction: 5,
+        fromTxn: 10,
+      }
+      const sql = toSql(stmt)
+      expect(sql).toBe("RESUME WAL FROM TRANSACTION 5")
+      expect(sql).not.toContain("FROM TXN")
+    })
+
+    // BUG: CREATE TABLE indexes are emitted outside the column parentheses.
+    // toSql builds `(col1 INT, col2 STRING)` then appends `, INDEX(name)` OUTSIDE the parens.
+    // EXPECTED: "CREATE TABLE my_table (id INT, name STRING, INDEX(name))"
+    it("CREATE TABLE indexes emitted outside column parentheses", () => {
+      const stmt: AST.CreateTableStatement = {
+        type: "createTable",
+        table: { type: "qualifiedName", parts: ["my_table"] },
+        columns: [
+          { type: "columnDefinition", name: "id", dataType: "INT" },
+          { type: "columnDefinition", name: "name", dataType: "STRING" },
+        ],
+        indexes: [
+          { type: "indexDefinition", column: { type: "qualifiedName", parts: ["name"] } },
+        ],
+      }
+      const sql = toSql(stmt)
+      expect(sql).toContain("), INDEX(") // BUG — INDEX is outside parens
+      expect(sql).not.toContain(", INDEX(name))") // correct form NOT present
+    })
+
+    // BUG: binaryExprToSql drops parentheses, changing operator precedence semantics.
+    // Without ParenExpression in the AST, nested binary expressions lose their grouping.
+    // AST says multiply(add(a, b), c) meaning (a+b)*c, but toSql outputs "a + b * c".
+    // EXPECTED: "(a + b) * c"
+    it("nested binary expressions lose operator precedence without ParenExpression", () => {
+      const stmt: AST.SelectStatement = {
+        type: "select",
+        columns: [
+          {
+            type: "selectItem",
+            expression: {
+              type: "binary",
+              operator: "*",
+              left: {
+                type: "binary",
+                operator: "+",
+                left: { type: "column", name: { type: "qualifiedName", parts: ["a"] } },
+                right: { type: "column", name: { type: "qualifiedName", parts: ["b"] } },
+              } as AST.BinaryExpression,
+              right: { type: "column", name: { type: "qualifiedName", parts: ["c"] } },
+            } as AST.BinaryExpression,
+          } as AST.ExpressionSelectItem,
+        ],
+      }
+      const sql = toSql(stmt)
+      expect(sql).toContain("a + b * c") // BUG — should preserve grouping
+      expect(sql).not.toContain("(a + b)") // parens are missing
     })
   })
 
@@ -2500,6 +2614,44 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.CreateMaterializedViewStatement
       expect(stmt.volume).toBe("myvolume")
+    })
+
+    it("should parse PERIOD LENGTH with identifier value", () => {
+      const withString = parseToAst(
+        "CREATE MATERIALIZED VIEW mv PERIOD(LENGTH '1d') AS SELECT * FROM t",
+      )
+      expect(withString.errors).toHaveLength(0)
+      const mvString = withString.ast[0] as AST.CreateMaterializedViewStatement
+      expect(mvString.period?.length).toBe("1d")
+
+      const withNumber = parseToAst(
+        "CREATE MATERIALIZED VIEW mv PERIOD(LENGTH 100) AS SELECT * FROM t",
+      )
+      expect(withNumber.errors).toHaveLength(0)
+      const mvNumber = withNumber.ast[0] as AST.CreateMaterializedViewStatement
+      expect(mvNumber.period?.length).toBe("100")
+
+      const withIdent = parseToAst(
+        "CREATE MATERIALIZED VIEW mv PERIOD(LENGTH myvar) AS SELECT * FROM t",
+      )
+      expect(withIdent.errors).toHaveLength(0)
+      const mvIdent = withIdent.ast[0] as AST.CreateMaterializedViewStatement
+      expect(mvIdent.period?.length).toBe("myvar")
+    })
+
+    // BUG: TTL duration with minutes (30m) silently becomes 30 DAYS.
+    // extractTtl maps { h: "HOURS", d: "DAYS", w: "WEEKS", M: "MONTHS", y: "YEARS" }
+    // but is missing m (minutes). The fallback is `?? "DAYS"`.
+    // EXPECTED: { value: 30, unit: "MINUTES" } or an error
+    it("TTL duration with minutes unit defaults to DAYS", () => {
+      const result = parseToAst(
+        "CREATE TABLE t (x INT) TIMESTAMP(x) PARTITION BY HOUR TTL 30m",
+      )
+      expect(result.errors).toHaveLength(0)
+      const create = result.ast[0] as AST.CreateTableStatement
+      expect(create.ttl).toBeDefined()
+      expect(create.ttl!.value).toBe(30)
+      expect(create.ttl!.unit).toBe("DAYS") // BUG — should be "MINUTES"
     })
   })
 

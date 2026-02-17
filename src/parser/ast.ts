@@ -959,10 +959,10 @@ export interface WindowSpecification extends AstNode {
 
 export interface WindowFrame extends AstNode {
   type: "windowFrame"
-  mode: "rows" | "range" | "groups" | "cumulative"
+  mode: "rows" | "range" | "cumulative"
   start?: WindowFrameBound
   end?: WindowFrameBound
-  exclude?: "currentRow" | "noOthers" | "groups"
+  exclude?: "currentRow" | "noOthers"
 }
 
 export interface WindowFrameBound extends AstNode {
