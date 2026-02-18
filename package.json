@@ -36,6 +36,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "generate:cst": "node --import jiti/register scripts/generate-cst-types.ts",
     "clean": "rm -rf dist coverage",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
@@ -70,6 +71,7 @@
     "chevrotain": "^11.1.1"
   },
   "devDependencies": {
+    "@chevrotain/cst-dts-gen": "^11.1.1",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.2.0",
     "eslint": "^10.0.0",

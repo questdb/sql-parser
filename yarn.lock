@@ -5,7 +5,7 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"@chevrotain/cst-dts-gen@npm:11.1.1":
+"@chevrotain/cst-dts-gen@npm:11.1.1, @chevrotain/cst-dts-gen@npm:^11.1.1":
   version: 11.1.1
   resolution: "@chevrotain/cst-dts-gen@npm:11.1.1"
   dependencies:
@@ -419,6 +419,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@questdb/sql-parser@workspace:."
   dependencies:
+    "@chevrotain/cst-dts-gen": "npm:^11.1.1"
     "@eslint/js": "npm:^10.0.1"
     "@types/node": "npm:^25.2.0"
     chevrotain: "npm:^11.1.1"

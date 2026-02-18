@@ -210,11 +210,18 @@ import { keywords, functions, dataTypes, operators, constants } from "@questdb/s
 ## Development
 
 ```bash
-yarn              # Install dependencies
-yarn build        # Compile TypeScript
-yarn test         # Run all tests
-yarn test:watch   # Run tests in watch mode
+yarn                # Install dependencies
+yarn build          # Compile TypeScript (tsup + tsc)
+yarn test           # Run all tests (6,100+ tests)
+yarn test:watch     # Run tests in watch mode
+yarn typecheck      # Type-check without emitting
+yarn lint           # Run ESLint
+yarn lint:fix       # Auto-fix lint issues
+yarn generate:cst   # Regenerate CST type definitions from parser grammar
+yarn clean          # Remove dist/ and coverage/
 ```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the full development workflow guide — how to add keywords, statement types, modify autocomplete, and more.
 
 ## License
 

@@ -590,9 +590,7 @@ export type CreateTableBodyCstChildren = {
   If?: IToken[];
   Not?: IToken[];
   Exists?: IToken[];
-  stringOrQualifiedName?: StringOrQualifiedNameCstNode[];
-  StringLiteral?: (IToken)[];
-  qualifiedName?: (QualifiedNameCstNode)[];
+  stringOrQualifiedName: StringOrQualifiedNameCstNode[];
   As?: IToken[];
   LParen?: (IToken)[];
   selectStatement?: SelectStatementCstNode[];
@@ -602,6 +600,7 @@ export type CreateTableBodyCstChildren = {
   indexDefinition?: (IndexDefinitionCstNode)[];
   columnDefinition?: (ColumnDefinitionCstNode)[];
   Like?: IToken[];
+  qualifiedName?: QualifiedNameCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   Partition?: IToken[];
@@ -626,6 +625,7 @@ export type CreateTableBodyCstChildren = {
   tableParam?: (TableParamCstNode)[];
   In?: (IToken)[];
   Volume?: IToken[];
+  StringLiteral?: IToken[];
   identifier?: IdentifierCstNode[];
   dedupClause?: DedupClauseCstNode[];
   Owned?: IToken[];
@@ -1893,10 +1893,10 @@ export interface Ipv4ContainmentExpressionCstNode extends CstNode {
 
 export type Ipv4ContainmentExpressionCstChildren = {
   additiveExpression: (AdditiveExpressionCstNode)[];
-  IPv4ContainedBy?: IToken[];
   IPv4ContainedByOrEqual?: IToken[];
-  IPv4Contains?: IToken[];
+  IPv4ContainedBy?: IToken[];
   IPv4ContainsOrEqual?: IToken[];
+  IPv4Contains?: IToken[];
 };
 
 export interface AdditiveExpressionCstNode extends CstNode {
