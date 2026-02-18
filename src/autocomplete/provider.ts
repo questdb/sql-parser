@@ -80,6 +80,7 @@ function getIdentifierSuggestionScope(
   lastTokenName?: string,
   prevTokenName?: string,
   rawLastTokenName?: string,
+  rawPrevTokenName?: string,
 ): {
   includeColumns: boolean
   includeTables: boolean
@@ -87,6 +88,20 @@ function getIdentifierSuggestionScope(
   // Expression-end tokens indicate alias / post-expression position.
   // e.g., "SELECT symbol |" or "FROM trades |" — no columns expected.
   if (rawLastTokenName && isExpressionEnd(rawLastTokenName)) {
+    return { includeColumns: false, includeTables: false }
+  }
+
+  // Star (*) is context-dependent: it's a wildcard after SELECT/comma/LParen,
+  // but multiplication after an expression (identifier, number, rparen).
+  // "SELECT * |"      → wildcard, suppress columns (alias/keyword position)
+  // "SELECT price * |" → multiplication, suggest columns for RHS
+  if (rawLastTokenName === "Star") {
+    if (rawPrevTokenName && isExpressionEnd(rawPrevTokenName)) {
+      // Multiplication: previous token is an expression-end, so * is an operator.
+      // The user needs columns/functions for the right-hand side.
+      return { includeColumns: true, includeTables: true }
+    }
+    // Wildcard: no expression before *, e.g., SELECT *, t.*, or start of expression
     return { includeColumns: false, includeTables: false }
   }
 
@@ -156,6 +171,7 @@ export function createAutocompleteProvider(
         cteColumns,
         tokensBefore,
         isMidWord,
+        qualifiedTableRef,
       } = getContentAssist(query, cursorOffset)
 
       // Merge CTE columns into the schema so getColumnsInScope() can find them
@@ -166,6 +182,43 @@ export function createAutocompleteProvider(
               columns: { ...normalizedSchema.columns, ...cteColumns },
             }
           : normalizedSchema
+
+      // When mid-word, the last token in tokensBefore is a partial word
+      // the user is still typing. It may have been captured as a table name
+      // by extractTables (e.g., "FROM te" → {table: "te"}). Filter it out
+      // to prevent suggesting the incomplete text back to the user.
+      let effectiveTablesInScope = tablesInScope
+      if (isMidWord && tokensBefore.length > 0) {
+        const partialLower =
+          tokensBefore[tokensBefore.length - 1].image.toLowerCase()
+        const cteNameSet = new Set(Object.keys(cteColumns))
+        const schemaLower = new Set(
+          normalizedSchema.tables.map((t) => t.name.toLowerCase()),
+        )
+        effectiveTablesInScope = tablesInScope.filter((t) => {
+          const lower = t.table.toLowerCase()
+          return (
+            lower !== partialLower ||
+            cteNameSet.has(lower) ||
+            schemaLower.has(lower)
+          )
+        })
+      }
+
+      // When the cursor is in a qualified reference (e.g., "t1." or "trades."),
+      // resolve the qualifier against tablesInScope aliases/names and filter
+      // so only that table's columns are suggested.
+      if (qualifiedTableRef && effectiveTablesInScope.length > 1) {
+        const qualifierLower = qualifiedTableRef.toLowerCase()
+        const matched = effectiveTablesInScope.filter(
+          (t) =>
+            t.alias?.toLowerCase() === qualifierLower ||
+            t.table.toLowerCase() === qualifierLower,
+        )
+        if (matched.length > 0) {
+          effectiveTablesInScope = matched
+        }
+      }
 
       // If parser returned valid next tokens, use them
       if (nextTokenTypes.length > 0) {
@@ -181,15 +234,20 @@ export function createAutocompleteProvider(
           tokensForScope.length > 0
             ? tokensForScope[tokensForScope.length - 1]?.tokenType?.name
             : undefined
+        const rawPrevTokenName =
+          tokensForScope.length > 1
+            ? tokensForScope[tokensForScope.length - 2]?.tokenType?.name
+            : undefined
         const scope = getIdentifierSuggestionScope(
           lastTokenName,
           prevTokenName,
           rawLastTokenName,
+          rawPrevTokenName,
         )
         return buildSuggestions(
           nextTokenTypes,
           effectiveSchema,
-          tablesInScope,
+          effectiveTablesInScope,
           { ...scope, isMidWord },
         )
       }

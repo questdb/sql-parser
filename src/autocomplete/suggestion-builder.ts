@@ -28,6 +28,7 @@ import type { TableRef } from "./content-assist"
  */
 interface ColumnWithTable extends ColumnInfo {
   tableName: string
+  tableAlias?: string
 }
 
 /**
@@ -48,6 +49,7 @@ function getColumnsInScope(
       columns.push({
         ...col,
         tableName: tableRef.table,
+        tableAlias: tableRef.alias,
       })
     }
   }
@@ -157,28 +159,75 @@ export function buildSuggestions(
       : []
 
     // Add columns with HIGH priority (they should appear first).
-    // Deduplicate by column name, collecting all table names per column.
+    // When a column name appears from multiple distinct aliased table refs
+    // (e.g., self-join: trades t1 JOIN trades t2), emit alias-qualified
+    // suggestions (e.g., "t1.amount", "t2.amount") to avoid ambiguity.
+    // Otherwise, emit a single bare column name.
     if (includeColumns) {
-      const columnMap = new Map<string, { type: string; tables: string[] }>()
+      // Group columns by name, collecting each source (alias/table + type).
+      const columnMap = new Map<
+        string,
+        {
+          sources: {
+            qualifier: string
+            type: string
+            hasAlias: boolean
+          }[]
+        }
+      >()
       for (const col of columnsInScope) {
+        const qualifier = col.tableAlias ?? col.tableName
         const existing = columnMap.get(col.name)
         if (existing) {
-          if (!existing.tables.includes(col.tableName)) {
-            existing.tables.push(col.tableName)
+          // Only add if this qualifier is new (avoid duplicates from same alias)
+          if (!existing.sources.some((s) => s.qualifier === qualifier)) {
+            existing.sources.push({
+              qualifier,
+              type: col.type,
+              hasAlias: !!col.tableAlias,
+            })
           }
         } else {
-          columnMap.set(col.name, { type: col.type, tables: [col.tableName] })
+          columnMap.set(col.name, {
+            sources: [
+              { qualifier, type: col.type, hasAlias: !!col.tableAlias },
+            ],
+          })
         }
       }
       for (const [colName, info] of columnMap) {
-        suggestions.unshift({
-          label: colName,
-          kind: SuggestionKind.Column,
-          insertText: colName,
-          detail: ` (${info.tables.sort().join(", ")})`,
-          description: info.tables.length > 1 ? "" : info.type,
-          priority: SuggestionPriority.High,
-        })
+        // Only qualify when there are multiple sources and at least one has
+        // an explicit alias. This covers self-joins (trades t1 JOIN trades t2)
+        // without qualifying columns from unrelated CTEs that happen to share
+        // column names.
+        const needsQualification =
+          info.sources.length > 1 && info.sources.some((s) => s.hasAlias)
+        if (needsQualification) {
+          // Ambiguous: emit one qualified suggestion per source
+          for (const source of info.sources) {
+            const qualified = `${source.qualifier}.${colName}`
+            suggestions.unshift({
+              label: qualified,
+              kind: SuggestionKind.Column,
+              insertText: qualified,
+              detail: ` (${source.qualifier})`,
+              description: source.type,
+              filterText: colName,
+              priority: SuggestionPriority.High,
+            })
+          }
+        } else {
+          // Unambiguous: emit bare column name
+          const source = info.sources[0]
+          suggestions.unshift({
+            label: colName,
+            kind: SuggestionKind.Column,
+            insertText: colName,
+            detail: ` (${source.qualifier})`,
+            description: source.type,
+            priority: SuggestionPriority.High,
+          })
+        }
       }
     }
 
@@ -186,7 +235,10 @@ export function buildSuggestions(
     // This avoids flooding the list with ~300 functions when the user
     // just typed "SELECT " with no prefix. Functions are valid in both
     // expression context (SELECT md5(...)) and table context (FROM long_sequence(...)).
-    if (isMidWord) {
+    // Skip functions in post-expression position (includeColumns=false,
+    // includeTables=false) — e.g., after "SELECT *" the user is typing a
+    // keyword (FROM) or alias, not a function call.
+    if (isMidWord && (includeColumns || includeTables)) {
       for (const fn of functions) {
         if (seenKeywords.has(fn.toUpperCase())) continue
         suggestions.push({

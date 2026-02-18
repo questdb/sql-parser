@@ -123,9 +123,27 @@ describe("createAutocompleteProvider", () => {
       expect(labels).toContain("RENAME")
     })
 
-    it("suggests FROM after SELECT *", () => {
-      const labels = getLabelsAt(provider, "SELECT * ")
+    it("suggests FROM after SELECT * and does NOT suggest columns", () => {
+      const suggestions = provider.getSuggestions("SELECT * ", 9)
+      const labels = suggestions.map((s) => s.label)
       expect(labels).toContain("FROM")
+      // After SELECT *, all columns are already selected — suggesting
+      // column names makes no sense. Only keywords should appear.
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns).toHaveLength(0)
+    })
+
+    it("suggests FROM when typing 'FR' after SELECT * (mid-word)", () => {
+      const suggestions = provider.getSuggestions("SELECT * FR", 11)
+      const labels = suggestions.map((s) => s.label)
+      expect(labels).toContain("FROM")
+      // No columns, tables, or functions should appear — only keywords
+      const nonKeywords = suggestions.filter(
+        (s) => s.kind !== SuggestionKind.Keyword,
+      )
+      expect(nonKeywords).toHaveLength(0)
     })
 
     it("suggests BY after ORDER", () => {
@@ -205,6 +223,62 @@ describe("createAutocompleteProvider", () => {
         SuggestionKind.Table,
       )
       expect(tables.length).toBe(3)
+    })
+
+    it("should NOT suggest the partial word itself as a table (phantom suggestion)", () => {
+      // Typing "FROM te" — "te" is not a real table but gets captured by
+      // extractTables because it follows FROM. It must not be suggested back.
+      const tables = getSuggestionsOfKind(
+        provider,
+        "SELECT amount FROM te",
+        SuggestionKind.Table,
+      )
+      const labels = tables.map((s) => s.label)
+      expect(labels).not.toContain("te")
+      // Real schema tables should still be present
+      expect(labels).toContain("trades")
+      expect(labels).toContain("orders")
+      expect(labels).toContain("users")
+    })
+
+    it("should NOT suggest longer partial words as tables", () => {
+      const tables = getSuggestionsOfKind(
+        provider,
+        "SELECT amount FROM tes",
+        SuggestionKind.Table,
+      )
+      const labels = tables.map((s) => s.label)
+      expect(labels).not.toContain("tes")
+    })
+
+    it("should NOT suggest partial word after JOIN", () => {
+      const tables = getSuggestionsOfKind(
+        provider,
+        "SELECT * FROM trades JOIN or",
+        SuggestionKind.Table,
+      )
+      const labels = tables.map((s) => s.label)
+      expect(labels).not.toContain("or")
+      expect(labels).toContain("orders")
+    })
+
+    it("should still suggest real table when partial matches schema table", () => {
+      // Typing "trades" mid-word — it IS a real table, should be kept
+      const tables = getSuggestionsOfKind(
+        provider,
+        "SELECT * FROM trades",
+        SuggestionKind.Table,
+      )
+      const labels = tables.map((s) => s.label)
+      expect(labels).toContain("trades")
+    })
+
+    it("should still suggest CTE name when partial matches CTE", () => {
+      const sql =
+        "WITH my_cte AS (SELECT symbol FROM trades) SELECT * FROM my_cte"
+      const tables = getSuggestionsOfKind(provider, sql, SuggestionKind.Table)
+      const labels = tables.map((s) => s.label)
+      expect(labels).toContain("my_cte")
     })
   })
 
@@ -1250,8 +1324,7 @@ describe("CTE autocomplete", () => {
   })
 
   it("CTE with SELECT * should fallback to schema columns", () => {
-    const sql =
-      "WITH cte AS (SELECT * FROM users LIMIT 10) SELECT  FROM cte"
+    const sql = "WITH cte AS (SELECT * FROM users LIMIT 10) SELECT  FROM cte"
     const offset = sql.indexOf(" FROM cte")
     const suggestions = provider.getSuggestions(sql, offset)
     const cols = suggestions
@@ -1284,8 +1357,7 @@ describe("CTE autocomplete", () => {
   })
 
   it("should not produce duplicate CTE table suggestions", () => {
-    const sql =
-      "WITH cte AS (SELECT symbol FROM trades) SELECT * FROM "
+    const sql = "WITH cte AS (SELECT symbol FROM trades) SELECT * FROM "
     const tables = provider
       .getSuggestions(sql, sql.length)
       .filter((s) => s.kind === SuggestionKind.Table)
@@ -1355,8 +1427,7 @@ describe("CTE autocomplete", () => {
   })
 
   it("should suggest columns inside CTE body from inner FROM table", () => {
-    const sql =
-      "WITH cte AS (SELECT  FROM trades) SELECT * FROM cte"
+    const sql = "WITH cte AS (SELECT  FROM trades) SELECT * FROM cte"
     const offset = sql.indexOf("SELECT  FROM") + "SELECT ".length
     const suggestions = provider.getSuggestions(sql, offset)
     const cols = suggestions
@@ -1377,5 +1448,1214 @@ describe("CTE autocomplete", () => {
     expect(cols).toEqual([])
     const kws = suggestions.map((s) => s.label)
     expect(kws).toContain("FROM")
+  })
+
+  // ---------------------------------------------------------------------------
+  // Qualified column references: alias/table filtering in JOINs
+  // ---------------------------------------------------------------------------
+
+  describe("qualified column references with aliases", () => {
+    it("t1. in JOIN WHERE should only suggest aliased table columns", () => {
+      const sql =
+        "SELECT * FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id WHERE t1."
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // t1 = trades
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).toContain("amount")
+      expect(labels).toContain("timestamp")
+      // Should NOT include orders columns
+      expect(labels).not.toContain("id")
+      expect(labels).not.toContain("status")
+    })
+
+    it("t2. in JOIN WHERE should only suggest aliased table columns", () => {
+      const sql =
+        "SELECT * FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id WHERE t2."
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // t2 = orders
+      expect(labels).toContain("id")
+      expect(labels).toContain("status")
+      // Should NOT include trades columns
+      expect(labels).not.toContain("symbol")
+      expect(labels).not.toContain("price")
+    })
+
+    it("table name (not alias) before dot should filter in JOIN", () => {
+      const sql =
+        "SELECT * FROM trades JOIN orders ON trades.symbol = orders.id WHERE trades."
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).not.toContain("id")
+      expect(labels).not.toContain("status")
+    })
+
+    it("mid-word after alias dot should filter by alias table", () => {
+      const sql =
+        "SELECT * FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id WHERE t1.s"
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // t1 = trades, so only trades columns should appear
+      expect(labels).toContain("symbol")
+      // "status" is from orders (t2)
+      expect(labels).not.toContain("status")
+    })
+
+    it("qualified ref in SELECT list should filter in JOIN", () => {
+      const sql =
+        "SELECT t1. FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id"
+      const offset = sql.indexOf("t1.") + 3
+      const cols = getSuggestionsOfKind(
+        provider,
+        sql,
+        SuggestionKind.Column,
+        offset,
+      )
+      const labels = cols.map((s) => s.label)
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).not.toContain("id")
+      expect(labels).not.toContain("status")
+    })
+
+    it("CTE qualified ref should only suggest that CTE's columns", () => {
+      const sql =
+        "WITH a AS (SELECT symbol FROM trades), b AS (SELECT id FROM orders) SELECT a. FROM a, b"
+      const offset = sql.indexOf("a.") + 2
+      const cols = getSuggestionsOfKind(
+        provider,
+        sql,
+        SuggestionKind.Column,
+        offset,
+      )
+      const labels = cols.map((s) => s.label)
+      // CTE "a" only has "symbol"
+      expect(labels).toContain("symbol")
+      // CTE "b" has "id" — should NOT appear for a.
+      expect(labels).not.toContain("id")
+    })
+
+    it("single table with alias should still show its columns (no regression)", () => {
+      const sql = "SELECT * FROM trades t WHERE t."
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).toContain("amount")
+      expect(labels).toContain("timestamp")
+    })
+
+    it("unqualified position should still show all columns from all tables", () => {
+      const sql =
+        "SELECT * FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id WHERE "
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // Unqualified — should include columns from both tables
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).toContain("id")
+      expect(labels).toContain("status")
+    })
+
+    it("ASOF JOIN alias should filter correctly", () => {
+      const sql =
+        "SELECT t. FROM trades t ASOF JOIN orders o ON t.symbol = o.id"
+      const offset = sql.indexOf("t.") + 2
+      const cols = getSuggestionsOfKind(
+        provider,
+        sql,
+        SuggestionKind.Column,
+        offset,
+      )
+      const labels = cols.map((s) => s.label)
+      expect(labels).toContain("symbol")
+      expect(labels).not.toContain("id")
+    })
+
+    it("three-table JOIN: each alias resolves to the correct table", () => {
+      const sql =
+        "SELECT * FROM trades t JOIN orders o ON t.symbol = o.id JOIN users u ON o.status = u.name WHERE u."
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // u = users
+      expect(labels).toContain("name")
+      expect(labels).toContain("email")
+      // Should NOT include trades or orders columns
+      expect(labels).not.toContain("symbol")
+      expect(labels).not.toContain("price")
+      expect(labels).not.toContain("id")
+      expect(labels).not.toContain("status")
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Ambiguous columns: same table joined with different aliases
+  // ---------------------------------------------------------------------------
+
+  describe("ambiguous column qualification in self-joins", () => {
+    it("self-join should suggest alias-qualified columns", () => {
+      const sql =
+        "SELECT * FROM trades t1 INNER JOIN trades t2 ON symbol WHERE "
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // Both t1 and t2 point to "trades", so columns are ambiguous.
+      // Should emit qualified names like t1.symbol, t2.symbol.
+      expect(labels).toContain("t1.symbol")
+      expect(labels).toContain("t2.symbol")
+      expect(labels).toContain("t1.price")
+      expect(labels).toContain("t2.price")
+      // Should NOT emit bare unqualified names
+      expect(labels).not.toContain("symbol")
+      expect(labels).not.toContain("price")
+      expect(labels).not.toContain("amount")
+    })
+
+    it("self-join insertText should include alias qualifier", () => {
+      const sql =
+        "SELECT * FROM trades t1 INNER JOIN trades t2 ON symbol WHERE "
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const insertTexts = cols.map((s) => s.insertText)
+      expect(insertTexts).toContain("t1.symbol")
+      expect(insertTexts).toContain("t2.symbol")
+    })
+
+    it("self-join with qualified ref should still filter to one alias", () => {
+      const sql =
+        "SELECT * FROM trades t1 INNER JOIN trades t2 ON t1.symbol = t2.symbol WHERE t1."
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // t1. qualifier → only trades columns for t1
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).toContain("amount")
+      expect(labels).toContain("timestamp")
+      // Should be bare names (only one source after filtering)
+      expect(labels).not.toContain("t1.symbol")
+      expect(labels).not.toContain("t2.symbol")
+    })
+
+    it("different tables with no shared columns should remain unqualified", () => {
+      const sql =
+        "SELECT * FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id WHERE "
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const labels = cols.map((s) => s.label)
+      // trades and orders have NO shared column names → all unambiguous
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).toContain("id")
+      expect(labels).toContain("status")
+      expect(labels).not.toContain("t1.symbol")
+      expect(labels).not.toContain("t2.id")
+    })
+
+    it("self-join column detail should show alias, not table name", () => {
+      const sql =
+        "SELECT * FROM trades t1 INNER JOIN trades t2 ON symbol WHERE "
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const t1Symbol = cols.find((s) => s.label === "t1.symbol")
+      const t2Symbol = cols.find((s) => s.label === "t2.symbol")
+      expect(t1Symbol?.detail).toContain("t1")
+      expect(t2Symbol?.detail).toContain("t2")
+    })
+
+    it("self-join filterText should use bare column name for typing", () => {
+      const sql =
+        "SELECT * FROM trades t1 INNER JOIN trades t2 ON symbol WHERE "
+      const cols = getSuggestionsOfKind(provider, sql, SuggestionKind.Column)
+      const t1Symbol = cols.find((s) => s.label === "t1.symbol")
+      // filterText should be bare "symbol" so typing "sym" matches it
+      expect(t1Symbol?.filterText).toBe("symbol")
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Doc-validated table alias tests
+  // Queries sourced from ~/Desktop/questdb/documentation/documentation/query/sql/
+  // ---------------------------------------------------------------------------
+
+  describe("table alias scenarios from QuestDB documentation", () => {
+    // Extended schema with overlapping columns between tables, matching
+    // the documentation examples (market_data, core_price, prices, etc.)
+    const docSchema = {
+      tables: [
+        { name: "trades", designatedTimestamp: "timestamp" },
+        { name: "orders", designatedTimestamp: "timestamp" },
+        { name: "market_data", designatedTimestamp: "timestamp" },
+        { name: "core_price", designatedTimestamp: "timestamp" },
+        { name: "prices", designatedTimestamp: "timestamp" },
+        { name: "spreads", designatedTimestamp: "timestamp" },
+      ],
+      columns: {
+        trades: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "SYMBOL" },
+          { name: "price", type: "DOUBLE" },
+          { name: "amount", type: "DOUBLE" },
+          { name: "side", type: "SYMBOL" },
+        ],
+        orders: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "SYMBOL" },
+          { name: "id", type: "LONG" },
+          { name: "status", type: "STRING" },
+        ],
+        market_data: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "SYMBOL" },
+          { name: "bid_price", type: "DOUBLE" },
+          { name: "ask_price", type: "DOUBLE" },
+        ],
+        core_price: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "SYMBOL" },
+          { name: "bid_price", type: "DOUBLE" },
+          { name: "ask_price", type: "DOUBLE" },
+        ],
+        prices: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "SYMBOL" },
+          { name: "price", type: "DOUBLE" },
+          { name: "bid", type: "DOUBLE" },
+          { name: "ask", type: "DOUBLE" },
+        ],
+        spreads: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "SYMBOL" },
+          { name: "spread", type: "DOUBLE" },
+        ],
+      },
+    }
+    const docProvider = createAutocompleteProvider(docSchema)
+
+    // =======================================================================
+    // Doc: join.md — LT JOIN self-join with aliases (tradesA, tradesB)
+    // Pattern: FROM miniTrades tradesA LT JOIN miniTrades tradesB
+    // =======================================================================
+
+    describe("LT JOIN self-join (join.md)", () => {
+      // Doc: "LT join is often useful to join a table to itself in order to
+      // get preceding values for every row."
+      it("should qualify columns in LT JOIN self-join", () => {
+        const sql = "SELECT tradesA. FROM trades tradesA LT JOIN trades tradesB"
+        const offset = sql.indexOf("tradesA.") + 8
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // Qualified ref "tradesA." → filter to tradesA only, bare names
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("price")
+        expect(labels).toContain("symbol")
+        expect(labels).not.toContain("tradesB.timestamp")
+        expect(labels).not.toContain("tradesB.price")
+      })
+
+      it("should qualify columns at unqualified position in LT JOIN self-join", () => {
+        const sql = "SELECT  FROM trades tradesA LT JOIN trades tradesB"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // Self-join: all columns ambiguous → must be alias-qualified
+        expect(labels).toContain("tradesA.timestamp")
+        expect(labels).toContain("tradesB.timestamp")
+        expect(labels).toContain("tradesA.price")
+        expect(labels).toContain("tradesB.price")
+        expect(labels).not.toContain("timestamp")
+        expect(labels).not.toContain("price")
+      })
+
+      it("tradesB. should filter to tradesB columns only", () => {
+        const sql =
+          "SELECT tradesA.timestamp, tradesB. FROM trades tradesA LT JOIN trades tradesB"
+        const offset = sql.indexOf("tradesB.") + 8
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("price")
+        // Bare names only — filtered to single source
+        expect(labels).not.toContain("tradesA.timestamp")
+      })
+    })
+
+    // =======================================================================
+    // Doc: join.md — CROSS JOIN self-join with AS alias
+    // Pattern: FROM t CROSS JOIN t AS t2
+    // =======================================================================
+
+    describe("CROSS JOIN self-join with AS alias (join.md)", () => {
+      // Doc: "detect potential duplicates, with same values and within a
+      // 10 seconds range" — FROM t CROSS JOIN t AS t2 WHERE t.timestamp < t2.timestamp ...
+      it("should qualify columns in CROSS JOIN self-join WHERE clause", () => {
+        // Use explicit columns in CTE (SELECT * can't resolve columns)
+        const sql =
+          "WITH t AS (SELECT timestamp, symbol, price, amount, side FROM trades) SELECT * FROM t CROSS JOIN t AS t2 WHERE "
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+        )
+        const labels = cols.map((s) => s.label)
+        // "t" CTE joined with "t2" alias — same underlying columns,
+        // so they should be qualified
+        expect(labels).toContain("t.timestamp")
+        expect(labels).toContain("t2.timestamp")
+        expect(labels).toContain("t.symbol")
+        expect(labels).toContain("t2.symbol")
+        expect(labels).not.toContain("timestamp")
+        expect(labels).not.toContain("symbol")
+      })
+
+      it("qualified ref in CROSS JOIN self-join filters to one alias", () => {
+        const sql =
+          "WITH t AS (SELECT timestamp, symbol, price, amount, side FROM trades) SELECT t2. FROM t CROSS JOIN t AS t2 WHERE t.timestamp < t2.timestamp"
+        const offset = sql.indexOf("t2.") + 3
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("price")
+        // Should not include t. qualified
+        expect(labels).not.toContain("t.timestamp")
+      })
+    })
+
+    // =======================================================================
+    // Doc: asof-join.md — ASOF JOIN with single-letter aliases (m, p)
+    // Pattern: FROM market_data m ASOF JOIN core_price p
+    // =======================================================================
+
+    describe("ASOF JOIN with aliases (asof-join.md)", () => {
+      // Doc: SELECT m.timestamp, m.symbol, p.timestamp, p.symbol, p.bid_price
+      // FROM market_data m ASOF JOIN core_price p
+      it("m. should suggest only market_data columns", () => {
+        const sql = "SELECT m. FROM market_data m ASOF JOIN core_price p"
+        const offset = sql.indexOf("m.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("bid_price")
+        expect(labels).toContain("ask_price")
+        // Should NOT include p's columns
+        expect(labels).not.toContain("p.timestamp")
+        expect(labels).not.toContain("p.symbol")
+      })
+
+      it("p. should suggest only core_price columns", () => {
+        const sql = "SELECT p. FROM market_data m ASOF JOIN core_price p"
+        const offset = sql.indexOf("p.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("bid_price")
+        expect(labels).not.toContain("m.timestamp")
+      })
+
+      it("unqualified position should qualify shared columns between market_data and core_price", () => {
+        const sql = "SELECT  FROM market_data m ASOF JOIN core_price p"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // market_data and core_price share: timestamp, symbol, bid_price, ask_price
+        // All columns overlap → all must be qualified
+        expect(labels).toContain("m.timestamp")
+        expect(labels).toContain("p.timestamp")
+        expect(labels).toContain("m.symbol")
+        expect(labels).toContain("p.symbol")
+        expect(labels).toContain("m.bid_price")
+        expect(labels).toContain("p.bid_price")
+        expect(labels).not.toContain("timestamp")
+        expect(labels).not.toContain("symbol")
+        expect(labels).not.toContain("bid_price")
+      })
+
+      it("ASOF JOIN with ON clause: alias filtering still works", () => {
+        const sql =
+          "SELECT m. FROM market_data m ASOF JOIN core_price p ON (symbol)"
+        const offset = sql.indexOf("m.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("bid_price")
+        expect(labels).not.toContain("p.bid_price")
+      })
+    })
+
+    // =======================================================================
+    // Doc: join.md — INNER JOIN with CTE aliases (Lookup, ManyTrades)
+    // Pattern: FROM ManyTrades INNER JOIN Lookup ON Lookup.symbol = Manytrades.symbol
+    // =======================================================================
+
+    describe("INNER JOIN with CTE table references (join.md)", () => {
+      // Doc: CTE names used directly as table names, referenced with
+      // CTE_name.column in ON clause
+      it("CTE name as qualifier should filter correctly", () => {
+        const sql =
+          "WITH Lookup AS (SELECT symbol FROM trades) SELECT Lookup. FROM trades INNER JOIN Lookup ON Lookup.symbol = trades.symbol"
+        const offset = sql.indexOf("Lookup.") + 7
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // Lookup CTE only has "symbol"
+        expect(labels).toContain("symbol")
+        // trades columns should NOT appear
+        expect(labels).not.toContain("price")
+        expect(labels).not.toContain("amount")
+      })
+    })
+
+    // =======================================================================
+    // Doc: join.md — SPLICE JOIN with CTE names (buy, sell)
+    // Pattern: FROM buy SPLICE JOIN sell
+    // =======================================================================
+
+    describe("SPLICE JOIN with CTE aliases (join.md)", () => {
+      // Doc: SELECT buy.timestamp, sell.timestamp, buy.price, sell.price
+      // FROM buy SPLICE JOIN sell
+      it("should suggest CTE columns via qualified ref after SPLICE JOIN", () => {
+        const sql =
+          "WITH buy AS (SELECT timestamp, price FROM trades), sell AS (SELECT timestamp, price FROM trades) SELECT buy. FROM buy SPLICE JOIN sell"
+        const offset = sql.indexOf("buy.") + 4
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("price")
+        expect(labels).not.toContain("sell.timestamp")
+      })
+
+      it("unqualified position: CTE names without aliases remain bare (no hasAlias)", () => {
+        // CTEs referenced by name (no explicit alias via AS) do not trigger
+        // alias qualification. This is correct — the user must add aliases
+        // explicitly if they want qualified column references.
+        const sql =
+          "WITH buy AS (SELECT timestamp, price FROM trades), sell AS (SELECT timestamp, price FROM trades) SELECT  FROM buy SPLICE JOIN sell"
+        const offset = sql.indexOf("SELECT  FROM") + "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // CTE names without aliases → no qualification
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("price")
+        expect(labels).not.toContain("buy.timestamp")
+        expect(labels).not.toContain("sell.timestamp")
+      })
+
+      it("SPLICE JOIN with explicit aliases should qualify shared CTE columns", () => {
+        const sql =
+          "WITH buy AS (SELECT timestamp, price FROM trades), sell AS (SELECT timestamp, price FROM trades) SELECT  FROM buy b SPLICE JOIN sell s"
+        const offset = sql.indexOf("SELECT  FROM") + "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // With explicit aliases b and s → qualification triggers
+        expect(labels).toContain("b.timestamp")
+        expect(labels).toContain("s.timestamp")
+        expect(labels).toContain("b.price")
+        expect(labels).toContain("s.price")
+        expect(labels).not.toContain("timestamp")
+        expect(labels).not.toContain("price")
+      })
+    })
+
+    // =======================================================================
+    // Doc: join.md — JOIN with ON (column) shorthand
+    // Pattern: FROM mayTrades JOIN JuneTrades ON (symbol, side)
+    // =======================================================================
+
+    describe("JOIN ON (column) shorthand with CTE aliases (join.md)", () => {
+      it("CTE qualifier should filter to that CTE's columns", () => {
+        const sql =
+          "WITH mayTrades AS (SELECT symbol, side, count() AS total FROM trades), juneTrades AS (SELECT symbol, side, count() AS total FROM trades) SELECT mayTrades. FROM mayTrades JOIN juneTrades ON (symbol, side)"
+        const offset = sql.indexOf("mayTrades. FROM") + "mayTrades.".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("side")
+        expect(labels).toContain("total")
+      })
+    })
+
+    // =======================================================================
+    // Doc: update.md — UPDATE FROM with aliases (s, p)
+    // Pattern: UPDATE spreads s SET spread = p.ask - p.bid FROM prices p WHERE s.symbol = p.symbol
+    // =======================================================================
+
+    describe("UPDATE FROM with aliases (update.md)", () => {
+      it("p. should suggest prices columns in UPDATE FROM context", () => {
+        const sql =
+          "UPDATE spreads s SET spread = p.ask - p.bid FROM prices p WHERE p."
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("price")
+        expect(labels).toContain("bid")
+        expect(labels).toContain("ask")
+      })
+    })
+
+    // =======================================================================
+    // Mixed-ambiguity: some columns overlap, some don't
+    // Pattern: trades (has "price") JOIN prices (has "price") → "price"
+    //          is ambiguous, but "amount" (trades-only) and "bid" (prices-only)
+    //          are not.
+    // =======================================================================
+
+    describe("partial column overlap between different tables", () => {
+      it("shared columns should be qualified, unique columns should be bare", () => {
+        const sql = "SELECT  FROM trades t JOIN prices p ON t.symbol = p.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+
+        // Shared columns: timestamp, symbol, price → qualified
+        expect(labels).toContain("t.timestamp")
+        expect(labels).toContain("p.timestamp")
+        expect(labels).toContain("t.symbol")
+        expect(labels).toContain("p.symbol")
+        expect(labels).toContain("t.price")
+        expect(labels).toContain("p.price")
+        expect(labels).not.toContain("timestamp")
+        expect(labels).not.toContain("symbol")
+        expect(labels).not.toContain("price")
+
+        // Unique columns: amount (trades), side (trades), bid (prices), ask (prices) → bare
+        expect(labels).toContain("amount")
+        expect(labels).toContain("side")
+        expect(labels).toContain("bid")
+        expect(labels).toContain("ask")
+        expect(labels).not.toContain("t.amount")
+        expect(labels).not.toContain("p.bid")
+      })
+
+      it("qualified ref resolves past ambiguity to single table", () => {
+        const sql =
+          "SELECT t. FROM trades t JOIN prices p ON t.symbol = p.symbol"
+        const offset = sql.indexOf("t.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // t. → only trades columns, bare names
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("price")
+        expect(labels).toContain("amount")
+        expect(labels).toContain("side")
+        expect(labels).not.toContain("bid")
+        expect(labels).not.toContain("ask")
+        expect(labels).not.toContain("t.price")
+      })
+
+      it("description should show type for qualified ambiguous columns", () => {
+        const sql = "SELECT  FROM trades t JOIN prices p ON t.symbol = p.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const tPrice = cols.find((s) => s.label === "t.price")
+        const pPrice = cols.find((s) => s.label === "p.price")
+        expect(tPrice).toBeDefined()
+        expect(pPrice).toBeDefined()
+        expect(tPrice!.description).toBe("DOUBLE")
+        expect(pPrice!.description).toBe("DOUBLE")
+      })
+    })
+
+    // =======================================================================
+    // Three-way JOIN with mixed overlap
+    // trades (timestamp, symbol, price, amount, side) +
+    // orders (timestamp, symbol, id, status) +
+    // prices (timestamp, symbol, price, bid, ask)
+    // → timestamp and symbol shared by all three → qualified
+    // → price shared by trades + prices → qualified
+    // → amount, side unique to trades → bare
+    // → id, status unique to orders → bare
+    // → bid, ask unique to prices → bare
+    // =======================================================================
+
+    describe("three-way JOIN with mixed column overlap", () => {
+      it("fully shared columns use all three aliases", () => {
+        const sql =
+          "SELECT  FROM trades t JOIN orders o ON t.symbol = o.symbol JOIN prices p ON t.symbol = p.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // timestamp: trades, orders, prices → 3 aliases
+        expect(labels).toContain("t.timestamp")
+        expect(labels).toContain("o.timestamp")
+        expect(labels).toContain("p.timestamp")
+        expect(labels).not.toContain("timestamp")
+
+        // symbol: trades, orders, prices → 3 aliases
+        expect(labels).toContain("t.symbol")
+        expect(labels).toContain("o.symbol")
+        expect(labels).toContain("p.symbol")
+        expect(labels).not.toContain("symbol")
+      })
+
+      it("partially shared columns use only overlapping aliases", () => {
+        const sql =
+          "SELECT  FROM trades t JOIN orders o ON t.symbol = o.symbol JOIN prices p ON t.symbol = p.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // price: trades + prices only → 2 aliases
+        expect(labels).toContain("t.price")
+        expect(labels).toContain("p.price")
+        expect(labels).not.toContain("o.price") // orders has no price column
+        expect(labels).not.toContain("price")
+      })
+
+      it("unique columns remain bare", () => {
+        const sql =
+          "SELECT  FROM trades t JOIN orders o ON t.symbol = o.symbol JOIN prices p ON t.symbol = p.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // Unique to trades
+        expect(labels).toContain("amount")
+        expect(labels).toContain("side")
+        expect(labels).not.toContain("t.amount")
+
+        // Unique to orders
+        expect(labels).toContain("id")
+        expect(labels).toContain("status")
+        expect(labels).not.toContain("o.id")
+
+        // Unique to prices
+        expect(labels).toContain("bid")
+        expect(labels).toContain("ask")
+        expect(labels).not.toContain("p.bid")
+      })
+
+      it("qualified ref in three-way JOIN isolates single table", () => {
+        const sql =
+          "SELECT o. FROM trades t JOIN orders o ON t.symbol = o.symbol JOIN prices p ON t.symbol = p.symbol"
+        const offset = sql.indexOf("o.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // o. → only orders columns
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("id")
+        expect(labels).toContain("status")
+        expect(labels).not.toContain("price")
+        expect(labels).not.toContain("bid")
+        expect(labels).not.toContain("amount")
+      })
+    })
+
+    // =======================================================================
+    // LEFT JOIN with aliases — doc: join.md
+    // Pattern: FROM ManyTrades LEFT OUTER JOIN Lookup ON Lookup.symbol = Manytrades.symbol
+    // =======================================================================
+
+    describe("LEFT JOIN with aliases (join.md)", () => {
+      it("LEFT JOIN alias filtering with qualified ref", () => {
+        const sql =
+          "SELECT t. FROM trades t LEFT JOIN orders o ON t.symbol = o.symbol"
+        const offset = sql.indexOf("t.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("price")
+        expect(labels).toContain("timestamp")
+        expect(labels).not.toContain("id")
+        expect(labels).not.toContain("status")
+      })
+
+      it("LEFT OUTER JOIN alias filtering with qualified ref", () => {
+        const sql =
+          "SELECT o. FROM trades t LEFT OUTER JOIN orders o ON t.symbol = o.symbol"
+        const offset = sql.indexOf("o.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("id")
+        expect(labels).toContain("status")
+        expect(labels).toContain("symbol")
+        expect(labels).not.toContain("price")
+        expect(labels).not.toContain("amount")
+      })
+    })
+
+    // =======================================================================
+    // Implicit JOIN (FROM a, b) with aliases
+    // Doc: join.md — FROM a, b WHERE a.id = b.id
+    // =======================================================================
+
+    describe("implicit join (comma-separated tables) with aliases", () => {
+      it("unqualified position with different tables shows qualified shared columns", () => {
+        const sql = "SELECT  FROM trades t, orders o WHERE t.symbol = o.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // timestamp and symbol are shared → qualified
+        expect(labels).toContain("t.timestamp")
+        expect(labels).toContain("o.timestamp")
+        expect(labels).toContain("t.symbol")
+        expect(labels).toContain("o.symbol")
+        // price, amount, side unique to trades → bare
+        expect(labels).toContain("price")
+        expect(labels).toContain("amount")
+        // id, status unique to orders → bare
+        expect(labels).toContain("id")
+        expect(labels).toContain("status")
+      })
+
+      it("qualified ref in implicit join isolates table", () => {
+        const sql =
+          "SELECT t. FROM trades t, orders o WHERE t.symbol = o.symbol"
+        const offset = sql.indexOf("t.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("price")
+        expect(labels).not.toContain("id")
+      })
+    })
+
+    // =======================================================================
+    // Suggestion priority invariants
+    // =======================================================================
+
+    describe("alias-qualified suggestion properties", () => {
+      it("qualified columns have High priority", () => {
+        const sql =
+          "SELECT  FROM trades t1 INNER JOIN trades t2 ON t1.symbol = t2.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        for (const col of cols) {
+          expect(col.priority).toBe(SuggestionPriority.High)
+        }
+      })
+
+      it("qualified column kind is Column", () => {
+        const sql =
+          "SELECT  FROM trades t1 INNER JOIN trades t2 ON t1.symbol = t2.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        expect(cols.length).toBeGreaterThan(0)
+        for (const col of cols) {
+          expect(col.kind).toBe(SuggestionKind.Column)
+        }
+      })
+
+      it("all qualified columns have matching label and insertText", () => {
+        const sql =
+          "SELECT  FROM trades t1 INNER JOIN trades t2 ON t1.symbol = t2.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        for (const col of cols) {
+          expect(col.insertText).toBe(col.label)
+        }
+      })
+
+      it("bare columns have no filterText set", () => {
+        const sql = "SELECT  FROM trades t WHERE "
+        const offset = sql.length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        for (const col of cols) {
+          // Bare columns should not have filterText
+          expect(col.filterText).toBeUndefined()
+        }
+      })
+
+      it("qualified columns always have filterText set to bare column name", () => {
+        const sql =
+          "SELECT  FROM trades t1 INNER JOIN trades t2 ON t1.symbol = t2.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        for (const col of cols) {
+          // filterText should be the bare column name (after the dot)
+          const bareName = col.label.split(".")[1]
+          expect(col.filterText).toBe(bareName)
+        }
+      })
+
+      it("qualified column detail contains the qualifier", () => {
+        const sql = "SELECT  FROM trades t JOIN prices p ON t.symbol = p.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        for (const col of cols) {
+          if (col.label.includes(".")) {
+            const qualifier = col.label.split(".")[0]
+            expect(col.detail).toContain(qualifier)
+          }
+        }
+      })
+    })
+
+    // =======================================================================
+    // Edge case: no aliases at all
+    // =======================================================================
+
+    describe("joins without aliases", () => {
+      it("tables without aliases use table name but do not qualify shared columns", () => {
+        const sql =
+          "SELECT  FROM trades JOIN orders ON trades.symbol = orders.symbol"
+        const offset = "SELECT ".length
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        // Without aliases, shared columns (timestamp, symbol) remain bare
+        // because the hasAlias check prevents qualification for entries
+        // without explicit aliases
+        expect(labels).toContain("timestamp")
+        expect(labels).toContain("symbol")
+        // Unique columns remain bare
+        expect(labels).toContain("price")
+        expect(labels).toContain("amount")
+        expect(labels).toContain("id")
+        expect(labels).toContain("status")
+      })
+    })
+
+    // =======================================================================
+    // Edge case: AS keyword with alias
+    // =======================================================================
+
+    describe("AS keyword alias syntax", () => {
+      it("FROM table AS alias: qualified ref works", () => {
+        const sql =
+          "SELECT t. FROM trades AS t JOIN orders AS o ON t.symbol = o.symbol"
+        const offset = sql.indexOf("t.") + 2
+        const cols = getSuggestionsOfKind(
+          docProvider,
+          sql,
+          SuggestionKind.Column,
+          offset,
+        )
+        const labels = cols.map((s) => s.label)
+        expect(labels).toContain("symbol")
+        expect(labels).toContain("price")
+        expect(labels).not.toContain("id")
+      })
+    })
+  })
+
+  // ===========================================================================
+  // String literal & quoted identifier suppression
+  // ===========================================================================
+  // The parser suppresses suggestions when the cursor is inside a string
+  // literal ('...') or quoted identifier ("..."). This prevents autocomplete
+  // from interfering when the user is typing a value or an escaped name.
+
+  describe("string literal suppression", () => {
+    it("should return no suggestions when cursor is inside a string literal", () => {
+      // Cursor inside 'BTC-USD' → no suggestions
+      const sql = "SELECT * FROM trades WHERE symbol = 'BTC-USD'"
+      const offset = sql.indexOf("BTC") + 1 // inside the string
+      const suggestions = provider.getSuggestions(sql, offset)
+      expect(suggestions).toHaveLength(0)
+    })
+
+    it("should return no suggestions at various positions inside a string", () => {
+      const sql = "SELECT * FROM trades WHERE symbol = 'hello world'"
+      // Right after opening quote
+      const afterOpen = sql.indexOf("'") + 1
+      expect(provider.getSuggestions(sql, afterOpen)).toHaveLength(0)
+      // Middle of string
+      const middle = sql.indexOf("world")
+      expect(provider.getSuggestions(sql, middle)).toHaveLength(0)
+      // Right before closing quote
+      const beforeClose = sql.lastIndexOf("'")
+      expect(provider.getSuggestions(sql, beforeClose)).toHaveLength(0)
+    })
+
+    it("should suggest after a completed string literal (cursor outside)", () => {
+      // Cursor AFTER the closing quote → should suggest operators/keywords
+      const sql = "SELECT * FROM trades WHERE symbol = 'BTC-USD' "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const labels = suggestions.map((s) => s.label)
+      expect(labels.length).toBeGreaterThan(0)
+      expect(labels).toContain("AND")
+    })
+
+    it("should return no suggestions inside a string in SELECT list", () => {
+      const sql = "SELECT 'hello world' FROM trades"
+      const offset = sql.indexOf("world")
+      const suggestions = provider.getSuggestions(sql, offset)
+      expect(suggestions).toHaveLength(0)
+    })
+
+    it("should return no suggestions inside a string in INSERT VALUES", () => {
+      const sql = "INSERT INTO trades VALUES ('BTC-USD', 100)"
+      const offset = sql.indexOf("BTC") + 2
+      const suggestions = provider.getSuggestions(sql, offset)
+      expect(suggestions).toHaveLength(0)
+    })
+  })
+
+  describe("quoted identifier suppression", () => {
+    it("should return no suggestions when cursor is inside a quoted identifier", () => {
+      const sql = 'SELECT * FROM "my table"'
+      const offset = sql.indexOf("my") + 1
+      const suggestions = provider.getSuggestions(sql, offset)
+      expect(suggestions).toHaveLength(0)
+    })
+
+    it("should return no suggestions inside a quoted column name", () => {
+      const sql = 'SELECT "column name" FROM trades'
+      const offset = sql.indexOf("column") + 3
+      const suggestions = provider.getSuggestions(sql, offset)
+      expect(suggestions).toHaveLength(0)
+    })
+
+    it("should suggest after a completed quoted identifier", () => {
+      const sql = 'SELECT "symbol" '
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const labels = suggestions.map((s) => s.label)
+      expect(labels.length).toBeGreaterThan(0)
+      expect(labels).toContain("FROM")
+    })
+  })
+
+  // ===========================================================================
+  // SELECT * edge cases
+  // ===========================================================================
+
+  describe("SELECT * edge cases", () => {
+    it("suggests FROM after SELECT * with no other suggestions leaking", () => {
+      const suggestions = provider.getSuggestions("SELECT * ", 9)
+      const labels = suggestions.map((s) => s.label)
+      expect(labels).toContain("FROM")
+      // No columns should appear
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns).toHaveLength(0)
+      // No functions should appear
+      const funcs = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Function,
+      )
+      expect(funcs).toHaveLength(0)
+      // No tables should appear
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      expect(tables).toHaveLength(0)
+    })
+
+    it("suggests only keywords when typing mid-word after SELECT *", () => {
+      // FR, WH, etc. should only yield keyword matches
+      for (const partial of ["FR", "WH", "LI", "OR"]) {
+        const sql = `SELECT * ${partial}`
+        const suggestions = provider.getSuggestions(sql, sql.length)
+        const nonKeywords = suggestions.filter(
+          (s) => s.kind !== SuggestionKind.Keyword,
+        )
+        expect(nonKeywords).toHaveLength(0)
+      }
+    })
+
+    it("still suggests columns after SELECT (no star)", () => {
+      // Sanity check: without *, columns should still appear
+      const suggestions = provider.getSuggestions("SELECT  FROM trades", 7)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+    })
+
+    it("suggests columns after multiplication operator (price * |)", () => {
+      // * after an identifier is multiplication, not wildcard.
+      // The user needs columns/functions for the RHS.
+      const suggestions = provider.getSuggestions(
+        "SELECT price *  FROM trades",
+        15,
+      )
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+    })
+
+    it("suggests columns after number * (arithmetic)", () => {
+      const suggestions = provider.getSuggestions("SELECT 2 *  FROM trades", 11)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+    })
+
+    it("suggests columns after (expr) * (parenthesized multiplication)", () => {
+      const suggestions = provider.getSuggestions(
+        "SELECT (price + 1) *  FROM trades",
+        21,
+      )
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+    })
+
+    it("does NOT suggest columns after SELECT * (wildcard)", () => {
+      const suggestions = provider.getSuggestions("SELECT * ", 9)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns).toHaveLength(0)
+    })
+
+    it("does NOT suggest columns after comma-star (SELECT a, *)", () => {
+      // Comma resets expression context, so * after comma is a wildcard
+      const suggestions = provider.getSuggestions("SELECT symbol, * ", 17)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns).toHaveLength(0)
+    })
   })
 })

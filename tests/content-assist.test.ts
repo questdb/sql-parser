@@ -292,8 +292,7 @@ describe("Content Assist", () => {
     })
 
     it("should extract CTE columns when CTE name shadows a schema table", () => {
-      const sql =
-        "WITH trades AS (SELECT 1 AS custom_col) SELECT  FROM trades"
+      const sql = "WITH trades AS (SELECT 1 AS custom_col) SELECT  FROM trades"
       const result = getContentAssist(sql, sql.indexOf(" FROM trades"))
       expect(result.cteColumns["trades"]).toBeDefined()
       expect(result.cteColumns["trades"].map((c) => c.name)).toContain(
@@ -778,6 +777,59 @@ describe("Content Assist", () => {
       const sql = "SELECT "
       const result = getContentAssist(sql, sql.length)
       expect(result.tablesInScope).toHaveLength(0)
+    })
+  })
+
+  describe("qualifiedTableRef detection", () => {
+    it("should return qualifiedTableRef when cursor is after dot", () => {
+      const sql = "SELECT t1. FROM trades t1"
+      const result = getContentAssist(sql, 10) // after "t1."
+      expect(result.qualifiedTableRef).toBe("t1")
+    })
+
+    it("should return qualifiedTableRef for mid-word after dot", () => {
+      const sql = "SELECT t1.sy FROM trades t1"
+      const result = getContentAssist(sql, 12) // after "t1.sy"
+      expect(result.qualifiedTableRef).toBe("t1")
+    })
+
+    it("should return qualifiedTableRef for table name (not alias) before dot", () => {
+      const sql = "SELECT trades. FROM trades"
+      const result = getContentAssist(sql, 14) // after "trades."
+      expect(result.qualifiedTableRef).toBe("trades")
+    })
+
+    it("should return qualifiedTableRef in WHERE with JOINs", () => {
+      const sql =
+        "SELECT * FROM trades t1 JOIN orders t2 ON t1.symbol = t2.id WHERE t1."
+      const result = getContentAssist(sql, sql.length)
+      expect(result.qualifiedTableRef).toBe("t1")
+      // tablesInScope should still contain both tables
+      expect(result.tablesInScope).toHaveLength(2)
+    })
+
+    it("should return qualifiedTableRef for quoted identifier before dot", () => {
+      const sql = 'SELECT "my-table".'
+      const result = getContentAssist(sql, sql.length)
+      expect(result.qualifiedTableRef).toBe("my-table")
+    })
+
+    it("should return qualifiedTableRef for keyword-named table before dot", () => {
+      const sql = "SELECT default. FROM default d"
+      const result = getContentAssist(sql, 15)
+      expect(result.qualifiedTableRef).toBe("default")
+    })
+
+    it("should return undefined qualifiedTableRef when no dot context", () => {
+      const sql = "SELECT * FROM trades WHERE "
+      const result = getContentAssist(sql, sql.length)
+      expect(result.qualifiedTableRef).toBeUndefined()
+    })
+
+    it("should return undefined qualifiedTableRef after comma (not dot)", () => {
+      const sql = "SELECT symbol, FROM trades"
+      const result = getContentAssist(sql, 15)
+      expect(result.qualifiedTableRef).toBeUndefined()
     })
   })
 

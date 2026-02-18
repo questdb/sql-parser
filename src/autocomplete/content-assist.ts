@@ -70,6 +70,12 @@ export interface ContentAssistResult {
   isMidWord: boolean
   /** Any lexer errors */
   lexErrors: ILexingError[]
+  /**
+   * When the cursor is after a qualified reference (e.g., "t1." or "trades."),
+   * this contains the qualifier name (e.g., "t1" or "trades"). The provider
+   * should resolve this against tablesInScope aliases/names to filter columns.
+   */
+  qualifiedTableRef?: string
 }
 
 // =============================================================================
@@ -813,9 +819,11 @@ export function getContentAssist(
     }
   }
 
-  if (tablesInScope.length === 0) {
-    const inferred = inferTableFromQualifiedRef(tokens, isMidWord)
-    if (inferred) tablesInScope.push(inferred)
+  // Detect qualified reference context (e.g., "t1." or "trades.sym")
+  // and extract the qualifier name so the provider can filter columns.
+  const qualifiedRef = inferTableFromQualifiedRef(tokens, isMidWord)
+  if (tablesInScope.length === 0 && qualifiedRef) {
+    tablesInScope.push(qualifiedRef)
   }
 
   return {
@@ -825,6 +833,7 @@ export function getContentAssist(
     tokensBefore: tokens,
     isMidWord,
     lexErrors: lexResult.errors,
+    qualifiedTableRef: qualifiedRef?.table,
   }
 }
 
