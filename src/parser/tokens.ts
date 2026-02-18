@@ -267,7 +267,15 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "List",
   "Parameters",
   "Permissions",
+  "Datestyle",
+  "DefaultTransactionReadOnly",
+  "Keep",
+  "Maps",
+  "MaxIdentifierLength",
+  "SearchPath",
   "ServerVersion",
+  "ServerVersionNum",
+  "StandardConformingStrings",
   "StatisticsEnabled",
   "Txn",
   "Within",
@@ -287,6 +295,8 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Reindex",
   "Tolerance",
   "Transaction",
+  "TransactionIsolation",
+  "Transient",
   "Zone",
   // Compression codecs
   "RawArrayEncoding",
@@ -417,9 +427,11 @@ export const Cumulative = getToken("Cumulative")
 export const Current = getToken("Current")
 export const DataPageSize = getToken("DataPageSize")
 export const Database = getToken("Database")
+export const Datestyle = getToken("Datestyle")
 export const Declare = getToken("Declare")
 export const Dedup = getToken("Dedup")
 export const Default = getToken("Default")
+export const DefaultTransactionReadOnly = getToken("DefaultTransactionReadOnly")
 export const Deferred = getToken("Deferred")
 export const Delay = getToken("Delay")
 export const Delete = getToken("Delete")
@@ -470,6 +482,7 @@ export const Is = getToken("Is")
 export const Isolation = getToken("Isolation")
 export const Jwk = getToken("Jwk")
 export const Join = getToken("Join")
+export const Keep = getToken("Keep")
 export const Key = getToken("Key")
 export const Keys = getToken("Keys")
 export const Latest = getToken("Latest")
@@ -481,8 +494,10 @@ export const Limit = getToken("Limit")
 export const List = getToken("List")
 export const Lock = getToken("Lock")
 export const Lt = getToken("Lt")
+export const Maps = getToken("Maps")
 export const Materialized = getToken("Materialized")
 export const Manual = getToken("Manual")
+export const MaxIdentifierLength = getToken("MaxIdentifierLength")
 export const MaxUncommittedRows = getToken("MaxUncommittedRows")
 export const No = getToken("No")
 export const Nocache = getToken("Nocache")
@@ -536,7 +551,9 @@ export const Row = getToken("Row")
 export const RowGroupSize = getToken("RowGroupSize")
 export const Rows = getToken("Rows")
 export const Sample = getToken("Sample")
+export const SearchPath = getToken("SearchPath")
 export const ServerVersion = getToken("ServerVersion")
+export const ServerVersionNum = getToken("ServerVersionNum")
 export const Select = getToken("Select")
 export const Service = getToken("Service")
 export const Set = getToken("Set")
@@ -547,6 +564,7 @@ export const SkipRow = getToken("SkipRow")
 export const Snapshot = getToken("Snapshot")
 export const Splice = getToken("Splice")
 export const Squash = getToken("Squash")
+export const StandardConformingStrings = getToken("StandardConformingStrings")
 export const Start = getToken("Start")
 export const StatisticsEnabled = getToken("StatisticsEnabled")
 export const Suspend = getToken("Suspend")
@@ -559,6 +577,7 @@ export const To = getToken("To")
 export const Token = getToken("Token")
 export const Tolerance = getToken("Tolerance")
 export const Transaction = getToken("Transaction")
+export const TransactionIsolation = getToken("TransactionIsolation")
 export const Transient = getToken("Transient")
 export const Truncate = getToken("Truncate")
 export const Ttl = getToken("Ttl")

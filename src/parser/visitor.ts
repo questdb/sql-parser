@@ -1657,12 +1657,22 @@ class QuestDBVisitor extends BaseVisitor {
       } else if (ctx.Ttl && ctx.StringLiteral) {
         ttl = ctx.StringLiteral[0].image.slice(1, -1)
       }
-      return {
+      const result: AST.AlterUserCreateTokenAction = {
         actionType: "createToken",
         tokenType: ctx.Jwk ? "JWK" : "REST",
         ttl,
         refresh: !!ctx.Refresh,
       }
+      if (ctx.Transient) {
+        result.transient = true
+      }
+      // JWK public key: WITH PUBLIC KEY X '...' Y '...'
+      if (ctx.Public && ctx.Key && ctx.Identifier) {
+        // In JWK path, StringLiteral[0] and [1] are the public key values
+        result.publicKeyX = ctx.StringLiteral![0].image.slice(1, -1)
+        result.publicKeyY = ctx.StringLiteral![1].image.slice(1, -1)
+      }
+      return result
     }
     return {
       actionType: "dropToken",
@@ -1995,13 +2005,25 @@ class QuestDBVisitor extends BaseVisitor {
   truncateTableStatement(
     ctx: TruncateTableStatementCstChildren,
   ): AST.TruncateTableStatement {
+    const tables = ctx.qualifiedName.map(
+      (qn) => this.visit(qn) as AST.QualifiedName,
+    )
+
     const result: AST.TruncateTableStatement = {
       type: "truncateTable",
-      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      tables,
     }
 
     if (ctx.If) {
       result.ifExists = true
+    }
+
+    if (ctx.Only) {
+      result.only = true
+    }
+
+    if (ctx.Keep) {
+      result.keepSymbolMaps = true
     }
 
     return result
@@ -2194,6 +2216,34 @@ class QuestDBVisitor extends BaseVisitor {
         type: "show",
         showType: "parameters",
       }
+    }
+
+    if (ctx.Transaction && ctx.Isolation) {
+      return { type: "show", showType: "transactionIsolationLevel" }
+    }
+    if (ctx.TransactionIsolation) {
+      return { type: "show", showType: "transactionIsolationLevel" }
+    }
+    if (ctx.MaxIdentifierLength) {
+      return { type: "show", showType: "maxIdentifierLength" }
+    }
+    if (ctx.StandardConformingStrings) {
+      return { type: "show", showType: "standardConformingStrings" }
+    }
+    if (ctx.SearchPath) {
+      return { type: "show", showType: "searchPath" }
+    }
+    if (ctx.Datestyle) {
+      return { type: "show", showType: "dateStyle" }
+    }
+    if (ctx.Time && ctx.Zone) {
+      return { type: "show", showType: "timeZone" }
+    }
+    if (ctx.ServerVersionNum) {
+      return { type: "show", showType: "serverVersionNum" }
+    }
+    if (ctx.DefaultTransactionReadOnly) {
+      return { type: "show", showType: "defaultTransactionReadOnly" }
     }
 
     throw new Error("Unknown show type")
@@ -2852,13 +2902,18 @@ class QuestDBVisitor extends BaseVisitor {
       const result: AST.InExpression = {
         type: "in",
         expression: left,
-        values: ctx.expression!.map(
-          (e: CstNode) => this.visit(e) as AST.Expression,
-        ),
+        values: [],
         not: !!ctx.Not,
       }
       if (ctx.LParen) {
         result.parenthesized = true
+        result.values = ctx.expression!.map(
+          (e: CstNode) => this.visit(e) as AST.Expression,
+        )
+      } else if (ctx.inValue) {
+        result.values = ctx.inValue.map(
+          (e: CstNode) => this.visit(e) as AST.Expression,
+        )
       }
       return result
     }
@@ -2882,6 +2937,17 @@ class QuestDBVisitor extends BaseVisitor {
         values: ctx.expression!.map(
           (e: CstNode) => this.visit(e) as AST.Expression,
         ),
+      }
+    }
+
+    // Check for NOT LIKE / NOT ILIKE
+    if (ctx.Like || ctx.Ilike) {
+      const operator = ctx.Like ? "NOT LIKE" : "NOT ILIKE"
+      return {
+        type: "binary",
+        operator,
+        left,
+        right: this.visit(ctx.notLikeRight![0]) as AST.Expression,
       }
     }
 
@@ -3097,11 +3163,13 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
-    if (ctx.DoubleColon) {
-      return {
-        type: "typeCast",
-        expression: inner,
-        dataType: this.visit(ctx.dataType!) as string,
+    if (ctx.DoubleColon && ctx.dataType) {
+      for (let i = 0; i < ctx.DoubleColon.length; i++) {
+        inner = {
+          type: "typeCast",
+          expression: inner,
+          dataType: this.visit(ctx.dataType[i]) as string,
+        }
       }
     }
 
@@ -3391,6 +3459,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Ignore) {
       result.ignoreNulls = true
     }
+    if (ctx.Respect) {
+      result.respectNulls = true
+    }
 
     if (ctx.overClause) {
       result.over = this.visit(ctx.overClause) as AST.WindowSpecification
@@ -3426,6 +3497,9 @@ class QuestDBVisitor extends BaseVisitor {
       }
       if (ctx.Ignore) {
         result.ignoreNulls = true
+      }
+      if (ctx.Respect) {
+        result.respectNulls = true
       }
       if (ctx.selectStatement) {
         result.subquery = this.visit(
@@ -3720,9 +3794,15 @@ class QuestDBVisitor extends BaseVisitor {
           M: "MONTHS",
           y: "YEARS",
         }
+        const unit = DURATION_UNIT_MAP[match[2]]
+        if (!unit) {
+          throw new Error(
+            `Invalid TTL duration unit '${match[2]}' in '${img}'. Valid units: h (HOURS), d (DAYS), w (WEEKS), M (MONTHS), y (YEARS)`,
+          )
+        }
         return {
           value: parseInt(match[1], 10),
-          unit: DURATION_UNIT_MAP[match[2]] ?? "DAYS",
+          unit,
         }
       }
     }

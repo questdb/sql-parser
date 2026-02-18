@@ -841,7 +841,15 @@ function truncateTableToSql(stmt: AST.TruncateTableStatement): string {
     parts.push("IF EXISTS")
   }
 
-  parts.push(qualifiedNameToSql(stmt.table))
+  if (stmt.only) {
+    parts.push("ONLY")
+  }
+
+  parts.push(stmt.tables.map(qualifiedNameToSql).join(", "))
+
+  if (stmt.keepSymbolMaps) {
+    parts.push("KEEP SYMBOL MAPS")
+  }
 
   return parts.join(" ")
 }
@@ -898,6 +906,22 @@ function showToSql(stmt: AST.ShowStatement): string {
       return stmt.name
         ? `SHOW PERMISSIONS ${qualifiedNameToSql(stmt.name)}`
         : "SHOW PERMISSIONS"
+    case "transactionIsolationLevel":
+      return "SHOW TRANSACTION ISOLATION LEVEL"
+    case "maxIdentifierLength":
+      return "SHOW max_identifier_length"
+    case "standardConformingStrings":
+      return "SHOW standard_conforming_strings"
+    case "searchPath":
+      return "SHOW search_path"
+    case "dateStyle":
+      return "SHOW datestyle"
+    case "timeZone":
+      return "SHOW TIME ZONE"
+    case "serverVersionNum":
+      return "SHOW server_version_num"
+    case "defaultTransactionReadOnly":
+      return "SHOW default_transaction_read_only"
     default:
       throw new Error(
         `Unknown show type: ${(stmt as { showType: string }).showType}`,
@@ -1126,8 +1150,14 @@ function alterUserActionToSql(action: AST.AlterUserAction): string {
       return `WITH PASSWORD ${escapeString(action.password!)}`
     case "createToken": {
       const parts = [`CREATE TOKEN TYPE ${action.tokenType}`]
+      if (action.publicKeyX != null && action.publicKeyY != null) {
+        parts.push(
+          `WITH PUBLIC KEY X ${escapeString(action.publicKeyX)} Y ${escapeString(action.publicKeyY)}`,
+        )
+      }
       if (action.ttl) parts.push(`WITH TTL ${escapeString(action.ttl)}`)
       if (action.refresh) parts.push("REFRESH")
+      if (action.transient) parts.push("TRANSIENT")
       return parts.join(" ")
     }
     case "dropToken": {
@@ -1459,9 +1489,62 @@ function expressionToSql(expr: AST.Expression): string {
   }
 }
 
+// QuestDB operator precedence (lower number = binds tighter).
+// Matches https://questdb.io/docs/reference/operators/precedence/
+const OPERATOR_PRECEDENCE: Record<string, number> = {
+  "*": 4,
+  "/": 4,
+  "%": 4,
+  "+": 5,
+  "-": 5,
+  "<<": 6,
+  ">>": 6,
+  "<<=": 6,
+  ">>=": 6,
+  "||": 7,
+  "&": 8,
+  "^": 9,
+  "|": 10,
+  "<": 12,
+  "<=": 12,
+  ">": 12,
+  ">=": 12,
+  "=": 13,
+  "~": 13,
+  "!=": 13,
+  "<>": 13,
+  "!~": 13,
+  LIKE: 13,
+  ILIKE: 13,
+  "NOT LIKE": 13,
+  "NOT ILIKE": 13,
+  AND: 15,
+  OR: 16,
+}
+
+function operatorPrecedence(op: string): number {
+  return OPERATOR_PRECEDENCE[op.toUpperCase()] ?? OPERATOR_PRECEDENCE[op] ?? 99
+}
+
 function binaryExprToSql(expr: AST.BinaryExpression): string {
-  const left = expressionToSql(expr.left)
-  const right = expressionToSql(expr.right)
+  const prec = operatorPrecedence(expr.operator)
+
+  let left = expressionToSql(expr.left)
+  if (
+    expr.left.type === "binary" &&
+    operatorPrecedence(expr.left.operator) > prec
+  ) {
+    left = `(${left})`
+  }
+
+  let right = expressionToSql(expr.right)
+  if (
+    expr.right.type === "binary" &&
+    operatorPrecedence(expr.right.operator) >= prec
+  ) {
+    right = `(${right})`
+  }
+
   return `${left} ${expr.operator} ${right}`
 }
 
@@ -1511,6 +1594,9 @@ function functionToSql(fn: AST.FunctionCall): string {
 
   if (fn.ignoreNulls) {
     sql += " IGNORE NULLS"
+  }
+  if (fn.respectNulls) {
+    sql += " RESPECT NULLS"
   }
 
   if (fn.over) {
@@ -1691,5 +1777,5 @@ function escapeIdentifier(name: string): string {
   ) {
     return name
   }
-  return `'${name.replace(/'/g, "''")}'`
+  return `"${name.replace(/"/g, '""')}"`
 }

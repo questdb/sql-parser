@@ -87,16 +87,17 @@ export function parseToAst(sql: string): ParseResult {
   }
 
   let ast: Statement[] = []
-  if (errors.length > 0) {
-    try {
-      ast = visitor.visit(cst) as Statement[]
-    } catch {
-      // The visitor may throw on incomplete CST nodes produced by error recovery
-      // (e.g. "Unknown primary expression", null dereferences on missing children).
-      // Since we already have parse errors, return them with whatever AST was built.
-    }
-  } else {
+  try {
     ast = visitor.visit(cst) as Statement[]
+  } catch (e) {
+    if (errors.length === 0) {
+      // Semantic error from the visitor (e.g. invalid TTL duration unit).
+      errors.push({
+        message: e instanceof Error ? e.message : String(e),
+      })
+    }
+    // When there are already lex/parse errors, the visitor may throw on
+    // incomplete CST nodes produced by error recovery — that is expected.
   }
 
   return { ast, errors }

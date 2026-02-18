@@ -517,7 +517,7 @@ describe("QuestDB Parser", () => {
       const result = parseToAst('SELECT "select" FROM t')
       expect(result.errors).toHaveLength(0)
       const sql = toSql(result.ast[0])
-      expect(sql).toContain("'select'")
+      expect(sql).toContain('"select"')
     })
 
     it("should not quote non-reserved keywords used as identifiers", () => {
@@ -534,8 +534,35 @@ describe("QuestDB Parser", () => {
         const result = parseToAst(`SELECT "${word}" FROM t`)
         expect(result.errors).toHaveLength(0)
         const sql = toSql(result.ast[0])
-        expect(sql).toContain(`'${word}'`)
+        expect(sql).toContain(`"${word}"`)
       }
+    })
+
+    it("should quote identifiers with spaces", () => {
+      const result = parseToAst('SELECT "total amount" FROM trades')
+      expect(result.errors).toHaveLength(0)
+      const sql = toSql(result.ast)
+      expect(sql).toContain('"total amount"')
+      expect(sql).not.toContain("'total amount'")
+    })
+
+    it("should quote table names in FROM position", () => {
+      const result = parseToAst('SELECT * FROM "select"')
+      expect(result.errors).toHaveLength(0)
+      const sql = toSql(result.ast)
+      expect(sql).toContain('"select"')
+      expect(sql).not.toContain("'select'")
+    })
+
+    it("should escape inner double quotes in identifiers", () => {
+      const result = parseToAst('SELECT "my""col" FROM t')
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const col = stmt.columns[0] as AST.ExpressionSelectItem
+      const ref = col.expression as AST.ColumnRef
+      expect(ref.name.parts[0]).toBe('my"col')
+      const sql = toSql(stmt)
+      expect(sql).toContain('"my""col"')
     })
 
     it("should serialize RESUME WAL with fromTransaction (takes precedence over fromTxn)", () => {
@@ -576,7 +603,7 @@ describe("QuestDB Parser", () => {
     // Without ParenExpression in the AST, nested binary expressions lose their grouping.
     // AST says multiply(add(a, b), c) meaning (a+b)*c, but toSql outputs "a + b * c".
     // EXPECTED: "(a + b) * c"
-    it("nested binary expressions lose operator precedence without ParenExpression", () => {
+    it("nested binary expressions preserve operator precedence", () => {
       const stmt: AST.SelectStatement = {
         type: "select",
         columns: [
@@ -606,8 +633,42 @@ describe("QuestDB Parser", () => {
         ],
       }
       const sql = toSql(stmt)
-      expect(sql).toContain("a + b * c") // BUG — should preserve grouping
-      expect(sql).not.toContain("(a + b)") // parens are missing
+      expect(sql).toContain("(a + b) * c")
+    })
+
+    it("boolean precedence: (a OR b) AND c", () => {
+      const stmt: AST.SelectStatement = {
+        type: "select",
+        columns: [{ type: "star" }],
+        from: [
+          {
+            type: "tableRef",
+            table: { type: "qualifiedName", parts: ["t"] },
+          },
+        ],
+        where: {
+          type: "binary",
+          operator: "AND",
+          left: {
+            type: "binary",
+            operator: "OR",
+            left: {
+              type: "column",
+              name: { type: "qualifiedName", parts: ["a"] },
+            },
+            right: {
+              type: "column",
+              name: { type: "qualifiedName", parts: ["b"] },
+            },
+          } as AST.BinaryExpression,
+          right: {
+            type: "column",
+            name: { type: "qualifiedName", parts: ["c"] },
+          },
+        } as AST.BinaryExpression,
+      }
+      const sql = toSql(stmt)
+      expect(sql).toContain("(a OR b) AND c")
     })
   })
 
@@ -686,7 +747,7 @@ describe("QuestDB Parser", () => {
         expect(result.errors).toHaveLength(0)
         expect(result.ast[0].type).toBe("truncateTable")
         if (result.ast[0].type === "truncateTable") {
-          expect(result.ast[0].table.parts).toEqual(["trades"])
+          expect(result.ast[0].tables[0].parts).toEqual(["trades"])
         }
       })
 
@@ -703,6 +764,77 @@ describe("QuestDB Parser", () => {
         const result = parseToAst("TRUNCATE TABLE IF EXISTS trades")
         const sql = toSql(result.ast[0])
         expect(sql).toBe("TRUNCATE TABLE IF EXISTS trades")
+      })
+
+      it("should parse TRUNCATE TABLE with multiple tables", () => {
+        const result = parseToAst("TRUNCATE TABLE t1, t2, t3")
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "truncateTable") {
+          expect(result.ast[0].tables).toHaveLength(3)
+          expect(result.ast[0].tables[0].parts).toEqual(["t1"])
+          expect(result.ast[0].tables[1].parts).toEqual(["t2"])
+          expect(result.ast[0].tables[2].parts).toEqual(["t3"])
+        }
+      })
+
+      it("should parse TRUNCATE TABLE IF EXISTS ONLY", () => {
+        const result = parseToAst("TRUNCATE TABLE IF EXISTS ONLY t1")
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "truncateTable") {
+          expect(result.ast[0].ifExists).toBe(true)
+          expect(result.ast[0].only).toBe(true)
+          expect(result.ast[0].tables[0].parts).toEqual(["t1"])
+        }
+      })
+
+      it("should parse TRUNCATE TABLE with KEEP SYMBOL MAPS", () => {
+        const result = parseToAst("TRUNCATE TABLE t1 KEEP SYMBOL MAPS")
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "truncateTable") {
+          expect(result.ast[0].keepSymbolMaps).toBe(true)
+          expect(result.ast[0].tables[0].parts).toEqual(["t1"])
+        }
+      })
+
+      it("should parse TRUNCATE TABLE full combo", () => {
+        const result = parseToAst(
+          "TRUNCATE TABLE IF EXISTS ONLY t1, t2 KEEP SYMBOL MAPS",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "truncateTable") {
+          expect(result.ast[0].ifExists).toBe(true)
+          expect(result.ast[0].only).toBe(true)
+          expect(result.ast[0].tables).toHaveLength(2)
+          expect(result.ast[0].keepSymbolMaps).toBe(true)
+        }
+      })
+
+      it("should round-trip TRUNCATE TABLE with multiple tables", () => {
+        const result = parseToAst("TRUNCATE TABLE t1, t2, t3")
+        const sql = toSql(result.ast[0])
+        expect(sql).toBe("TRUNCATE TABLE t1, t2, t3")
+      })
+
+      it("should round-trip TRUNCATE TABLE IF EXISTS ONLY", () => {
+        const result = parseToAst("TRUNCATE TABLE IF EXISTS ONLY t1")
+        const sql = toSql(result.ast[0])
+        expect(sql).toBe("TRUNCATE TABLE IF EXISTS ONLY t1")
+      })
+
+      it("should round-trip TRUNCATE TABLE KEEP SYMBOL MAPS", () => {
+        const result = parseToAst("TRUNCATE TABLE t1 KEEP SYMBOL MAPS")
+        const sql = toSql(result.ast[0])
+        expect(sql).toBe("TRUNCATE TABLE t1 KEEP SYMBOL MAPS")
+      })
+
+      it("should round-trip TRUNCATE TABLE full combo", () => {
+        const result = parseToAst(
+          "TRUNCATE TABLE IF EXISTS ONLY t1, t2 KEEP SYMBOL MAPS",
+        )
+        const sql = toSql(result.ast[0])
+        expect(sql).toBe(
+          "TRUNCATE TABLE IF EXISTS ONLY t1, t2 KEEP SYMBOL MAPS",
+        )
       })
     })
 
@@ -2233,6 +2365,87 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         expect(stmt.showType).toBe("parameters")
       }
     })
+
+    it("should parse SHOW TRANSACTION ISOLATION LEVEL", () => {
+      const result = parseToAst("SHOW TRANSACTION ISOLATION LEVEL")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("transactionIsolationLevel")
+      }
+    })
+
+    it("should parse SHOW transaction_isolation", () => {
+      const result = parseToAst("SHOW transaction_isolation")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("transactionIsolationLevel")
+      }
+    })
+
+    it("should parse SHOW max_identifier_length", () => {
+      const result = parseToAst("SHOW max_identifier_length")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("maxIdentifierLength")
+      }
+    })
+
+    it("should parse SHOW standard_conforming_strings", () => {
+      const result = parseToAst("SHOW standard_conforming_strings")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("standardConformingStrings")
+      }
+    })
+
+    it("should parse SHOW search_path", () => {
+      const result = parseToAst("SHOW search_path")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("searchPath")
+      }
+    })
+
+    it("should parse SHOW datestyle", () => {
+      const result = parseToAst("SHOW datestyle")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("dateStyle")
+      }
+    })
+
+    it("should parse SHOW TIME ZONE", () => {
+      const result = parseToAst("SHOW TIME ZONE")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("timeZone")
+      }
+    })
+
+    it("should parse SHOW server_version_num", () => {
+      const result = parseToAst("SHOW server_version_num")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("serverVersionNum")
+      }
+    })
+
+    it("should parse SHOW default_transaction_read_only", () => {
+      const result = parseToAst("SHOW default_transaction_read_only")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "show") {
+        expect(stmt.showType).toBe("defaultTransactionReadOnly")
+      }
+    })
   })
 
   describe("SHOW round-trip tests", () => {
@@ -2244,6 +2457,14 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       "SHOW CREATE VIEW my_view",
       "SHOW CREATE MATERIALIZED VIEW my_mat_view",
       "SHOW PARAMETERS",
+      "SHOW TRANSACTION ISOLATION LEVEL",
+      "SHOW max_identifier_length",
+      "SHOW standard_conforming_strings",
+      "SHOW search_path",
+      "SHOW datestyle",
+      "SHOW TIME ZONE",
+      "SHOW server_version_num",
+      "SHOW default_transaction_read_only",
     ]
 
     for (const query of queries) {
@@ -2588,19 +2809,37 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(mvIdent.period?.length).toBe("myvar")
     })
 
-    // BUG: TTL duration with minutes (30m) silently becomes 30 DAYS.
-    // extractTtl maps { h: "HOURS", d: "DAYS", w: "WEEKS", M: "MONTHS", y: "YEARS" }
-    // but is missing m (minutes). The fallback is `?? "DAYS"`.
-    // EXPECTED: { value: 30, unit: "MINUTES" } or an error
-    it("TTL duration with minutes unit defaults to DAYS", () => {
-      const result = parseToAst(
-        "CREATE TABLE t (x INT) TIMESTAMP(x) PARTITION BY HOUR TTL 30m",
-      )
-      expect(result.errors).toHaveLength(0)
-      const create = result.ast[0] as AST.CreateTableStatement
-      expect(create.ttl).toBeDefined()
-      expect(create.ttl!.value).toBe(30)
-      expect(create.ttl!.unit).toBe("DAYS") // BUG — should be "MINUTES"
+    it("TTL duration with invalid unit produces error", () => {
+      for (const dur of ["30m", "10s", "500T"]) {
+        const result = parseToAst(
+          `CREATE TABLE t (x INT) TIMESTAMP(x) PARTITION BY HOUR TTL ${dur}`,
+        )
+        expect(result.errors.length).toBeGreaterThan(0)
+        expect(result.errors[0].message).toContain("Invalid TTL duration unit")
+      }
+    })
+
+    it("TTL duration with valid units parses correctly", () => {
+      for (const [dur, unit] of [
+        ["12h", "HOURS"],
+        ["30d", "DAYS"],
+        ["2w", "WEEKS"],
+        ["6M", "MONTHS"],
+        ["1y", "YEARS"],
+      ]) {
+        const result = parseToAst(
+          `CREATE TABLE t_${dur} (x INT) TIMESTAMP(x) PARTITION BY HOUR TTL ${dur}`,
+        )
+        expect(result.errors).toHaveLength(0)
+        const stmt = result.ast[0] as AST.CreateTableStatement
+        expect(stmt.ttl!.unit).toBe(unit)
+      }
+    })
+
+    it("ALTER TABLE SET TTL with invalid unit produces error", () => {
+      const result = parseToAst("ALTER TABLE t SET TTL 5s")
+      expect(result.errors.length).toBeGreaterThan(0)
+      expect(result.errors[0].message).toContain("Invalid TTL duration unit")
     })
   })
 
@@ -2650,6 +2889,12 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         value: 30,
         unit: "DAYS",
       })
+    })
+
+    it("SET TTL with invalid duration unit produces error", () => {
+      const result = parseToAst("ALTER MATERIALIZED VIEW mv SET TTL 60m")
+      expect(result.errors.length).toBeGreaterThan(0)
+      expect(result.errors[0].message).toContain("Invalid TTL duration unit")
     })
 
     it("should parse SET REFRESH LIMIT", () => {
@@ -2963,6 +3208,67 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.AlterUserStatement
       expect(stmt.action.actionType).toBe("disable")
+    })
+
+    it("should parse ALTER USER CREATE TOKEN TYPE JWK WITH PUBLIC KEY", () => {
+      const result = parseToAst(
+        "ALTER USER alice CREATE TOKEN TYPE JWK WITH PUBLIC KEY X 'abc' Y 'def'",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.AlterUserStatement
+      expect(stmt.action.actionType).toBe("createToken")
+      if (stmt.action.actionType === "createToken") {
+        expect(stmt.action.tokenType).toBe("JWK")
+        expect(stmt.action.publicKeyX).toBe("abc")
+        expect(stmt.action.publicKeyY).toBe("def")
+      }
+    })
+
+    it("should parse ALTER USER CREATE TOKEN TYPE REST WITH TTL REFRESH TRANSIENT", () => {
+      const result = parseToAst(
+        "ALTER USER alice CREATE TOKEN TYPE REST WITH TTL '30d' REFRESH TRANSIENT",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.AlterUserStatement
+      expect(stmt.action.actionType).toBe("createToken")
+      if (stmt.action.actionType === "createToken") {
+        expect(stmt.action.tokenType).toBe("REST")
+        expect(stmt.action.ttl).toBe("30d")
+        expect(stmt.action.refresh).toBe(true)
+        expect(stmt.action.transient).toBe(true)
+      }
+    })
+
+    it("should parse ALTER SERVICE ACCOUNT CREATE TOKEN TYPE REST TRANSIENT", () => {
+      const result = parseToAst(
+        "ALTER SERVICE ACCOUNT svc CREATE TOKEN TYPE REST WITH TTL '1d' TRANSIENT",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.AlterServiceAccountStatement
+      expect(stmt.action.actionType).toBe("createToken")
+      if (stmt.action.actionType === "createToken") {
+        expect(stmt.action.transient).toBe(true)
+      }
+    })
+
+    it("should round-trip ALTER USER CREATE TOKEN TYPE JWK WITH PUBLIC KEY", () => {
+      const result = parseToAst(
+        "ALTER USER alice CREATE TOKEN TYPE JWK WITH PUBLIC KEY X 'abc' Y 'def'",
+      )
+      const sql = toSql(result.ast[0])
+      expect(sql).toBe(
+        "ALTER USER alice CREATE TOKEN TYPE JWK WITH PUBLIC KEY X 'abc' Y 'def'",
+      )
+    })
+
+    it("should round-trip ALTER USER CREATE TOKEN TYPE REST TRANSIENT", () => {
+      const result = parseToAst(
+        "ALTER USER alice CREATE TOKEN TYPE REST WITH TTL '30d' REFRESH TRANSIENT",
+      )
+      const sql = toSql(result.ast[0])
+      expect(sql).toBe(
+        "ALTER USER alice CREATE TOKEN TYPE REST WITH TTL '30d' REFRESH TRANSIENT",
+      )
     })
 
     it("should parse DROP USER", () => {
@@ -5409,6 +5715,103 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       const from = stmt.from![0]
       expect(from.alias).toBe("sub")
       expect((from.table as AST.SelectStatement).type).toBe("select")
+    })
+  })
+
+  describe("expressions", () => {
+    it("should parse non-parenthesized IN with AND", () => {
+      const result = parseToAst(
+        "SELECT * FROM trades WHERE ts IN '2024-01-01' AND price > 100",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const where = stmt.where!
+      expect(where.type).toBe("binary")
+      const and = where as AST.BinaryExpression
+      expect(and.operator).toBe("AND")
+      expect(and.left.type).toBe("in")
+      expect(and.right.type).toBe("binary")
+      expect((and.right as AST.BinaryExpression).operator).toBe(">")
+    })
+
+    it("should parse non-parenthesized IN with OR", () => {
+      const result = parseToAst(
+        "SELECT * FROM trades WHERE ts IN yesterday() OR ts IN today()",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const where = stmt.where!
+      expect(where.type).toBe("binary")
+      const or = where as AST.BinaryExpression
+      expect(or.operator).toBe("OR")
+      expect(or.left.type).toBe("in")
+      expect(or.right.type).toBe("in")
+    })
+
+    it("should parse NOT LIKE", () => {
+      const result = parseToAst(
+        "SELECT * FROM trades WHERE symbol NOT LIKE 'BTC%'",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      expect(stmt.where).toBeDefined()
+    })
+
+    it("should parse NOT ILIKE", () => {
+      const result = parseToAst(
+        "SELECT * FROM trades WHERE symbol NOT ILIKE 'btc%'",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      expect(stmt.where).toBeDefined()
+    })
+
+    it("should roundtrip NOT LIKE through toSql", () => {
+      const result = parseToAst(
+        "SELECT * FROM trades WHERE symbol NOT LIKE 'BTC%'",
+      )
+      expect(result.errors).toHaveLength(0)
+      const sql = toSql(result.ast[0])
+      expect(sql.toUpperCase()).toContain("NOT LIKE")
+    })
+
+    it("should parse chained :: type casts", () => {
+      const result = parseToAst("SELECT 123::int::text FROM trades")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const col = stmt.columns[0] as AST.ExpressionSelectItem
+      expect(col.expression.type).toBe("typeCast")
+      const outerCast = col.expression as AST.TypeCastExpression
+      expect(outerCast.dataType.toUpperCase()).toBe("TEXT")
+      expect(outerCast.expression.type).toBe("typeCast")
+      const innerCast = outerCast.expression as AST.TypeCastExpression
+      expect(innerCast.dataType.toUpperCase()).toBe("INT")
+    })
+
+    it("should roundtrip chained :: type casts through toSql", () => {
+      const result = parseToAst("SELECT 123::int::text FROM trades")
+      expect(result.errors).toHaveLength(0)
+      const sql = toSql(result.ast[0])
+      expect(sql.toUpperCase()).toContain("::INT::TEXT")
+    })
+  })
+
+  describe("window functions", () => {
+    it("should parse first_value with RESPECT NULLS", () => {
+      const result = parseToAst(
+        "SELECT first_value(price) RESPECT NULLS OVER (ORDER BY ts) FROM trades",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      const col = stmt.columns[0] as AST.ExpressionSelectItem
+      expect(col.expression.type).toBe("function")
+    })
+
+    it("should parse lag with RESPECT NULLS", () => {
+      const result = parseToAst(
+        "SELECT lag(price) RESPECT NULLS OVER (ORDER BY ts) FROM trades",
+      )
+      expect(result.errors).toHaveLength(0)
     })
   })
 })

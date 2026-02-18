@@ -141,11 +141,26 @@ import {
   Query,
   Token,
   Jwk,
+  Keep,
+  Key,
   Rest,
   Password,
+  Public,
   No,
   Enable,
   Disable,
+  Transient,
+  Isolation,
+  Level,
+  Only,
+  Datestyle,
+  DefaultTransactionReadOnly,
+  Maps,
+  MaxIdentifierLength,
+  SearchPath,
+  ServerVersionNum,
+  StandardConformingStrings,
+  TransactionIsolation,
   Declare,
   Exit,
   Copy,
@@ -296,6 +311,7 @@ import {
   DecimalLiteral,
   Window,
   Ignore,
+  Respect,
   Nulls,
   Exclude,
   Cumulative,
@@ -1837,7 +1853,20 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Token)
           this.CONSUME(Type)
           this.OR2([
-            { ALT: () => this.CONSUME(Jwk) },
+            {
+              ALT: () => {
+                this.CONSUME(Jwk)
+                this.OPTION3(() => {
+                  this.CONSUME2(With)
+                  this.CONSUME(Public)
+                  this.CONSUME(Key)
+                  this.CONSUME(Identifier)
+                  this.CONSUME3(StringLiteral)
+                  this.CONSUME1(Identifier)
+                  this.CONSUME4(StringLiteral)
+                })
+              },
+            },
             {
               ALT: () => {
                 this.CONSUME(Rest)
@@ -1850,6 +1879,7 @@ class QuestDBParser extends CstParser {
                   ])
                   this.OPTION1(() => this.CONSUME(Refresh))
                 })
+                this.OPTION4(() => this.CONSUME(Transient))
               },
             },
           ])
@@ -2415,7 +2445,17 @@ class QuestDBParser extends CstParser {
       this.CONSUME(If)
       this.CONSUME(Exists)
     })
+    this.OPTION1(() => this.CONSUME(Only))
     this.SUBRULE(this.qualifiedName)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.qualifiedName)
+    })
+    this.OPTION2(() => {
+      this.CONSUME(Keep)
+      this.CONSUME(Symbol)
+      this.CONSUME(Maps)
+    })
   })
 
   // ==========================================================================
@@ -2571,6 +2611,35 @@ class QuestDBParser extends CstParser {
         },
       },
       { ALT: () => this.CONSUME(ServerVersion) },
+      // PG-compat: SHOW TRANSACTION ISOLATION LEVEL
+      {
+        ALT: () => {
+          this.CONSUME(Transaction)
+          this.CONSUME(Isolation)
+          this.CONSUME(Level)
+        },
+      },
+      // PG-compat: SHOW transaction_isolation
+      { ALT: () => this.CONSUME(TransactionIsolation) },
+      // PG-compat: SHOW max_identifier_length
+      { ALT: () => this.CONSUME(MaxIdentifierLength) },
+      // PG-compat: SHOW standard_conforming_strings
+      { ALT: () => this.CONSUME(StandardConformingStrings) },
+      // PG-compat: SHOW search_path
+      { ALT: () => this.CONSUME(SearchPath) },
+      // PG-compat: SHOW datestyle
+      { ALT: () => this.CONSUME(Datestyle) },
+      // PG-compat: SHOW TIME ZONE
+      {
+        ALT: () => {
+          this.CONSUME(Time)
+          this.CONSUME(Zone)
+        },
+      },
+      // PG-compat: SHOW server_version_num
+      { ALT: () => this.CONSUME(ServerVersionNum) },
+      // PG-compat: SHOW default_transaction_read_only
+      { ALT: () => this.CONSUME(DefaultTransactionReadOnly) },
       { ALT: () => this.CONSUME(Parameters) },
     ])
   })
@@ -3220,7 +3289,7 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // Precedence 11: [NOT] IN, [NOT] BETWEEN, WITHIN
+  // Precedence 11: [NOT] IN, [NOT] BETWEEN, [NOT] LIKE, [NOT] ILIKE, WITHIN
   private setExpression = this.RULE("setExpression", () => {
     this.SUBRULE(this.bitOrExpression)
     this.OPTION(() => {
@@ -3244,7 +3313,7 @@ class QuestDBParser extends CstParser {
               },
               {
                 ALT: () => {
-                  this.SUBRULE4(this.expression)
+                  this.SUBRULE3(this.bitOrExpression, { LABEL: "inValue" })
                 },
               },
             ])
@@ -3269,6 +3338,16 @@ class QuestDBParser extends CstParser {
               this.SUBRULE6(this.expression)
             })
             this.CONSUME1(RParen)
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME2(Not)
+            this.OR2([
+              { ALT: () => this.CONSUME(Like) },
+              { ALT: () => this.CONSUME(Ilike) },
+            ])
+            this.SUBRULE4(this.bitOrExpression, { LABEL: "notLikeRight" })
           },
         },
       ])
@@ -3380,7 +3459,7 @@ class QuestDBParser extends CstParser {
       })
       this.CONSUME(RBracket)
     })
-    this.OPTION(() => {
+    this.MANY2(() => {
       this.CONSUME(DoubleColon)
       this.SUBRULE(this.dataType)
     })
@@ -3632,9 +3711,12 @@ class QuestDBParser extends CstParser {
       ])
     })
     this.CONSUME(RParen)
-    // Optional IGNORE NULLS (e.g., first_value(price IGNORE NULLS))
+    // Optional IGNORE NULLS / RESPECT NULLS (e.g., first_value(price) IGNORE NULLS)
     this.OPTION3(() => {
-      this.CONSUME(Ignore)
+      this.OR3([
+        { ALT: () => this.CONSUME(Ignore) },
+        { ALT: () => this.CONSUME(Respect) },
+      ])
       this.CONSUME(Nulls)
     })
     this.OPTION1(() => this.SUBRULE(this.overClause))
@@ -3683,7 +3765,10 @@ class QuestDBParser extends CstParser {
       })
       this.CONSUME(RParen)
       this.OPTION3(() => {
-        this.CONSUME(Ignore)
+        this.OR3([
+          { ALT: () => this.CONSUME(Ignore) },
+          { ALT: () => this.CONSUME(Respect) },
+        ])
         this.CONSUME(Nulls)
       })
       this.OPTION4(() => this.SUBRULE(this.overClause))

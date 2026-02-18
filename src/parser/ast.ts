@@ -349,6 +349,9 @@ export interface AlterUserCreateTokenAction {
   tokenType: "JWK" | "REST"
   ttl?: string
   refresh?: boolean
+  transient?: boolean
+  publicKeyX?: string
+  publicKeyY?: string
 }
 
 export interface AlterUserDropTokenAction {
@@ -535,8 +538,10 @@ export interface DropServiceAccountStatement extends AstNode {
 
 export interface TruncateTableStatement extends AstNode {
   type: "truncateTable"
-  table: QualifiedName
+  tables: QualifiedName[]
   ifExists?: boolean
+  only?: boolean
+  keepSymbolMaps?: boolean
 }
 
 export interface RenameTableStatement extends AstNode {
@@ -589,6 +594,14 @@ export interface ShowStatement extends AstNode {
     | "permissions"
     | "serverVersion"
     | "parameters"
+    | "transactionIsolationLevel"
+    | "maxIdentifierLength"
+    | "standardConformingStrings"
+    | "searchPath"
+    | "dateStyle"
+    | "timeZone"
+    | "serverVersionNum"
+    | "defaultTransactionReadOnly"
   table?: QualifiedName
   name?: QualifiedName
 }
@@ -942,6 +955,8 @@ export interface FunctionCall extends AstNode {
   fromSeparator?: boolean
   /** IGNORE NULLS modifier (e.g., first_value(x) IGNORE NULLS) */
   ignoreNulls?: boolean
+  /** RESPECT NULLS modifier (e.g., first_value(x) RESPECT NULLS) */
+  respectNulls?: boolean
   /** Subquery as function argument (e.g., touch(SELECT * FROM t)) */
   subquery?: SelectStatement
   over?: WindowSpecification

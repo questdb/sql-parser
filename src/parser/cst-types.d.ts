@@ -994,12 +994,15 @@ export type AlterUserActionCstChildren = {
   Token?: (IToken)[];
   Type?: (IToken)[];
   Jwk?: (IToken)[];
+  Public?: IToken[];
+  Key?: IToken[];
+  Identifier?: (IToken)[];
   Rest?: (IToken)[];
   Ttl?: IToken[];
   DurationLiteral?: IToken[];
   Refresh?: IToken[];
+  Transient?: IToken[];
   Drop?: IToken[];
-  Identifier?: IToken[];
 };
 
 export interface AlterTableStatementCstNode extends CstNode {
@@ -1234,7 +1237,12 @@ export type TruncateTableStatementCstChildren = {
   Table: IToken[];
   If?: IToken[];
   Exists?: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  Only?: IToken[];
+  qualifiedName: (QualifiedNameCstNode)[];
+  Comma?: IToken[];
+  Keep?: IToken[];
+  Symbol?: IToken[];
+  Maps?: IToken[];
 };
 
 export interface RenameTableStatementCstNode extends CstNode {
@@ -1336,6 +1344,18 @@ export type ShowStatementCstChildren = {
   Accounts?: IToken[];
   Permissions?: IToken[];
   ServerVersion?: IToken[];
+  Transaction?: IToken[];
+  Isolation?: IToken[];
+  Level?: IToken[];
+  TransactionIsolation?: IToken[];
+  MaxIdentifierLength?: IToken[];
+  StandardConformingStrings?: IToken[];
+  SearchPath?: IToken[];
+  Datestyle?: IToken[];
+  Time?: IToken[];
+  Zone?: IToken[];
+  ServerVersionNum?: IToken[];
+  DefaultTransactionReadOnly?: IToken[];
   Parameters?: IToken[];
 };
 
@@ -1839,11 +1859,15 @@ export type SetExpressionCstChildren = {
   expression?: (ExpressionCstNode)[];
   Comma?: (IToken)[];
   RParen?: (IToken)[];
+  inValue?: BitOrExpressionCstNode[];
   Between?: IToken[];
   betweenLow?: BitOrExpressionCstNode[];
   And?: IToken[];
   betweenHigh?: BitOrExpressionCstNode[];
   Within?: IToken[];
+  Like?: IToken[];
+  Ilike?: IToken[];
+  notLikeRight?: BitOrExpressionCstNode[];
 };
 
 export interface BitOrExpressionCstNode extends CstNode {
@@ -2103,6 +2127,7 @@ export type FunctionCallCstChildren = {
   From?: IToken[];
   RParen: IToken[];
   Ignore?: IToken[];
+  Respect?: IToken[];
   Nulls?: IToken[];
   overClause?: OverClauseCstNode[];
 };
@@ -2123,6 +2148,7 @@ export type IdentifierExpressionCstChildren = {
   From?: IToken[];
   RParen?: IToken[];
   Ignore?: IToken[];
+  Respect?: IToken[];
   Nulls?: IToken[];
   overClause?: OverClauseCstNode[];
 };
