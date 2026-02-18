@@ -44,6 +44,7 @@ import type {
   ColumnRefCstChildren,
   CompileViewStatementCstChildren,
   ConcatExpressionCstChildren,
+  Ipv4ContainmentExpressionCstChildren,
   ConvertPartitionTargetCstChildren,
   CopyCancelCstChildren,
   CopyFromCstChildren,
@@ -154,7 +155,6 @@ import type {
   ValuesClauseCstChildren,
   ValuesListCstChildren,
   WhereClauseCstChildren,
-  WindowDefinitionClauseCstChildren,
   WindowFrameBoundCstChildren,
   WindowFrameClauseCstChildren,
   WindowJoinBoundCstChildren,
@@ -2106,33 +2106,6 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
-    if (ctx.Time && ctx.Zone) {
-      return {
-        type: "show",
-        showType: "timeZone",
-      }
-    }
-
-    if (ctx.Default && ctx.Transaction) {
-      return {
-        type: "show",
-        showType: "defaultTransactionReadOnly",
-      }
-    }
-
-    if (ctx.Transaction) {
-      if (ctx.Isolation) {
-        return {
-          type: "show",
-          showType: "transactionIsolationLevel",
-        }
-      }
-      return {
-        type: "show",
-        showType: "transaction",
-      }
-    }
-
     if (ctx.User) {
       return {
         type: "show",
@@ -2938,20 +2911,47 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   concatExpression(ctx: ConcatExpressionCstChildren): AST.Expression {
-    let result = this.visit(ctx.additiveExpression[0]) as AST.Expression
+    let result = this.visit(
+      ctx.ipv4ContainmentExpression[0],
+    ) as AST.Expression
 
-    if (ctx.additiveExpression.length > 1) {
-      for (let i = 1; i < ctx.additiveExpression.length; i++) {
+    if (ctx.ipv4ContainmentExpression.length > 1) {
+      for (let i = 1; i < ctx.ipv4ContainmentExpression.length; i++) {
         result = {
           type: "binary",
           operator: "||",
           left: result,
-          right: this.visit(ctx.additiveExpression[i]) as AST.Expression,
+          right: this.visit(
+            ctx.ipv4ContainmentExpression[i],
+          ) as AST.Expression,
         }
       }
     }
 
     return result
+  }
+
+  ipv4ContainmentExpression(
+    ctx: Ipv4ContainmentExpressionCstChildren,
+  ): AST.Expression {
+    const left = this.visit(ctx.additiveExpression[0]) as AST.Expression
+
+    if (ctx.additiveExpression.length > 1) {
+      let operator: string
+      if (ctx.IPv4ContainedByOrEqual) operator = "<<="
+      else if (ctx.IPv4ContainedBy) operator = "<<"
+      else if (ctx.IPv4ContainsOrEqual) operator = ">>="
+      else operator = ">>"
+
+      return {
+        type: "binary",
+        operator,
+        left,
+        right: this.visit(ctx.additiveExpression[1]) as AST.Expression,
+      }
+    }
+
+    return left
   }
 
   additiveExpression(ctx: AdditiveExpressionCstChildren): AST.Expression {
@@ -3472,11 +3472,6 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     return result
-  }
-
-  windowDefinitionClause(_ctx: WindowDefinitionClauseCstChildren): undefined {
-    // Handled at a higher level; this just satisfies the visitor validation
-    return undefined
   }
 
   windowFrameBound(ctx: WindowFrameBoundCstChildren): AST.WindowFrameBound {

@@ -708,7 +708,7 @@ describe("CREATE TABLE autocomplete", () => {
       assertSuggestionsWalkthrough(provider, [
         {
           typed: "SHOW ",
-          expects: ["TABLES", "COLUMNS", "CREATE", "TIME"],
+          expects: ["TABLES", "COLUMNS", "CREATE", "PARAMETERS"],
         },
         {
           typed: "SHOW CREATE ",

@@ -588,12 +588,7 @@ export interface ShowStatement extends AstNode {
     | "serviceAccounts"
     | "permissions"
     | "serverVersion"
-    | "serverVersionNum"
     | "parameters"
-    | "timeZone"
-    | "transaction"
-    | "transactionIsolationLevel"
-    | "defaultTransactionReadOnly"
   table?: QualifiedName
   name?: QualifiedName
 }

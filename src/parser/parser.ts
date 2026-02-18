@@ -219,6 +219,10 @@ import {
   RegexNotEquals,
   Concat,
   DoubleColon,
+  IPv4ContainedBy,
+  IPv4ContainedByOrEqual,
+  IPv4Contains,
+  IPv4ContainsOrEqual,
   Plus,
   Minus,
   Divide,
@@ -251,19 +255,15 @@ import {
   TimestampNs,
   // Other keywords commonly used as identifiers
   Index,
-  Isolation,
   Column,
   Type,
-  Level,
   Offset,
-  Only,
   First,
   Volume,
   Start,
   Current,
   Row,
   User,
-  Default,
   View,
   Tolerance,
   Materialized,
@@ -559,7 +559,6 @@ class QuestDBParser extends CstParser {
         this.CONSUME(RParen)
       })
       this.OPTION6(() => this.SUBRULE(this.orderByClause))
-      this.OPTION8(() => this.SUBRULE(this.windowDefinitionClause))
       this.OPTION7(() => this.SUBRULE(this.limitClause))
     })
   })
@@ -2518,29 +2517,6 @@ class QuestDBParser extends CstParser {
       },
       {
         ALT: () => {
-          this.CONSUME(Time)
-          this.CONSUME(Zone)
-        },
-      },
-      {
-        ALT: () => {
-          this.CONSUME(Transaction)
-          this.OPTION5(() => {
-            this.CONSUME(Isolation)
-            this.CONSUME(Level)
-          })
-        },
-      },
-      {
-        ALT: () => {
-          this.CONSUME(Default)
-          this.CONSUME1(Transaction)
-          this.CONSUME(Identifier) // READ
-          this.CONSUME(Only)
-        },
-      },
-      {
-        ALT: () => {
           this.CONSUME(User)
           this.OPTION(() => this.SUBRULE3(this.qualifiedName))
         },
@@ -3308,12 +3284,29 @@ class QuestDBParser extends CstParser {
 
   // Precedence 7: || (string concatenation)
   private concatExpression = this.RULE("concatExpression", () => {
-    this.SUBRULE(this.additiveExpression)
+    this.SUBRULE(this.ipv4ContainmentExpression)
     this.MANY(() => {
       this.CONSUME(Concat)
-      this.SUBRULE1(this.additiveExpression)
+      this.SUBRULE1(this.ipv4ContainmentExpression)
     })
   })
+
+  // Precedence 6: <<, <<=, >>, >>= (IPv4 containment)
+  private ipv4ContainmentExpression = this.RULE(
+    "ipv4ContainmentExpression",
+    () => {
+      this.SUBRULE(this.additiveExpression)
+      this.OPTION(() => {
+        this.OR([
+          { ALT: () => this.CONSUME(IPv4ContainedByOrEqual) },
+          { ALT: () => this.CONSUME(IPv4ContainedBy) },
+          { ALT: () => this.CONSUME(IPv4ContainsOrEqual) },
+          { ALT: () => this.CONSUME(IPv4Contains) },
+        ])
+        this.SUBRULE1(this.additiveExpression)
+      })
+    },
+  )
 
   // Precedence 5: +, -
   private additiveExpression = this.RULE("additiveExpression", () => {
@@ -3792,18 +3785,6 @@ class QuestDBParser extends CstParser {
         },
       },
     ])
-  })
-
-  // Named WINDOW clause: WINDOW w AS (PARTITION BY ...)
-  private windowDefinitionClause = this.RULE("windowDefinitionClause", () => {
-    this.CONSUME(Window)
-    this.SUBRULE(this.identifier)
-    this.CONSUME(As)
-    this.CONSUME(LParen)
-    this.OPTION(() => this.SUBRULE(this.windowPartitionByClause))
-    this.OPTION1(() => this.SUBRULE(this.orderByClause))
-    this.OPTION2(() => this.SUBRULE(this.windowFrameClause))
-    this.CONSUME(RParen)
   })
 
   // ==========================================================================

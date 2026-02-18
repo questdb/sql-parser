@@ -874,18 +874,8 @@ function showToSql(stmt: AST.ShowStatement): string {
       return `SHOW CREATE MATERIALIZED VIEW ${qualifiedNameToSql(stmt.table!)}`
     case "serverVersion":
       return "SHOW SERVER_VERSION"
-    case "serverVersionNum":
-      return "SHOW SERVER_VERSION_NUM"
     case "parameters":
       return "SHOW PARAMETERS"
-    case "timeZone":
-      return "SHOW TIME ZONE"
-    case "transaction":
-      return "SHOW TRANSACTION"
-    case "transactionIsolationLevel":
-      return "SHOW TRANSACTION ISOLATION LEVEL"
-    case "defaultTransactionReadOnly":
-      return "SHOW DEFAULT TRANSACTION READ ONLY"
     case "user":
       return stmt.name
         ? `SHOW USER ${qualifiedNameToSql(stmt.name)}`

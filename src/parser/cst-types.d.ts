@@ -106,7 +106,6 @@ export type SimpleSelectCstChildren = {
   pivotBody?: PivotBodyCstNode[];
   RParen?: IToken[];
   orderByClause?: OrderByClauseCstNode[];
-  windowDefinitionClause?: WindowDefinitionClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
 };
 
@@ -1318,14 +1317,6 @@ export type ShowStatementCstChildren = {
   Table?: IToken[];
   View?: (IToken)[];
   Materialized?: IToken[];
-  Time?: IToken[];
-  Zone?: IToken[];
-  Transaction?: (IToken)[];
-  Isolation?: IToken[];
-  Level?: IToken[];
-  Default?: IToken[];
-  Identifier?: IToken[];
-  Only?: IToken[];
   User?: IToken[];
   Users?: IToken[];
   Groups?: IToken[];
@@ -1879,8 +1870,21 @@ export interface ConcatExpressionCstNode extends CstNode {
 }
 
 export type ConcatExpressionCstChildren = {
-  additiveExpression: (AdditiveExpressionCstNode)[];
+  ipv4ContainmentExpression: (Ipv4ContainmentExpressionCstNode)[];
   Concat?: IToken[];
+};
+
+export interface Ipv4ContainmentExpressionCstNode extends CstNode {
+  name: "ipv4ContainmentExpression";
+  children: Ipv4ContainmentExpressionCstChildren;
+}
+
+export type Ipv4ContainmentExpressionCstChildren = {
+  additiveExpression: (AdditiveExpressionCstNode)[];
+  IPv4ContainedBy?: IToken[];
+  IPv4ContainedByOrEqual?: IToken[];
+  IPv4Contains?: IToken[];
+  IPv4ContainsOrEqual?: IToken[];
 };
 
 export interface AdditiveExpressionCstNode extends CstNode {
@@ -2172,22 +2176,6 @@ export type WindowFrameBoundCstChildren = {
   expression?: ExpressionCstNode[];
 };
 
-export interface WindowDefinitionClauseCstNode extends CstNode {
-  name: "windowDefinitionClause";
-  children: WindowDefinitionClauseCstChildren;
-}
-
-export type WindowDefinitionClauseCstChildren = {
-  Window: IToken[];
-  identifier: IdentifierCstNode[];
-  As: IToken[];
-  LParen: IToken[];
-  windowPartitionByClause?: WindowPartitionByClauseCstNode[];
-  orderByClause?: OrderByClauseCstNode[];
-  windowFrameClause?: WindowFrameClauseCstNode[];
-  RParen: IToken[];
-};
-
 export interface LiteralCstNode extends CstNode {
   name: "literal";
   children: LiteralCstChildren;
@@ -2412,6 +2400,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   bitXorExpression(children: BitXorExpressionCstChildren, param?: IN): OUT;
   bitAndExpression(children: BitAndExpressionCstChildren, param?: IN): OUT;
   concatExpression(children: ConcatExpressionCstChildren, param?: IN): OUT;
+  ipv4ContainmentExpression(children: Ipv4ContainmentExpressionCstChildren, param?: IN): OUT;
   additiveExpression(children: AdditiveExpressionCstChildren, param?: IN): OUT;
   multiplicativeExpression(children: MultiplicativeExpressionCstChildren, param?: IN): OUT;
   unaryExpression(children: UnaryExpressionCstChildren, param?: IN): OUT;
@@ -2431,7 +2420,6 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   windowPartitionByClause(children: WindowPartitionByClauseCstChildren, param?: IN): OUT;
   windowFrameClause(children: WindowFrameClauseCstChildren, param?: IN): OUT;
   windowFrameBound(children: WindowFrameBoundCstChildren, param?: IN): OUT;
-  windowDefinitionClause(children: WindowDefinitionClauseCstChildren, param?: IN): OUT;
   literal(children: LiteralCstChildren, param?: IN): OUT;
   booleanLiteral(children: BooleanLiteralCstChildren, param?: IN): OUT;
   stringOrIdentifier(children: StringOrIdentifierCstChildren, param?: IN): OUT;

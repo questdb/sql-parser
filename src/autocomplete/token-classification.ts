@@ -102,6 +102,11 @@ export const SKIP_TOKENS = new Set([
   "RegexMatch",
   "RegexNotMatch",
   "RegexNotEquals",
+  // IPv4 containment operators
+  "IPv4ContainedBy",
+  "IPv4ContainedByOrEqual",
+  "IPv4Contains",
+  "IPv4ContainsOrEqual",
   // Bitwise operators
   "BitAnd",
   "BitXor",

@@ -17,6 +17,8 @@ jobs:
           node-version: 20
           cache: yarn
 
+      - run: corepack enable
+
       - run: yarn
 
       - run: yarn typecheck

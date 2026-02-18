@@ -575,18 +575,48 @@ export const RBracket = createToken({ name: "RBracket", pattern: /\]/ })
 export const Colon = createToken({ name: "Colon", pattern: /:/ })
 export const ColonEquals = createToken({ name: "ColonEquals", pattern: /:=/ })
 
+// IPv4 Containment Operators (longest first to avoid conflicts)
+export const IPv4ContainedByOrEqual = createToken({
+  name: "IPv4ContainedByOrEqual",
+  pattern: /<<=/,
+})
+export const IPv4ContainedBy = createToken({
+  name: "IPv4ContainedBy",
+  pattern: /<</,
+  longer_alt: IPv4ContainedByOrEqual,
+})
+export const IPv4ContainsOrEqual = createToken({
+  name: "IPv4ContainsOrEqual",
+  pattern: />>=/,
+})
+export const IPv4Contains = createToken({
+  name: "IPv4Contains",
+  pattern: />>/,
+  longer_alt: IPv4ContainsOrEqual,
+})
+
 // Comparison Operators (order matters - longer first)
 export const NotEquals = createToken({ name: "NotEquals", pattern: /!=|<>/ })
 export const LessThanOrEqual = createToken({
   name: "LessThanOrEqual",
   pattern: /<=/,
+  longer_alt: IPv4ContainedByOrEqual,
 })
 export const GreaterThanOrEqual = createToken({
   name: "GreaterThanOrEqual",
   pattern: />=/,
+  longer_alt: IPv4ContainsOrEqual,
 })
-export const LessThan = createToken({ name: "LessThan", pattern: /</ })
-export const GreaterThan = createToken({ name: "GreaterThan", pattern: />/ })
+export const LessThan = createToken({
+  name: "LessThan",
+  pattern: /</,
+  longer_alt: IPv4ContainedBy,
+})
+export const GreaterThan = createToken({
+  name: "GreaterThan",
+  pattern: />/,
+  longer_alt: IPv4Contains,
+})
 export const Equals = createToken({ name: "Equals", pattern: /=/ })
 
 // Arithmetic Operators
@@ -731,6 +761,10 @@ export const allTokens: TokenType[] = [
   // Multi-char operators (before single-char)
   DoubleColon,
   ColonEquals,
+  IPv4ContainedByOrEqual,
+  IPv4ContainedBy,
+  IPv4ContainsOrEqual,
+  IPv4Contains,
   NotEquals,
   LessThanOrEqual,
   GreaterThanOrEqual,

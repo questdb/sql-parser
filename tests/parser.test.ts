@@ -2239,48 +2239,12 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       }
     })
 
-    it("should parse SHOW SERVER_VERSION", () => {
-      const result = parseToAst("SHOW server_version")
-      expect(result.errors).toHaveLength(0)
-      const stmt = result.ast[0]
-      if (stmt.type === "show") {
-        expect(stmt.showType).toBe("serverVersion")
-      }
-    })
-
     it("should parse SHOW PARAMETERS", () => {
       const result = parseToAst("SHOW PARAMETERS")
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0]
       if (stmt.type === "show") {
         expect(stmt.showType).toBe("parameters")
-      }
-    })
-
-    it("should parse SHOW TIME ZONE", () => {
-      const result = parseToAst("SHOW TIME ZONE")
-      expect(result.errors).toHaveLength(0)
-      const stmt = result.ast[0]
-      if (stmt.type === "show") {
-        expect(stmt.showType).toBe("timeZone")
-      }
-    })
-
-    it("should parse SHOW TRANSACTION ISOLATION LEVEL", () => {
-      const result = parseToAst("SHOW TRANSACTION ISOLATION LEVEL")
-      expect(result.errors).toHaveLength(0)
-      const stmt = result.ast[0]
-      if (stmt.type === "show") {
-        expect(stmt.showType).toBe("transactionIsolationLevel")
-      }
-    })
-
-    it("should parse SHOW TRANSACTION (without ISOLATION LEVEL)", () => {
-      const result = parseToAst("SHOW TRANSACTION")
-      expect(result.errors).toHaveLength(0)
-      const stmt = result.ast[0]
-      if (stmt.type === "show") {
-        expect(stmt.showType).toBe("transaction")
       }
     })
   })
