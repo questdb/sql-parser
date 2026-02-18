@@ -2746,7 +2746,10 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(ParquetVersion)
-          this.SUBRULE2(this.stringOrIdentifier)
+          this.OR5([
+            { ALT: () => this.CONSUME(NumberLiteral) },
+            { ALT: () => this.SUBRULE2(this.stringOrIdentifier) },
+          ])
         },
       },
       {

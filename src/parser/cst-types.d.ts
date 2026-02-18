@@ -1452,6 +1452,7 @@ export type CopyOptionCstChildren = {
   DataPageSize?: IToken[];
   StatisticsEnabled?: IToken[];
   ParquetVersion?: IToken[];
+  NumberLiteral?: IToken[];
   RawArrayEncoding?: IToken[];
 };
 

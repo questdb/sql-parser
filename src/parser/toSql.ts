@@ -1268,7 +1268,7 @@ function copyOptionToSql(opt: AST.CopyOption): string {
   if (opt.value === true) return `${opt.key} TRUE`
   if (opt.value === false) return `${opt.key} FALSE`
   if (typeof opt.value === "string")
-    return `${opt.key} ${escapeString(opt.value)}`
+    return `${opt.key} ${opt.quoted ? escapeString(opt.value) : opt.value}`
   if (Array.isArray(opt.value)) return `${opt.key} ${opt.value.join(" ")}`
   return `${opt.key} ${opt.value}`
 }

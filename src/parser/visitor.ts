@@ -2298,16 +2298,26 @@ class QuestDBVisitor extends BaseVisitor {
 
     if (ctx.booleanLiteral) {
       result.value = this.visit(ctx.booleanLiteral) as boolean
+    } else if (ctx.NumberLiteral) {
+      // PARQUET_VERSION with bare number literal (e.g., PARQUET_VERSION 2)
+      result.value = parseInt(ctx.NumberLiteral[0].image, 10)
     } else if (ctx.stringOrIdentifier) {
       result.value = this.extractMaybeString(ctx.stringOrIdentifier[0])
+      // Mark as quoted when the stringOrIdentifier resolved to a string literal
+      const soiChildren = (ctx.stringOrIdentifier[0] as CstNode).children
+      if (soiChildren.StringLiteral) {
+        result.quoted = true
+      }
     } else if (ctx.StringLiteral) {
       result.value = ctx.StringLiteral[0].image.slice(1, -1)
+      result.quoted = true
     } else if (ctx.expression) {
       const expr = this.visit(ctx.expression) as AST.Expression
       if (expr?.type === "literal" && expr.literalType === "number") {
         result.value = expr.value as number
       } else if (expr?.type === "literal" && expr.literalType === "string") {
         result.value = expr.value as string
+        result.quoted = true
       } else if (expr?.type === "literal") {
         result.value = expr.raw ?? String(expr.value ?? "")
       } else {

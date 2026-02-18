@@ -3210,6 +3210,74 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         expect(result2.ast[0].type).toBe(result1.ast[0].type)
       })
     }
+
+    it("COPY TO round-trip: PARTITION_BY value is NOT quoted", () => {
+      const sql = "COPY trades TO '/export/trades' WITH PARTITION_BY MONTH"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+
+      const roundtrip = toSql(result.ast[0])
+      expect(roundtrip).toContain("PARTITION_BY MONTH")
+      expect(roundtrip).not.toContain("PARTITION_BY 'MONTH'")
+
+      const result2 = parseToAst(roundtrip)
+      expect(result2.errors).toHaveLength(0)
+    })
+
+    it("COPY TO round-trip: FORMAT, PARTITION_BY and COMPRESSION_CODEC are NOT quoted", () => {
+      const sql =
+        "COPY trades TO '/export/trades' WITH FORMAT PARQUET " +
+        "PARTITION_BY MONTH COMPRESSION_CODEC ZSTD"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+
+      const roundtrip = toSql(result.ast[0])
+      expect(roundtrip).toContain("FORMAT PARQUET")
+      expect(roundtrip).toContain("PARTITION_BY MONTH")
+      expect(roundtrip).toContain("COMPRESSION_CODEC ZSTD")
+
+      const result2 = parseToAst(roundtrip)
+      expect(result2.errors).toHaveLength(0)
+    })
+
+    it("COPY TO round-trip: PARQUET_VERSION accepts bare number literal", () => {
+      const sql =
+        "COPY trades TO '/export/trades' WITH FORMAT PARQUET PARQUET_VERSION 2"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+
+      const roundtrip = toSql(result.ast[0])
+      expect(roundtrip).toContain("PARQUET_VERSION 2")
+
+      const result2 = parseToAst(roundtrip)
+      expect(result2.errors).toHaveLength(0)
+    })
+
+    it("COPY FROM round-trip: string literal options are still quoted", () => {
+      const sql = "COPY trades FROM '/data/trades.csv' WITH DELIMITER ','"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+
+      const roundtrip = toSql(result.ast[0])
+      expect(roundtrip).toContain("DELIMITER ','")
+
+      const result2 = parseToAst(roundtrip)
+      expect(result2.errors).toHaveLength(0)
+    })
+
+    it("COPY TO with subquery and all Parquet options", () => {
+      const sql =
+        "COPY (SELECT * FROM trades WHERE timestamp IN '2024') TO '/export/trades' " +
+        "WITH FORMAT PARQUET PARTITION_BY MONTH COMPRESSION_CODEC ZSTD COMPRESSION_LEVEL 3 " +
+        "ROW_GROUP_SIZE 100000 DATA_PAGE_SIZE 1048576 STATISTICS_ENABLED true PARQUET_VERSION 2 " +
+        "RAW_ARRAY_ENCODING true"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+
+      const roundtrip = toSql(result.ast[0])
+      const result2 = parseToAst(roundtrip)
+      expect(result2.errors).toHaveLength(0)
+    })
   })
 
   // ===========================================================================

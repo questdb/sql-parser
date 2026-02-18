@@ -627,6 +627,8 @@ export interface CopyOption extends AstNode {
   type: "copyOption"
   key: string
   value?: string | number | boolean | string[]
+  /** When true, the string value originated from a string literal and should be quoted in toSql. */
+  quoted?: boolean
 }
 
 export interface CheckpointStatement extends AstNode {
