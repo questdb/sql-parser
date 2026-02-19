@@ -41,14 +41,27 @@ function toPascalCase(str: string): string {
 }
 
 /**
- * Create a keyword token with case-insensitive word boundary matching
+ * Create a keyword token with case-insensitive word boundary matching.
+ * Uses a negative lookahead instead of \b to correctly handle Unicode
+ * identifiers. JavaScript's \b only considers ASCII \w characters, so
+ * "in\b" would incorrectly match the "in" prefix of "inção" (since ç
+ * is non-ASCII and not in \w). The lookahead ensures the keyword is not
+ * followed by any valid identifier character, including Unicode.
  */
 function createKeywordToken(name: string, pattern: string): TokenType {
   return createToken({
     name,
-    pattern: new RegExp(`${pattern}\\b`, "i"),
+    pattern: new RegExp(`${pattern}(?![\\w\\u0080-\\uFFFF])`, "i"),
   })
 }
+
+/**
+ * Map from token name → original SQL keyword string (uppercased).
+ * Built during token generation so autocomplete doesn't need to
+ * reverse-engineer keyword text from regex patterns.
+ * e.g., "Select" → "SELECT", "DataPageSize" → "DATA_PAGE_SIZE"
+ */
+export const TOKEN_NAME_TO_KEYWORD = new Map<string, string>()
 
 /**
  * Generate tokens from a list of keywords
@@ -64,6 +77,7 @@ function generateTokensFromList(
     // Skip if already exists (handles duplicates across lists)
     if (!tokenMap.has(name)) {
       tokenMap.set(name, createKeywordToken(name, item))
+      TOKEN_NAME_TO_KEYWORD.set(name, item.toUpperCase())
     }
   }
 

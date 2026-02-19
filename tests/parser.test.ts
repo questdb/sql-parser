@@ -5856,4 +5856,60 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(toSql(result.ast[0])).toBe(sql)
     })
   })
+
+  describe("dot-prefixed number literals (.5)", () => {
+    it("should parse .5 as a number literal", () => {
+      const result = parseToAst("SELECT .5 FROM long_sequence(1)")
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should round-trip .5 through toSql", () => {
+      const sql = "SELECT .5 FROM long_sequence(1)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(toSql(result.ast[0])).toBe(sql)
+    })
+
+    it("should parse .123e4 as a number literal", () => {
+      const result = parseToAst("SELECT .123e4 FROM long_sequence(1)")
+      expect(result.errors).toHaveLength(0)
+    })
+  })
+
+  describe("Unicode identifiers starting with keyword prefix", () => {
+    it("should parse 'inção' as an identifier", () => {
+      const sql = "SELECT inção FROM trades"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should round-trip Unicode identifier through toSql", () => {
+      const sql = "SELECT inção FROM trades"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(toSql(result.ast[0])).toBe(sql)
+    })
+  })
+
+  describe("backslash in string literals", () => {
+    it("should parse backslash as literal character", () => {
+      const sql = "SELECT 'path\\' FROM long_sequence(1)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should round-trip backslash string through toSql", () => {
+      const sql = "SELECT 'path\\' FROM long_sequence(1)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(toSql(result.ast[0])).toBe(sql)
+    })
+
+    it("should parse string with backslash before double-quote", () => {
+      const sql = "SELECT 'c:\\users\\test' FROM long_sequence(1)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(toSql(result.ast[0])).toBe(sql)
+    })
+  })
 })

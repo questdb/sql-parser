@@ -585,7 +585,6 @@ export {
 export const Star = createToken({ name: "Star", pattern: /\*/ })
 export const Comma = createToken({ name: "Comma", pattern: /,/ })
 export const Semicolon = createToken({ name: "Semicolon", pattern: /;/ })
-export const Dot = createToken({ name: "Dot", pattern: /\./ })
 export const LParen = createToken({ name: "LParen", pattern: /\(/ })
 export const RParen = createToken({ name: "RParen", pattern: /\)/ })
 export const LBracket = createToken({ name: "LBracket", pattern: /\[/ })
@@ -723,16 +722,27 @@ export const NumberLiteral = createToken({
   pattern: /(\d[\d_]*\.?[\d_]*|\.\d[\d_]*)([eE][+-]?\d[\d_]*)?/,
 })
 
-// Strings
-export const StringLiteral = createToken({
-  name: "StringLiteral",
-  pattern: /'([^'\\]|\\.|'')*'/,
+// Dot is declared after NumberLiteral so longer_alt can reference it.
+// When the lexer matches ".", it will also check if NumberLiteral gives a
+// longer match (e.g. ".5"), and prefer that.
+export const Dot = createToken({
+  name: "Dot",
+  pattern: /\./,
+  longer_alt: NumberLiteral,
 })
 
-// Quoted Identifiers
+// Strings — QuestDB follows PostgreSQL convention: backslash is literal,
+// only '' (doubled single-quote) escapes a single quote.
+export const StringLiteral = createToken({
+  name: "StringLiteral",
+  pattern: /'([^']|'')*'/,
+})
+
+// Quoted Identifiers — same convention: "" escapes a double quote,
+// backslash is literal.
 export const QuotedIdentifier = createToken({
   name: "QuotedIdentifier",
-  pattern: /"([^"\\]|\\.|"")*"/,
+  pattern: /"([^"]|"")*"/,
 })
 
 // Identifiers (must come after keywords)

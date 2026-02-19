@@ -7,7 +7,10 @@
 // duplicate these definitions.
 // =============================================================================
 
-import { IDENTIFIER_KEYWORD_NAMES, keywordTokens } from "../parser/tokens"
+import {
+  IDENTIFIER_KEYWORD_NAMES,
+  TOKEN_NAME_TO_KEYWORD,
+} from "../parser/tokens"
 
 /**
  * Token types that represent actual identifiers
@@ -148,18 +151,11 @@ export const OPERATOR_MAP: Record<string, string> = {
 }
 
 /**
- * Reverse map from token name → actual SQL keyword, built from lexer patterns.
+ * Map from token name → actual SQL keyword.
+ * Built during token generation in tokens.ts — no regex parsing needed.
  * e.g., "DataPageSize" → "DATA_PAGE_SIZE", "Select" → "SELECT"
  */
-const TOKEN_KEYWORD_MAP = new Map<string, string>()
-for (const [name, token] of keywordTokens) {
-  if (token.PATTERN instanceof RegExp) {
-    TOKEN_KEYWORD_MAP.set(
-      name,
-      token.PATTERN.source.replace(/\\b$/, "").toUpperCase(),
-    )
-  }
-}
+const TOKEN_KEYWORD_MAP = TOKEN_NAME_TO_KEYWORD
 
 /**
  * Convert a token type name to a keyword string for display
