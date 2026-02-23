@@ -221,7 +221,7 @@ export type TableRefCstChildren = {
   tableFunctionCall?: TableFunctionCallCstNode[];
   VariableReference?: IToken[];
   StringLiteral?: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
+  tableName?: TableNameCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   As?: IToken[];
@@ -256,29 +256,77 @@ export interface JoinClauseCstNode extends CstNode {
 }
 
 export type JoinClauseCstChildren = {
-  Inner?: IToken[];
-  Left?: IToken[];
-  Right?: IToken[];
-  Full?: IToken[];
-  Cross?: IToken[];
+  asofLtJoin?: AsofLtJoinCstNode[];
+  spliceJoin?: SpliceJoinCstNode[];
+  windowJoin?: WindowJoinCstNode[];
+  standardJoin?: StandardJoinCstNode[];
+};
+
+export interface AsofLtJoinCstNode extends CstNode {
+  name: "asofLtJoin";
+  children: AsofLtJoinCstChildren;
+}
+
+export type AsofLtJoinCstChildren = {
   Asof?: IToken[];
   Lt?: IToken[];
-  Splice?: IToken[];
-  Window?: IToken[];
-  Prevailing?: (IToken)[];
-  Outer?: IToken[];
   Join: IToken[];
   tableRef: TableRefCstNode[];
   On?: IToken[];
   expression?: ExpressionCstNode[];
   Tolerance?: IToken[];
   DurationLiteral?: IToken[];
+};
+
+export interface SpliceJoinCstNode extends CstNode {
+  name: "spliceJoin";
+  children: SpliceJoinCstChildren;
+}
+
+export type SpliceJoinCstChildren = {
+  Splice: IToken[];
+  Join: IToken[];
+  tableRef: TableRefCstNode[];
+  On?: IToken[];
+  expression?: ExpressionCstNode[];
+};
+
+export interface WindowJoinCstNode extends CstNode {
+  name: "windowJoin";
+  children: WindowJoinCstChildren;
+}
+
+export type WindowJoinCstChildren = {
+  Window?: IToken[];
+  Prevailing?: (IToken)[];
+  Join: IToken[];
+  tableRef: TableRefCstNode[];
+  On?: IToken[];
+  expression?: ExpressionCstNode[];
   Range?: IToken[];
   Between?: IToken[];
   windowJoinBound?: (WindowJoinBoundCstNode)[];
   And?: IToken[];
   Include?: IToken[];
   Exclude?: IToken[];
+};
+
+export interface StandardJoinCstNode extends CstNode {
+  name: "standardJoin";
+  children: StandardJoinCstChildren;
+}
+
+export type StandardJoinCstChildren = {
+  Left?: IToken[];
+  Right?: IToken[];
+  Full?: IToken[];
+  Outer?: IToken[];
+  Inner?: IToken[];
+  Cross?: IToken[];
+  Join: IToken[];
+  tableRef: TableRefCstNode[];
+  On?: IToken[];
+  expression?: ExpressionCstNode[];
 };
 
 export interface WindowJoinBoundCstNode extends CstNode {
@@ -455,7 +503,7 @@ export type InsertStatementCstChildren = {
   Atomic?: IToken[];
   batchClause?: (BatchClauseCstNode)[];
   Into: IToken[];
-  stringOrQualifiedName: StringOrQualifiedNameCstNode[];
+  tableNameOrString: TableNameOrStringCstNode[];
   LParen?: IToken[];
   identifier?: (IdentifierCstNode)[];
   Comma?: IToken[];
@@ -494,7 +542,7 @@ export interface UpdateStatementCstNode extends CstNode {
 
 export type UpdateStatementCstChildren = {
   Update: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
   identifier?: IdentifierCstNode[];
   Set: IToken[];
   setClause: (SetClauseCstNode)[];
@@ -600,7 +648,7 @@ export type CreateTableBodyCstChildren = {
   indexDefinition?: (IndexDefinitionCstNode)[];
   columnDefinition?: (ColumnDefinitionCstNode)[];
   Like?: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
+  tableName?: TableNameCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   Partition?: IToken[];
@@ -1012,8 +1060,7 @@ export interface AlterTableStatementCstNode extends CstNode {
 
 export type AlterTableStatementCstChildren = {
   Table: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
-  StringLiteral?: IToken[];
+  tableNameOrString: TableNameOrStringCstNode[];
   alterTableAction: AlterTableActionCstNode[];
 };
 
@@ -1031,7 +1078,7 @@ export type AlterTableActionCstChildren = {
   columnDefinition?: (ColumnDefinitionCstNode)[];
   Comma?: (IToken)[];
   Drop?: (IToken)[];
-  identifier?: (IdentifierCstNode)[];
+  columnRef?: (ColumnRefCstNode)[];
   Partition?: (IToken)[];
   List?: (IToken)[];
   StringLiteral?: (IToken)[];
@@ -1039,6 +1086,7 @@ export type AlterTableActionCstChildren = {
   expression?: (ExpressionCstNode)[];
   Rename?: IToken[];
   To?: IToken[];
+  identifier?: (IdentifierCstNode)[];
   Alter?: IToken[];
   Type?: (IToken)[];
   dataType?: DataTypeCstNode[];
@@ -1101,7 +1149,7 @@ export interface AlterMaterializedViewStatementCstNode extends CstNode {
 export type AlterMaterializedViewStatementCstChildren = {
   Materialized: IToken[];
   View: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
   alterMaterializedViewAction: AlterMaterializedViewActionCstNode[];
 };
 
@@ -1113,7 +1161,7 @@ export interface AlterMaterializedViewActionCstNode extends CstNode {
 export type AlterMaterializedViewActionCstChildren = {
   Alter?: IToken[];
   Column?: IToken[];
-  identifier?: IdentifierCstNode[];
+  columnRef?: ColumnRefCstNode[];
   Add?: IToken[];
   Index?: (IToken)[];
   Capacity?: (IToken)[];
@@ -1174,7 +1222,7 @@ export type DropTableStatementCstChildren = {
   Table?: IToken[];
   If?: IToken[];
   Exists?: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
+  tableName?: TableNameCstNode[];
 };
 
 export interface DropMaterializedViewStatementCstNode extends CstNode {
@@ -1238,7 +1286,7 @@ export type TruncateTableStatementCstChildren = {
   If?: IToken[];
   Exists?: IToken[];
   Only?: IToken[];
-  qualifiedName: (QualifiedNameCstNode)[];
+  tableName: (TableNameCstNode)[];
   Comma?: IToken[];
   Keep?: IToken[];
   Symbol?: IToken[];
@@ -1253,7 +1301,7 @@ export interface RenameTableStatementCstNode extends CstNode {
 export type RenameTableStatementCstChildren = {
   Rename: IToken[];
   Table: IToken[];
-  stringOrQualifiedName: (StringOrQualifiedNameCstNode)[];
+  tableNameOrString: (TableNameOrStringCstNode)[];
   To: IToken[];
 };
 
@@ -1403,7 +1451,7 @@ export interface CopyFromCstNode extends CstNode {
 }
 
 export type CopyFromCstChildren = {
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
   From: IToken[];
   stringOrIdentifier: StringOrIdentifierCstNode[];
   copyOptions?: CopyOptionsCstNode[];
@@ -1418,7 +1466,7 @@ export type CopyToCstChildren = {
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];
   RParen?: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
+  tableName?: TableNameCstNode[];
   To: IToken[];
   stringOrIdentifier: StringOrIdentifierCstNode[];
   copyOptions?: CopyOptionsCstNode[];
@@ -1507,7 +1555,7 @@ export type BackupStatementCstChildren = {
   Backup: IToken[];
   Database?: IToken[];
   Table?: IToken[];
-  qualifiedName?: QualifiedNameCstNode[];
+  tableName?: TableNameCstNode[];
   Abort?: IToken[];
 };
 
@@ -1519,7 +1567,7 @@ export interface CompileViewStatementCstNode extends CstNode {
 export type CompileViewStatementCstChildren = {
   Compile: IToken[];
   View: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
 };
 
 export interface GrantStatementCstNode extends CstNode {
@@ -1604,7 +1652,7 @@ export interface GrantTableTargetCstNode extends CstNode {
 }
 
 export type GrantTableTargetCstChildren = {
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
   LParen?: IToken[];
   identifier?: (IdentifierCstNode)[];
   Comma?: IToken[];
@@ -1649,7 +1697,7 @@ export interface VacuumTableStatementCstNode extends CstNode {
 export type VacuumTableStatementCstChildren = {
   Vacuum: IToken[];
   Table: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
 };
 
 export interface ResumeWalStatementCstNode extends CstNode {
@@ -1687,7 +1735,7 @@ export interface ReindexTableStatementCstNode extends CstNode {
 export type ReindexTableStatementCstChildren = {
   Reindex: IToken[];
   Table: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
   Column?: IToken[];
   identifier?: (IdentifierCstNode)[];
   Comma?: (IToken)[];
@@ -1706,7 +1754,7 @@ export type RefreshMaterializedViewStatementCstChildren = {
   Refresh: IToken[];
   Materialized: IToken[];
   View: IToken[];
-  qualifiedName: QualifiedNameCstNode[];
+  tableName: TableNameCstNode[];
   Full?: IToken[];
   Incremental?: IToken[];
   Range?: IToken[];
@@ -1724,7 +1772,7 @@ export type PivotStatementCstChildren = {
   LParen: (IToken)[];
   selectStatement?: SelectStatementCstNode[];
   RParen: (IToken)[];
-  qualifiedName?: QualifiedNameCstNode[];
+  tableName?: TableNameCstNode[];
   whereClause?: WhereClauseCstNode[];
   Pivot: IToken[];
   pivotBody: PivotBodyCstNode[];
@@ -2306,6 +2354,25 @@ export type ColumnRefCstChildren = {
   qualifiedName: QualifiedNameCstNode[];
 };
 
+export interface TableNameCstNode extends CstNode {
+  name: "tableName";
+  children: TableNameCstChildren;
+}
+
+export type TableNameCstChildren = {
+  qualifiedName: QualifiedNameCstNode[];
+};
+
+export interface TableNameOrStringCstNode extends CstNode {
+  name: "tableNameOrString";
+  children: TableNameOrStringCstChildren;
+}
+
+export type TableNameOrStringCstChildren = {
+  StringLiteral?: IToken[];
+  tableName?: TableNameCstNode[];
+};
+
 export interface QualifiedNameCstNode extends CstNode {
   name: "qualifiedName";
   children: QualifiedNameCstChildren;
@@ -2347,6 +2414,10 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   tableFunctionCall(children: TableFunctionCallCstChildren, param?: IN): OUT;
   tableFunctionName(children: TableFunctionNameCstChildren, param?: IN): OUT;
   joinClause(children: JoinClauseCstChildren, param?: IN): OUT;
+  asofLtJoin(children: AsofLtJoinCstChildren, param?: IN): OUT;
+  spliceJoin(children: SpliceJoinCstChildren, param?: IN): OUT;
+  windowJoin(children: WindowJoinCstChildren, param?: IN): OUT;
+  standardJoin(children: StandardJoinCstChildren, param?: IN): OUT;
   windowJoinBound(children: WindowJoinBoundCstChildren, param?: IN): OUT;
   durationExpression(children: DurationExpressionCstChildren, param?: IN): OUT;
   whereClause(children: WhereClauseCstChildren, param?: IN): OUT;
@@ -2478,6 +2549,8 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   intervalValue(children: IntervalValueCstChildren, param?: IN): OUT;
   timeZoneValue(children: TimeZoneValueCstChildren, param?: IN): OUT;
   columnRef(children: ColumnRefCstChildren, param?: IN): OUT;
+  tableName(children: TableNameCstChildren, param?: IN): OUT;
+  tableNameOrString(children: TableNameOrStringCstChildren, param?: IN): OUT;
   qualifiedName(children: QualifiedNameCstChildren, param?: IN): OUT;
   identifier(children: IdentifierCstChildren, param?: IN): OUT;
 }

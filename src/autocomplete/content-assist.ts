@@ -76,6 +76,10 @@ export interface ContentAssistResult {
    * should resolve this against tablesInScope aliases/names to filter columns.
    */
   qualifiedTableRef?: string
+  /** Whether the grammar context expects column names (expression/columnRef positions) */
+  suggestColumns: boolean
+  /** Whether the grammar context expects table names (tableName positions, or expression context) */
+  suggestTables: boolean
 }
 
 // =============================================================================
@@ -236,6 +240,23 @@ function extractTablesFromAst(ast: unknown): ExtractResult {
       const tableName = normalizeTableName(n.table)
       if (tableName) {
         tables.push({ table: tableName })
+      }
+    }
+
+    // Handle ALTER TABLE / ALTER MATERIALIZED VIEW
+    if (
+      (n.type === "alterTable" || n.type === "alterMaterializedView") &&
+      n.table
+    ) {
+      const tableName = normalizeTableName(n.table)
+      if (tableName) {
+        tables.push({ table: tableName })
+      }
+    }
+    if (n.type === "alterMaterializedView" && n.view) {
+      const viewName = normalizeTableName(n.view)
+      if (viewName) {
+        tables.push({ table: viewName })
       }
     }
 
@@ -511,28 +532,46 @@ function extractTables(fullSql: string, tokens: IToken[]): ExtractResult {
 
   // Scan for FROM/JOIN table references only in the outer query (after CTEs).
   // This avoids leaking tables referenced inside CTE bodies into the outer scope.
+  // Also detect ALTER TABLE / TRUNCATE TABLE patterns for column scoping.
+  const DDL_TABLE_PREFIXES = new Set(["Alter", "Truncate", "Drop"])
   for (let i = outerQueryStart; i < tokens.length; i++) {
-    if (!TABLE_PREFIX_TOKENS.has(tokens[i].tokenType.name)) continue
+    const tokenName = tokens[i].tokenType.name
 
-    const tableNameResult = readQualifiedName(i + 1)
-    if (!tableNameResult) continue
+    // Standard DML: FROM/JOIN/UPDATE/INTO <table>
+    if (TABLE_PREFIX_TOKENS.has(tokenName)) {
+      const tableNameResult = readQualifiedName(i + 1)
+      if (!tableNameResult) continue
 
-    let alias: string | undefined
-    let aliasStart = tableNameResult.nextIndex
-    if (tokens[aliasStart]?.tokenType.name === "As") {
-      aliasStart++
+      let alias: string | undefined
+      let aliasStart = tableNameResult.nextIndex
+      if (tokens[aliasStart]?.tokenType.name === "As") {
+        aliasStart++
+      }
+      if (isIdentifierLike(tokens[aliasStart])) {
+        alias = tokenToNamePart(tokens[aliasStart])
+      }
+
+      tables.push({
+        table: tableNameResult.name,
+        alias,
+      })
+
+      // Continue from where we consumed table/alias to avoid duplicate captures.
+      i = alias ? aliasStart : tableNameResult.nextIndex - 1
+      continue
     }
-    if (isIdentifierLike(tokens[aliasStart])) {
-      alias = tokenToNamePart(tokens[aliasStart])
+
+    // DDL: ALTER TABLE / TRUNCATE TABLE / DROP TABLE <name>
+    if (
+      DDL_TABLE_PREFIXES.has(tokenName) &&
+      tokens[i + 1]?.tokenType.name === "Table"
+    ) {
+      const tableNameResult = readQualifiedName(i + 2)
+      if (tableNameResult) {
+        tables.push({ table: tableNameResult.name })
+        i = tableNameResult.nextIndex - 1
+      }
     }
-
-    tables.push({
-      table: tableNameResult.name,
-      alias,
-    })
-
-    // Continue from where we consumed table/alias to avoid duplicate captures.
-    i = alias ? aliasStart : tableNameResult.nextIndex - 1
   }
   for (const name of cteNames) {
     tables.push({ table: name })
@@ -616,6 +655,32 @@ function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
 }
 
 /**
+ * Classify an identifier suggestion path based on its ruleStack.
+ * - "column": identifierExpression or columnRef → suggest columns + tables
+ * - "table": tableName rule → suggest tables only
+ * - "newName": everything else (CREATE TABLE name, user names, etc.) → no suggestions
+ */
+function classifyIdentifierPath(
+  ruleStack: string[],
+): "column" | "table" | "newName" {
+  if (ruleStack.includes("valuesClause")) return "newName"
+  if (
+    ruleStack.includes("identifierExpression") ||
+    ruleStack.includes("columnRef") ||
+    ruleStack.includes("qualifiedStar")
+  )
+    return "column"
+  if (ruleStack.includes("tableName")) return "table"
+  return "newName"
+}
+
+interface ComputeResult {
+  nextTokenTypes: TokenType[]
+  suggestColumns: boolean
+  suggestTables: boolean
+}
+
+/**
  * Compute content assist suggestions, handling CTE context specially.
  *
  * Chevrotain's computeContentAssist at the "statement" level may only find
@@ -623,7 +688,7 @@ function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
  * updateStatement paths. This function detects that case and merges suggestions
  * from all WITH-capable statement types.
  */
-function computeSuggestions(tokens: IToken[]): TokenType[] {
+function computeSuggestions(tokens: IToken[]): ComputeResult {
   const ruleName = tokens.some((t) => t.tokenType.name === "Semicolon")
     ? "statements"
     : "statement"
@@ -638,22 +703,34 @@ function computeSuggestions(tokens: IToken[]): TokenType[] {
   const specific = suggestions.filter(
     (s) => !isImplicitStatementPath(s.ruleStack, IMPLICIT_RULES),
   )
-  const result = (specific.length > 0 ? specific : suggestions).map(
-    (s) => s.nextTokenType,
-  )
+  const effectiveSuggestions = specific.length > 0 ? specific : suggestions
+  const result = effectiveSuggestions.map((s) => s.nextTokenType)
+
+  // Classify each IdentifierKeyword path to determine whether columns/tables
+  // should be suggested, based on the grammar rule that expects the identifier.
+  let suggestColumns = false
+  let suggestTables = false
+  for (const s of effectiveSuggestions) {
+    if (s.nextTokenType.name === "IdentifierKeyword") {
+      const cls = classifyIdentifierPath(s.ruleStack)
+      if (cls === "column") {
+        suggestColumns = true
+        suggestTables = true
+      } else if (cls === "table") {
+        suggestTables = true
+      }
+    }
+  }
 
   // qualifiedStar fix: When computeContentAssist finds the qualifiedStar
   // path in selectItem (suggesting just Dot), the expression path is missed.
   // Detect this by checking if the *specific* (non-catch-all) suggestions are
   // all from qualifiedStar, then re-compute with the qualified reference
   // collapsed to a single identifier to get expression-path suggestions.
-  const effectiveSuggestions = specific.length > 0 ? specific : suggestions
   if (
     effectiveSuggestions.length > 0 &&
     effectiveSuggestions.every((s) => s.ruleStack.includes("qualifiedStar"))
   ) {
-    // Find and collapse the trailing qualified reference (ident.ident...ident)
-    // into a single identifier token, then re-compute to get expression-path suggestions.
     const collapsed = collapseTrailingQualifiedRef(tokens)
     if (collapsed) {
       try {
@@ -661,14 +738,23 @@ function computeSuggestions(tokens: IToken[]): TokenType[] {
         const filteredExtra = extra.filter(
           (s) => !isImplicitStatementPath(s.ruleStack, IMPLICIT_RULES),
         )
-        const extraResult = (
+        const extraEffective =
           filteredExtra.length > 0 ? filteredExtra : extra
-        ).map((s) => s.nextTokenType)
         const seen = new Set(result.map((t) => t.name))
-        for (const t of extraResult) {
-          if (!seen.has(t.name)) {
-            seen.add(t.name)
-            result.push(t)
+        for (const s of extraEffective) {
+          if (!seen.has(s.nextTokenType.name)) {
+            seen.add(s.nextTokenType.name)
+            result.push(s.nextTokenType)
+          }
+          // Classify extra paths too
+          if (s.nextTokenType.name === "IdentifierKeyword") {
+            const cls = classifyIdentifierPath(s.ruleStack)
+            if (cls === "column") {
+              suggestColumns = true
+              suggestTables = true
+            } else if (cls === "table") {
+              suggestTables = true
+            }
           }
         }
       } catch (e) {
@@ -677,7 +763,7 @@ function computeSuggestions(tokens: IToken[]): TokenType[] {
     }
   }
 
-  return result
+  return { nextTokenTypes: result, suggestColumns, suggestTables }
 }
 
 /**
@@ -738,6 +824,8 @@ export function getContentAssist(
         tokensBefore: [],
         isMidWord: true,
         lexErrors: [],
+        suggestColumns: false,
+        suggestTables: false,
       }
     }
   }
@@ -764,8 +852,13 @@ export function getContentAssist(
 
   // Get syntactically valid next tokens using Chevrotain's content assist
   let nextTokenTypes: TokenType[] = []
+  let suggestColumns = false
+  let suggestTables = false
   try {
-    nextTokenTypes = computeSuggestions(tokensForAssist)
+    const computed = computeSuggestions(tokensForAssist)
+    nextTokenTypes = computed.nextTokenTypes
+    suggestColumns = computed.suggestColumns
+    suggestTables = computed.suggestTables
   } catch (e) {
     // If content assist fails, return empty suggestions
     // This can happen with malformed input
@@ -834,6 +927,8 @@ export function getContentAssist(
     isMidWord,
     lexErrors: lexResult.errors,
     qualifiedTableRef: qualifiedRef?.table,
+    suggestColumns,
+    suggestTables,
   }
 }
 
@@ -843,7 +938,9 @@ export function getContentAssist(
 export function getNextValidTokens(sql: string): string[] {
   const lexResult = QuestDBLexer.tokenize(sql)
   try {
-    return computeSuggestions(lexResult.tokens).map((t) => t.name)
+    return computeSuggestions(lexResult.tokens).nextTokenTypes.map(
+      (t) => t.name,
+    )
   } catch (e) {
     return []
   }

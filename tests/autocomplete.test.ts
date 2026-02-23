@@ -673,6 +673,102 @@ describe("JOIN autocomplete", () => {
         },
       ])
     })
+
+    it("should NOT suggest OUTER after ASOF", () => {
+      const labels = getLabelsAt(provider, "SELECT * FROM trades ASOF ")
+      expect(labels).not.toContain("OUTER")
+    })
+
+    it("should suggest OUTER after LEFT", () => {
+      const labels = getLabelsAt(provider, "SELECT * FROM trades LEFT ")
+      expect(labels).toContain("OUTER")
+      expect(labels).toContain("JOIN")
+    })
+
+    it("should suggest join types after ON condition (chained joins)", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t ASOF JOIN quotes q ON (symbol) ",
+      )
+      expect(labels).toContain("ASOF")
+      expect(labels).toContain("JOIN")
+      expect(labels).toContain("CROSS")
+      expect(labels).toContain("LEFT")
+    })
+  })
+
+  describe("join-type-specific postamble suggestions", () => {
+    it("ASOF JOIN: should suggest ON and TOLERANCE, not INCLUDE/EXCLUDE/RANGE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t ASOF JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).toContain("TOLERANCE")
+      expect(labels).not.toContain("INCLUDE")
+      expect(labels).not.toContain("EXCLUDE")
+      expect(labels).not.toContain("RANGE")
+    })
+
+    it("LT JOIN: should suggest ON and TOLERANCE, not INCLUDE/EXCLUDE/RANGE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t LT JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).toContain("TOLERANCE")
+      expect(labels).not.toContain("INCLUDE")
+      expect(labels).not.toContain("EXCLUDE")
+      expect(labels).not.toContain("RANGE")
+    })
+
+    it("SPLICE JOIN: should suggest ON, not TOLERANCE/INCLUDE/EXCLUDE/RANGE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t SPLICE JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).not.toContain("TOLERANCE")
+      expect(labels).not.toContain("INCLUDE")
+      expect(labels).not.toContain("EXCLUDE")
+      expect(labels).not.toContain("RANGE")
+    })
+
+    it("WINDOW JOIN: should suggest ON, RANGE, INCLUDE, EXCLUDE, not TOLERANCE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t WINDOW JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).toContain("RANGE")
+      expect(labels).toContain("INCLUDE")
+      expect(labels).toContain("EXCLUDE")
+      expect(labels).not.toContain("TOLERANCE")
+    })
+
+    it("INNER JOIN: should suggest ON, not TOLERANCE/INCLUDE/EXCLUDE/RANGE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t INNER JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).not.toContain("TOLERANCE")
+      expect(labels).not.toContain("INCLUDE")
+      expect(labels).not.toContain("EXCLUDE")
+      expect(labels).not.toContain("RANGE")
+    })
+
+    it("LEFT JOIN: should suggest ON, not TOLERANCE/INCLUDE/EXCLUDE/RANGE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t LEFT JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).not.toContain("TOLERANCE")
+      expect(labels).not.toContain("INCLUDE")
+      expect(labels).not.toContain("EXCLUDE")
+      expect(labels).not.toContain("RANGE")
+    })
   })
 })
 
@@ -1337,8 +1433,10 @@ describe("CTE autocomplete", () => {
   it("should suggest identifier after comma between CTEs", () => {
     const sql = "WITH cte AS (SELECT * FROM users LIMIT 10), "
     const labels = getLabelsAt(provider, sql)
-    // Should be able to type a new CTE name
-    expect(labels.length).toBeGreaterThan(0)
+    // This position expects a new CTE name — the grammar correctly identifies
+    // it as a newName position (not a column or table reference).
+    // No column/table suggestions expected; the user types a free-form name.
+    expect(labels.every((l) => l !== "symbol" && l !== "price")).toBe(true)
   })
 
   it("should not leak inner CTE source table columns into outer scope", () => {
@@ -2656,6 +2754,152 @@ describe("CTE autocomplete", () => {
         (s) => s.kind === SuggestionKind.Column,
       )
       expect(columns).toHaveLength(0)
+    })
+  })
+
+  // ===========================================================================
+  // Grammar-level tableName classification tests
+  // ===========================================================================
+  // These tests verify that the grammar-based `tableName` rule correctly
+  // classifies positions as table name vs column vs new name contexts.
+
+  describe("grammar-level tableName classification", () => {
+    it("CREATE TABLE (LIKE |) suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions(
+        "CREATE TABLE mytable (LIKE ",
+        27,
+      )
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(tables.length).toBeGreaterThan(0)
+      expect(tables.map((s) => s.label)).toContain("trades")
+      expect(columns).toHaveLength(0)
+    })
+
+    it("DROP TABLE suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions("DROP TABLE ", 11)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(tables.map((s) => s.label)).toContain("trades")
+      expect(columns).toHaveLength(0)
+    })
+
+    it("TRUNCATE TABLE suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions("TRUNCATE TABLE ", 15)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(tables.map((s) => s.label)).toContain("trades")
+      expect(columns).toHaveLength(0)
+    })
+
+    it("ALTER TABLE suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions("ALTER TABLE ", 12)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(tables.map((s) => s.label)).toContain("trades")
+      expect(columns).toHaveLength(0)
+    })
+
+    it("INSERT INTO suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions("INSERT INTO ", 12)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(tables.map((s) => s.label)).toContain("trades")
+      expect(columns).toHaveLength(0)
+    })
+
+    it("SELECT clause suggests columns, not just tables", () => {
+      const suggestions = provider.getSuggestions("SELECT  FROM trades", 7)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.map((s) => s.label)).toContain("symbol")
+    })
+
+    it("WHERE clause suggests columns", () => {
+      const suggestions = provider.getSuggestions(
+        "SELECT * FROM trades WHERE ",
+        27,
+      )
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.map((s) => s.label)).toContain("price")
+    })
+
+    it("CREATE TABLE column definition: no columns, no tables", () => {
+      const suggestions = provider.getSuggestions("CREATE TABLE mytable (", 22)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      expect(columns).toHaveLength(0)
+      expect(tables).toHaveLength(0)
+    })
+
+    it("INSERT VALUES: no columns", () => {
+      const suggestions = provider.getSuggestions(
+        "INSERT INTO trades VALUES (",
+        27,
+      )
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns).toHaveLength(0)
+    })
+
+    it("VACUUM TABLE suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions("VACUUM TABLE ", 13)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(tables.map((s) => s.label)).toContain("trades")
+      expect(columns).toHaveLength(0)
+    })
+
+    it("COPY TO table position suggests tables, not columns", () => {
+      const suggestions = provider.getSuggestions("COPY ", 5)
+      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
+      expect(tables.map((s) => s.label)).toContain("trades")
+    })
+
+    it("ALTER TABLE trades ALTER COLUMN suggests columns", () => {
+      const sql = "ALTER TABLE trades ALTER COLUMN "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.map((s) => s.label)).toContain("symbol")
+      expect(columns.map((s) => s.label)).toContain("price")
+    })
+
+    it("ALTER TABLE trades DROP COLUMN suggests columns", () => {
+      const sql = "ALTER TABLE trades DROP COLUMN "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.map((s) => s.label)).toContain("symbol")
+    })
+
+    it("ALTER TABLE trades RENAME COLUMN suggests columns for old name", () => {
+      const sql = "ALTER TABLE trades RENAME COLUMN "
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.map((s) => s.label)).toContain("symbol")
     })
   })
 })

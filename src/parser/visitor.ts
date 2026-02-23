@@ -28,6 +28,7 @@ import type {
   ArrayElementCstChildren,
   ArrayLiteralCstChildren,
   ArraySubscriptCstChildren,
+  AsofLtJoinCstChildren,
   AssumeServiceAccountStatementCstChildren,
   BackupStatementCstChildren,
   BatchClauseCstChildren,
@@ -137,12 +138,16 @@ import type {
   ShowStatementCstChildren,
   SimpleSelectCstChildren,
   SnapshotStatementCstChildren,
+  SpliceJoinCstChildren,
+  StandardJoinCstChildren,
   StatementCstChildren,
   StatementsCstChildren,
   StringOrIdentifierCstChildren,
   StringOrQualifiedNameCstChildren,
   TableFunctionCallCstChildren,
   TableFunctionNameCstChildren,
+  TableNameCstChildren,
+  TableNameOrStringCstChildren,
   TableParamCstChildren,
   TableParamNameCstChildren,
   TableRefCstChildren,
@@ -159,6 +164,7 @@ import type {
   WindowFrameBoundCstChildren,
   WindowFrameClauseCstChildren,
   WindowJoinBoundCstChildren,
+  WindowJoinCstChildren,
   WindowPartitionByClauseCstChildren,
   WithClauseCstChildren,
   WithStatementCstChildren,
@@ -596,7 +602,7 @@ class QuestDBVisitor extends BaseVisitor {
         parts: [ctx.StringLiteral[0].image.slice(1, -1)],
       } as AST.QualifiedName
     } else {
-      table = this.visit(ctx.qualifiedName!) as AST.QualifiedName
+      table = this.visit(ctx.tableName!) as AST.QualifiedName
     }
 
     const result: AST.TableRef = {
@@ -650,48 +656,75 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   joinClause(ctx: JoinClauseCstChildren): AST.JoinClause {
+    if (ctx.asofLtJoin) return this.visit(ctx.asofLtJoin) as AST.JoinClause
+    if (ctx.spliceJoin) return this.visit(ctx.spliceJoin) as AST.JoinClause
+    if (ctx.windowJoin) return this.visit(ctx.windowJoin) as AST.JoinClause
+    return this.visit(ctx.standardJoin!) as AST.JoinClause
+  }
+
+  asofLtJoin(ctx: AsofLtJoinCstChildren): AST.JoinClause {
     const result: AST.JoinClause = {
       type: "join",
       table: this.visit(ctx.tableRef) as AST.TableRef,
     }
-
-    // Determine join type
-    if (ctx.Inner) result.joinType = "inner"
-    else if (ctx.Left) result.joinType = "left"
-    else if (ctx.Right) result.joinType = "right"
-    else if (ctx.Full) result.joinType = "full"
-    else if (ctx.Cross) result.joinType = "cross"
-    else if (ctx.Asof) result.joinType = "asof"
+    if (ctx.Asof) result.joinType = "asof"
     else if (ctx.Lt) result.joinType = "lt"
-    else if (ctx.Splice) result.joinType = "splice"
-    else if (ctx.Window) result.joinType = "window"
-
-    if (ctx.Outer) {
-      result.outer = true
-    }
-
     if (ctx.expression) {
       result.on = this.visit(ctx.expression) as AST.Expression
     }
-
-    // Handle TOLERANCE clause for ASOF/LT joins
     if (ctx.DurationLiteral) {
       result.tolerance = ctx.DurationLiteral[0].image
     }
+    return result
+  }
 
-    // Handle RANGE BETWEEN clause for WINDOW JOIN
+  spliceJoin(ctx: SpliceJoinCstChildren): AST.JoinClause {
+    const result: AST.JoinClause = {
+      type: "join",
+      joinType: "splice",
+      table: this.visit(ctx.tableRef) as AST.TableRef,
+    }
+    if (ctx.expression) {
+      result.on = this.visit(ctx.expression) as AST.Expression
+    }
+    return result
+  }
+
+  windowJoin(ctx: WindowJoinCstChildren): AST.JoinClause {
+    const result: AST.JoinClause = {
+      type: "join",
+      table: this.visit(ctx.tableRef) as AST.TableRef,
+    }
+    if (ctx.Window) result.joinType = "window"
+    if (ctx.expression) {
+      result.on = this.visit(ctx.expression) as AST.Expression
+    }
     if (ctx.windowJoinBound && ctx.windowJoinBound.length >= 2) {
       result.range = {
         start: this.visit(ctx.windowJoinBound[0]) as AST.WindowJoinBound,
         end: this.visit(ctx.windowJoinBound[1]) as AST.WindowJoinBound,
       }
     }
-
-    // Handle INCLUDE/EXCLUDE PREVAILING clause for WINDOW JOIN
-    if (ctx.Prevailing) {
+    if (ctx.Include || ctx.Exclude) {
       result.prevailing = ctx.Include ? "include" : "exclude"
     }
+    return result
+  }
 
+  standardJoin(ctx: StandardJoinCstChildren): AST.JoinClause {
+    const result: AST.JoinClause = {
+      type: "join",
+      table: this.visit(ctx.tableRef) as AST.TableRef,
+    }
+    if (ctx.Inner) result.joinType = "inner"
+    else if (ctx.Left) result.joinType = "left"
+    else if (ctx.Right) result.joinType = "right"
+    else if (ctx.Full) result.joinType = "full"
+    else if (ctx.Cross) result.joinType = "cross"
+    if (ctx.Outer) result.outer = true
+    if (ctx.expression) {
+      result.on = this.visit(ctx.expression) as AST.Expression
+    }
     return result
   }
 
@@ -865,7 +898,7 @@ class QuestDBVisitor extends BaseVisitor {
   insertStatement(ctx: InsertStatementCstChildren): AST.InsertStatement {
     const result: AST.InsertStatement = {
       type: "insert",
-      table: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      table: this.visit(ctx.tableNameOrString) as AST.QualifiedName,
     }
 
     if (ctx.Atomic) {
@@ -923,7 +956,7 @@ class QuestDBVisitor extends BaseVisitor {
   updateStatement(ctx: UpdateStatementCstChildren): AST.UpdateStatement {
     const result: AST.UpdateStatement = {
       type: "update",
-      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      table: this.visit(ctx.tableName) as AST.QualifiedName,
       set: ctx.setClause.map((s: CstNode) => this.visit(s) as AST.SetClause),
     }
 
@@ -1039,8 +1072,8 @@ class QuestDBVisitor extends BaseVisitor {
       )
     }
 
-    if (ctx.Like && ctx.qualifiedName) {
-      result.like = this.visit(ctx.qualifiedName[0]) as AST.QualifiedName
+    if (ctx.Like && ctx.tableName) {
+      result.like = this.visit(ctx.tableName[0]) as AST.QualifiedName
     }
 
     if (ctx.selectStatement) {
@@ -1521,12 +1554,7 @@ class QuestDBVisitor extends BaseVisitor {
   alterTableStatement(
     ctx: AlterTableStatementCstChildren,
   ): AST.AlterTableStatement {
-    const table = ctx.qualifiedName
-      ? (this.visit(ctx.qualifiedName) as AST.QualifiedName)
-      : {
-          type: "qualifiedName" as const,
-          parts: [ctx.StringLiteral![0].image.slice(1, -1)],
-        }
+    const table = this.visit(ctx.tableNameOrString) as AST.QualifiedName
     return {
       type: "alterTable",
       table,
@@ -1539,7 +1567,7 @@ class QuestDBVisitor extends BaseVisitor {
   ): AST.AlterMaterializedViewStatement {
     return {
       type: "alterMaterializedView",
-      view: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      view: this.visit(ctx.tableName) as AST.QualifiedName,
       action: this.visit(
         ctx.alterMaterializedViewAction,
       ) as AST.AlterMaterializedViewAction,
@@ -1550,9 +1578,10 @@ class QuestDBVisitor extends BaseVisitor {
     ctx: AlterMaterializedViewActionCstChildren,
   ): AST.AlterMaterializedViewAction {
     if (ctx.Add && ctx.Index) {
+      const colRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       const result: AST.AlterMaterializedViewAddIndex = {
         actionType: "addIndex",
-        column: this.extractIdentifierName(ctx.identifier![0].children),
+        column: colRef.name.parts[colRef.name.parts.length - 1],
       }
       if (ctx.Capacity && ctx.NumberLiteral) {
         result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
@@ -1561,9 +1590,10 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     if (ctx.Symbol && ctx.Capacity) {
+      const colRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       return {
         actionType: "symbolCapacity",
-        column: this.extractIdentifierName(ctx.identifier![0].children),
+        column: colRef.name.parts[colRef.name.parts.length - 1],
         capacity: parseInt(ctx.NumberLiteral![0].image, 10),
       }
     }
@@ -1584,9 +1614,10 @@ class QuestDBVisitor extends BaseVisitor {
 
     // ALTER COLUMN x DROP INDEX
     if (ctx.Alter && ctx.Drop && ctx.Index) {
+      const colRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       return {
         actionType: "dropIndex",
-        column: this.extractIdentifierName(ctx.identifier![0].children),
+        column: colRef.name.parts[colRef.name.parts.length - 1],
       }
     }
 
@@ -1700,30 +1731,32 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     // DROP COLUMN (when Drop token exists but no Partition and no Alter — Alter + Drop = ALTER COLUMN DROP INDEX)
-    if (ctx.Drop && ctx.identifier && !ctx.Partition && !ctx.Alter) {
+    if (ctx.Drop && ctx.columnRef && !ctx.Partition && !ctx.Alter) {
       return {
         actionType: "dropColumn",
-        columns: ctx.identifier.map((id: IdentifierCstNode) =>
-          this.extractIdentifierName(id.children),
-        ),
+        columns: ctx.columnRef.map((c: CstNode) => {
+          const ref = this.visit(c) as AST.ColumnRef
+          return ref.name.parts[ref.name.parts.length - 1]
+        }),
       }
     }
 
     // RENAME COLUMN
     if (ctx.Rename) {
-      const identifiers = ctx.identifier!.map((id: IdentifierCstNode) =>
-        this.extractIdentifierName(id.children),
-      )
+      const oldRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
+      const oldName = oldRef.name.parts[oldRef.name.parts.length - 1]
+      const newName = this.extractIdentifierName(ctx.identifier![0].children)
       return {
         actionType: "renameColumn",
-        oldName: identifiers[0],
-        newName: identifiers[1],
+        oldName,
+        newName,
       }
     }
 
     // ALTER COLUMN
-    if (ctx.Alter && ctx.identifier) {
-      const column = this.extractIdentifierName(ctx.identifier[0].children)
+    if (ctx.Alter && ctx.columnRef) {
+      const colRef = this.visit(ctx.columnRef[0]) as AST.ColumnRef
+      const column = colRef.name.parts[colRef.name.parts.length - 1]
       let alterType:
         | "type"
         | "addIndex"
@@ -1944,7 +1977,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.All) {
       result.allTables = true
     } else {
-      result.table = this.visit(ctx.qualifiedName!) as AST.QualifiedName
+      result.table = this.visit(ctx.tableName!) as AST.QualifiedName
       if (ctx.If) {
         result.ifExists = true
       }
@@ -2006,7 +2039,7 @@ class QuestDBVisitor extends BaseVisitor {
   truncateTableStatement(
     ctx: TruncateTableStatementCstChildren,
   ): AST.TruncateTableStatement {
-    const tables = ctx.qualifiedName.map(
+    const tables = ctx.tableName.map(
       (qn) => this.visit(qn) as AST.QualifiedName,
     )
 
@@ -2039,8 +2072,8 @@ class QuestDBVisitor extends BaseVisitor {
   ): AST.RenameTableStatement {
     return {
       type: "renameTable",
-      from: this.visit(ctx.stringOrQualifiedName[0]) as AST.QualifiedName,
-      to: this.visit(ctx.stringOrQualifiedName[1]) as AST.QualifiedName,
+      from: this.visit(ctx.tableNameOrString[0]) as AST.QualifiedName,
+      to: this.visit(ctx.tableNameOrString[1]) as AST.QualifiedName,
     }
   }
 
@@ -2297,7 +2330,7 @@ class QuestDBVisitor extends BaseVisitor {
   copyFrom(ctx: CopyFromCstChildren): AST.CopyFromStatement {
     const result: AST.CopyFromStatement = {
       type: "copyFrom",
-      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      table: this.visit(ctx.tableName) as AST.QualifiedName,
       file: this.extractMaybeString(ctx.stringOrIdentifier[0]),
     }
     if (ctx.copyOptions) {
@@ -2309,7 +2342,7 @@ class QuestDBVisitor extends BaseVisitor {
   copyTo(ctx: CopyToCstChildren): AST.CopyToStatement {
     const source = ctx.selectStatement
       ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
-      : (this.visit(ctx.qualifiedName!) as AST.QualifiedName)
+      : (this.visit(ctx.tableName!) as AST.QualifiedName)
     const result: AST.CopyToStatement = {
       type: "copyTo",
       source,
@@ -2444,7 +2477,7 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "backup",
       action: "table",
-      table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+      table: this.visit(ctx.tableName!) as AST.QualifiedName,
     }
   }
 
@@ -2453,7 +2486,7 @@ class QuestDBVisitor extends BaseVisitor {
   ): AST.CompileViewStatement {
     return {
       type: "compileView",
-      view: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      view: this.visit(ctx.tableName) as AST.QualifiedName,
     }
   }
 
@@ -2582,7 +2615,7 @@ class QuestDBVisitor extends BaseVisitor {
   grantTableTarget(ctx: GrantTableTargetCstChildren): AST.GrantTableTarget {
     const result: AST.GrantTableTarget = {
       type: "grantTableTarget",
-      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      table: this.visit(ctx.tableName) as AST.QualifiedName,
     }
     if (ctx.identifier && ctx.identifier.length > 0) {
       result.columns = ctx.identifier.map((id: IdentifierCstNode) =>
@@ -2622,7 +2655,7 @@ class QuestDBVisitor extends BaseVisitor {
   ): AST.VacuumTableStatement {
     return {
       type: "vacuumTable",
-      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      table: this.visit(ctx.tableName) as AST.QualifiedName,
     }
   }
 
@@ -2654,7 +2687,7 @@ class QuestDBVisitor extends BaseVisitor {
   ): AST.ReindexTableStatement {
     const result: AST.ReindexTableStatement = {
       type: "reindexTable",
-      table: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      table: this.visit(ctx.tableName) as AST.QualifiedName,
     }
     if (ctx.Column && ctx.identifier) {
       result.columns = ctx.identifier.map((id: IdentifierCstNode) =>
@@ -2677,7 +2710,7 @@ class QuestDBVisitor extends BaseVisitor {
   ): AST.RefreshMaterializedViewStatement {
     const result: AST.RefreshMaterializedViewStatement = {
       type: "refreshMaterializedView",
-      view: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+      view: this.visit(ctx.tableName) as AST.QualifiedName,
     }
     if (ctx.Full) result.mode = "full"
     if (ctx.Incremental) result.mode = "incremental"
@@ -2698,7 +2731,7 @@ class QuestDBVisitor extends BaseVisitor {
   pivotStatement(ctx: PivotStatementCstChildren): AST.PivotStatement {
     const source = ctx.selectStatement
       ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
-      : (this.visit(ctx.qualifiedName!) as AST.QualifiedName)
+      : (this.visit(ctx.tableName!) as AST.QualifiedName)
     const body: Partial<PivotBodyResult> = ctx.pivotBody
       ? (this.visit(ctx.pivotBody) as PivotBodyResult)
       : {}
@@ -3744,6 +3777,24 @@ class QuestDBVisitor extends BaseVisitor {
       type: "column",
       name: this.visit(ctx.qualifiedName) as AST.QualifiedName,
     }
+  }
+
+  tableName(ctx: TableNameCstChildren): AST.QualifiedName {
+    return this.visit(ctx.qualifiedName) as AST.QualifiedName
+  }
+
+  tableNameOrString(
+    ctx: TableNameOrStringCstChildren,
+  ): AST.QualifiedName {
+    if (ctx.StringLiteral) {
+      return {
+        type: "qualifiedName",
+        parts: [ctx.StringLiteral[0].image.slice(1, -1)],
+      }
+    }
+    if (ctx.tableName)
+      return this.visit(ctx.tableName) as AST.QualifiedName
+    return { type: "qualifiedName", parts: [] }
   }
 
   qualifiedName(ctx: QualifiedNameCstChildren): AST.QualifiedName {
