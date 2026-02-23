@@ -21,10 +21,7 @@
 import type { IToken } from "chevrotain"
 import { getContentAssist } from "./content-assist"
 import { buildSuggestions } from "./suggestion-builder"
-import {
-  shouldSkipToken,
-  IDENTIFIER_KEYWORD_TOKENS,
-} from "./token-classification"
+import { shouldSkipToken } from "./token-classification"
 import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types"
 import { SuggestionKind, SuggestionPriority } from "./types"
 
@@ -53,81 +50,6 @@ function getLastSignificantTokens(tokens: IToken[]): string[] {
     }
   }
   return result
-}
-/**
- * Tokens that signal the end of an expression / value. When these appear as
- * the raw last token before the cursor, the cursor is in alias or keyword
- * position — NOT column position. e.g., "SELECT symbol |" → alias position.
- */
-const EXPRESSION_END_TOKENS = new Set([
-  "Identifier",
-  "QuotedIdentifier",
-  "RParen",
-  "NumberLiteral",
-  "LongLiteral",
-  "DecimalLiteral",
-  "StringLiteral",
-])
-
-function isExpressionEnd(tokenName: string): boolean {
-  return (
-    EXPRESSION_END_TOKENS.has(tokenName) ||
-    IDENTIFIER_KEYWORD_TOKENS.has(tokenName)
-  )
-}
-
-function getIdentifierSuggestionScope(
-  lastTokenName?: string,
-  prevTokenName?: string,
-  rawLastTokenName?: string,
-  rawPrevTokenName?: string,
-): {
-  includeColumns: boolean
-  includeTables: boolean
-} {
-  // Expression-end tokens indicate alias / post-expression position.
-  // e.g., "SELECT symbol |" or "FROM trades |" — no columns expected.
-  if (rawLastTokenName && isExpressionEnd(rawLastTokenName)) {
-    return { includeColumns: false, includeTables: false }
-  }
-
-  // Star (*) is context-dependent: it's a wildcard after SELECT/comma/LParen,
-  // but multiplication after an expression (identifier, number, rparen).
-  // "SELECT * |"      → wildcard, suppress columns (alias/keyword position)
-  // "SELECT price * |" → multiplication, suggest columns for RHS
-  if (rawLastTokenName === "Star") {
-    if (rawPrevTokenName && isExpressionEnd(rawPrevTokenName)) {
-      // Multiplication: previous token is an expression-end, so * is an operator.
-      // The user needs columns/functions for the right-hand side.
-      return { includeColumns: true, includeTables: true }
-    }
-    // Wildcard: no expression before *, e.g., SELECT *, t.*, or start of expression
-    return { includeColumns: false, includeTables: false }
-  }
-
-  // After AS keyword: either subquery start (WITH name AS (|) or alias (SELECT x AS |).
-  if (lastTokenName === "As") {
-    // "WITH name AS (|" → LParen is raw last → subquery start, suggest tables
-    if (rawLastTokenName === "LParen") {
-      return { includeColumns: false, includeTables: true }
-    }
-    // "SELECT x AS |" → alias position
-    return { includeColumns: false, includeTables: false }
-  }
-
-  if (prevTokenName && TABLE_NAME_TOKENS.has(prevTokenName)) {
-    return { includeColumns: false, includeTables: true }
-  }
-  if (lastTokenName && TABLE_NAME_TOKENS.has(lastTokenName)) {
-    return { includeColumns: false, includeTables: true }
-  }
-  // At statement start (no significant tokens before cursor), only suggest
-  // tables and keywords, not columns. Identifier is valid here only because
-  // of PIVOT syntax (e.g., "trades PIVOT (...)"), not for column references.
-  if (!lastTokenName) {
-    return { includeColumns: false, includeTables: true }
-  }
-  return { includeColumns: true, includeTables: true }
 }
 
 /**
@@ -172,6 +94,8 @@ export function createAutocompleteProvider(
         tokensBefore,
         isMidWord,
         qualifiedTableRef,
+        suggestColumns,
+        suggestTables,
       } = getContentAssist(query, cursorOffset)
 
       // Merge CTE columns into the schema so getColumnsInScope() can find them
@@ -220,35 +144,17 @@ export function createAutocompleteProvider(
         }
       }
 
-      // If parser returned valid next tokens, use them
+      // If parser returned valid next tokens, use grammar-based classification
       if (nextTokenTypes.length > 0) {
-        // When mid-word, the last token in tokensBefore is the partial word being typed.
-        // For scope detection, we need the tokens BEFORE that partial word.
-        const tokensForScope =
-          isMidWord && tokensBefore.length > 0
-            ? tokensBefore.slice(0, -1)
-            : tokensBefore
-        const [lastTokenName, prevTokenName] =
-          getLastSignificantTokens(tokensForScope)
-        const rawLastTokenName =
-          tokensForScope.length > 0
-            ? tokensForScope[tokensForScope.length - 1]?.tokenType?.name
-            : undefined
-        const rawPrevTokenName =
-          tokensForScope.length > 1
-            ? tokensForScope[tokensForScope.length - 2]?.tokenType?.name
-            : undefined
-        const scope = getIdentifierSuggestionScope(
-          lastTokenName,
-          prevTokenName,
-          rawLastTokenName,
-          rawPrevTokenName,
-        )
         return buildSuggestions(
           nextTokenTypes,
           effectiveSchema,
           effectiveTablesInScope,
-          { ...scope, isMidWord },
+          {
+            includeColumns: suggestColumns,
+            includeTables: suggestTables,
+            isMidWord,
+          },
         )
       }
 

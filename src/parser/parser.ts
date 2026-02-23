@@ -753,7 +753,7 @@ class QuestDBParser extends CstParser {
         ALT: () => this.CONSUME(VariableReference),
       },
       { ALT: () => this.CONSUME(StringLiteral) },
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
+      { ALT: () => this.SUBRULE(this.tableName) },
     ])
     // Optional TIMESTAMP designation on subquery/table results
     this.OPTION2(() => {
@@ -811,48 +811,97 @@ class QuestDBParser extends CstParser {
     this.SUBRULE(this.identifier)
   })
 
+  // ---- Join clause: dispatches to type-specific sub-rules so that each
+  //      join type only offers its own valid postamble tokens.
   private joinClause = this.RULE("joinClause", () => {
-    this.OPTION(() => {
-      this.OR([
-        { ALT: () => this.CONSUME(Inner) },
-        { ALT: () => this.CONSUME(Left) },
-        { ALT: () => this.CONSUME(Right) },
-        { ALT: () => this.CONSUME(Full) },
-        { ALT: () => this.CONSUME(Cross) },
-        { ALT: () => this.CONSUME(Asof) },
-        { ALT: () => this.CONSUME(Lt) },
-        { ALT: () => this.CONSUME(Splice) },
-        { ALT: () => this.CONSUME(Window) },
-        { ALT: () => this.CONSUME(Prevailing) },
-      ])
-      this.OPTION1(() => this.CONSUME(Outer))
-    })
+    this.OR([
+      { ALT: () => this.SUBRULE(this.asofLtJoin) },
+      { ALT: () => this.SUBRULE(this.spliceJoin) },
+      { ALT: () => this.SUBRULE(this.windowJoin) },
+      { ALT: () => this.SUBRULE(this.standardJoin) },
+    ])
+  })
+
+  // ASOF/LT JOIN: ON + TOLERANCE
+  private asofLtJoin = this.RULE("asofLtJoin", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Asof) },
+      { ALT: () => this.CONSUME(Lt) },
+    ])
     this.CONSUME(Join)
     this.SUBRULE(this.tableRef)
-    this.OPTION2(() => {
+    this.OPTION(() => {
       this.CONSUME(On)
       this.SUBRULE(this.expression)
     })
-    // TOLERANCE clause for ASOF and LT joins (QuestDB-specific)
-    this.OPTION3(() => {
+    this.OPTION1(() => {
       this.CONSUME(Tolerance)
       this.CONSUME(DurationLiteral)
     })
-    // RANGE BETWEEN clause for WINDOW JOIN
-    this.OPTION4(() => {
+  })
+
+  // SPLICE JOIN: ON only
+  private spliceJoin = this.RULE("spliceJoin", () => {
+    this.CONSUME(Splice)
+    this.CONSUME(Join)
+    this.SUBRULE(this.tableRef)
+    this.OPTION(() => {
+      this.CONSUME(On)
+      this.SUBRULE(this.expression)
+    })
+  })
+
+  // WINDOW/PREVAILING JOIN: ON + RANGE BETWEEN + INCLUDE/EXCLUDE PREVAILING
+  private windowJoin = this.RULE("windowJoin", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Window) },
+      { ALT: () => this.CONSUME(Prevailing) },
+    ])
+    this.CONSUME(Join)
+    this.SUBRULE(this.tableRef)
+    this.OPTION(() => {
+      this.CONSUME(On)
+      this.SUBRULE(this.expression)
+    })
+    this.OPTION1(() => {
       this.CONSUME(Range)
       this.CONSUME(Between)
       this.SUBRULE(this.windowJoinBound)
       this.CONSUME(And)
       this.SUBRULE1(this.windowJoinBound)
     })
-    // INCLUDE/EXCLUDE PREVAILING clause for WINDOW JOIN
-    this.OPTION5(() => {
-      this.OR3([
+    this.OPTION2(() => {
+      this.OR1([
         { ALT: () => this.CONSUME(Include) },
         { ALT: () => this.CONSUME(Exclude) },
       ])
       this.CONSUME1(Prevailing)
+    })
+  })
+
+  // Standard joins: (INNER | LEFT [OUTER] | RIGHT [OUTER] | FULL [OUTER] | CROSS)? JOIN + ON
+  private standardJoin = this.RULE("standardJoin", () => {
+    this.OPTION(() => {
+      this.OR([
+        {
+          ALT: () => {
+            this.OR1([
+              { ALT: () => this.CONSUME(Left) },
+              { ALT: () => this.CONSUME(Right) },
+              { ALT: () => this.CONSUME(Full) },
+            ])
+            this.OPTION1(() => this.CONSUME(Outer))
+          },
+        },
+        { ALT: () => this.CONSUME(Inner) },
+        { ALT: () => this.CONSUME(Cross) },
+      ])
+    })
+    this.CONSUME(Join)
+    this.SUBRULE(this.tableRef)
+    this.OPTION2(() => {
+      this.CONSUME(On)
+      this.SUBRULE(this.expression)
     })
   })
 
@@ -1090,7 +1139,7 @@ class QuestDBParser extends CstParser {
       ])
     })
     this.CONSUME(Into)
-    this.SUBRULE(this.stringOrQualifiedName)
+    this.SUBRULE(this.tableNameOrString)
     // Batch clause can also appear after table name
     this.OPTION2(() => this.SUBRULE1(this.batchClause))
     this.OPTION3(() => {
@@ -1133,7 +1182,7 @@ class QuestDBParser extends CstParser {
 
   private updateStatement = this.RULE("updateStatement", () => {
     this.CONSUME(Update)
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
     // Optional alias
     this.OPTION2(() => this.SUBRULE(this.identifier))
     this.CONSUME(Set)
@@ -1296,7 +1345,7 @@ class QuestDBParser extends CstParser {
         ALT: () => {
           this.CONSUME2(LParen)
           this.CONSUME(Like)
-          this.SUBRULE2(this.qualifiedName)
+          this.SUBRULE(this.tableName)
           this.CONSUME2(RParen)
         },
       },
@@ -1911,10 +1960,7 @@ class QuestDBParser extends CstParser {
 
   private alterTableStatement = this.RULE("alterTableStatement", () => {
     this.CONSUME(Table)
-    this.OR([
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
-      { ALT: () => this.CONSUME(StringLiteral) },
-    ])
+    this.SUBRULE(this.tableNameOrString)
     this.SUBRULE(this.alterTableAction)
   })
 
@@ -1946,10 +1992,10 @@ class QuestDBParser extends CstParser {
             {
               ALT: () => {
                 this.CONSUME1(Column)
-                this.SUBRULE(this.identifier)
+                this.SUBRULE(this.columnRef)
                 this.MANY1(() => {
                   this.CONSUME1(Comma)
-                  this.SUBRULE1(this.identifier)
+                  this.SUBRULE1(this.columnRef)
                 })
               },
             },
@@ -1985,7 +2031,7 @@ class QuestDBParser extends CstParser {
         ALT: () => {
           this.CONSUME(Rename)
           this.CONSUME2(Column)
-          this.SUBRULE2(this.identifier)
+          this.SUBRULE2(this.columnRef)
           this.CONSUME(To)
           this.SUBRULE3(this.identifier)
         },
@@ -1995,7 +2041,7 @@ class QuestDBParser extends CstParser {
         ALT: () => {
           this.CONSUME1(Alter)
           this.CONSUME3(Column)
-          this.SUBRULE4(this.identifier)
+          this.SUBRULE3(this.columnRef)
           this.OR9([
             {
               ALT: () => {
@@ -2220,7 +2266,7 @@ class QuestDBParser extends CstParser {
     () => {
       this.CONSUME(Materialized)
       this.CONSUME(View)
-      this.SUBRULE(this.qualifiedName)
+      this.SUBRULE(this.tableName)
       this.SUBRULE(this.alterMaterializedViewAction)
     },
   )
@@ -2233,7 +2279,7 @@ class QuestDBParser extends CstParser {
           ALT: () => {
             this.CONSUME(Alter)
             this.CONSUME(Column)
-            this.SUBRULE(this.identifier)
+            this.SUBRULE(this.columnRef)
             this.OR1([
               {
                 ALT: () => {
@@ -2384,7 +2430,7 @@ class QuestDBParser extends CstParser {
             this.CONSUME(If)
             this.CONSUME(Exists)
           })
-          this.SUBRULE(this.qualifiedName)
+          this.SUBRULE(this.tableName)
         },
       },
     ])
@@ -2446,10 +2492,10 @@ class QuestDBParser extends CstParser {
       this.CONSUME(Exists)
     })
     this.OPTION1(() => this.CONSUME(Only))
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.qualifiedName)
+      this.SUBRULE1(this.tableName)
     })
     this.OPTION2(() => {
       this.CONSUME(Keep)
@@ -2465,9 +2511,9 @@ class QuestDBParser extends CstParser {
   private renameTableStatement = this.RULE("renameTableStatement", () => {
     this.CONSUME(Rename)
     this.CONSUME(Table)
-    this.SUBRULE(this.stringOrQualifiedName)
+    this.SUBRULE(this.tableNameOrString)
     this.CONSUME(To)
-    this.SUBRULE1(this.stringOrQualifiedName)
+    this.SUBRULE1(this.tableNameOrString)
   })
 
   private addUserStatement = this.RULE("addUserStatement", () => {
@@ -2690,7 +2736,7 @@ class QuestDBParser extends CstParser {
   })
 
   private copyFrom = this.RULE("copyFrom", () => {
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
     this.CONSUME(From)
     this.SUBRULE(this.stringOrIdentifier)
     this.OPTION(() => this.SUBRULE(this.copyOptions))
@@ -2705,7 +2751,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME(RParen)
         },
       },
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
+      { ALT: () => this.SUBRULE(this.tableName) },
     ])
     this.CONSUME(To)
     this.SUBRULE1(this.stringOrIdentifier)
@@ -2861,7 +2907,7 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(Table)
-          this.SUBRULE(this.qualifiedName)
+          this.SUBRULE(this.tableName)
         },
       },
       { ALT: () => this.CONSUME(Abort) },
@@ -2875,7 +2921,7 @@ class QuestDBParser extends CstParser {
   private compileViewStatement = this.RULE("compileViewStatement", () => {
     this.CONSUME(Compile)
     this.CONSUME(View)
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
   })
 
   // ==========================================================================
@@ -2999,7 +3045,7 @@ class QuestDBParser extends CstParser {
   })
 
   private grantTableTarget = this.RULE("grantTableTarget", () => {
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
     this.OPTION(() => {
       this.CONSUME(LParen)
       this.SUBRULE(this.identifier)
@@ -3049,7 +3095,7 @@ class QuestDBParser extends CstParser {
   private vacuumTableStatement = this.RULE("vacuumTableStatement", () => {
     this.CONSUME(Vacuum)
     this.CONSUME(Table)
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
   })
 
   private resumeWalStatement = this.RULE("resumeWalStatement", () => {
@@ -3078,7 +3124,7 @@ class QuestDBParser extends CstParser {
   private reindexTableStatement = this.RULE("reindexTableStatement", () => {
     this.CONSUME(Reindex)
     this.CONSUME(Table)
-    this.SUBRULE(this.qualifiedName)
+    this.SUBRULE(this.tableName)
     this.OPTION(() => {
       this.CONSUME(Column)
       this.SUBRULE(this.identifier)
@@ -3111,7 +3157,7 @@ class QuestDBParser extends CstParser {
       this.CONSUME(Refresh)
       this.CONSUME(Materialized)
       this.CONSUME(View)
-      this.SUBRULE(this.qualifiedName)
+      this.SUBRULE(this.tableName)
       this.OPTION(() => {
         this.OR([
           { ALT: () => this.CONSUME(Full) },
@@ -3143,7 +3189,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME1(RParen)
         },
       },
-      { ALT: () => this.SUBRULE(this.qualifiedName) },
+      { ALT: () => this.SUBRULE(this.tableName) },
     ])
     this.OPTION(() => this.SUBRULE(this.whereClause))
     this.CONSUME(Pivot)
@@ -3964,6 +4010,22 @@ class QuestDBParser extends CstParser {
 
   private columnRef = this.RULE("columnRef", () => {
     this.SUBRULE(this.qualifiedName)
+  })
+
+  // Wrapper for qualifiedName in table/view name positions.
+  // Mirrors columnRef but for table references, so computeContentAssist
+  // ruleStack includes "tableName" → autocomplete suggests existing tables.
+  private tableName = this.RULE("tableName", () => {
+    this.SUBRULE(this.qualifiedName)
+  })
+
+  // Accepts StringLiteral or tableName. Used for table references that
+  // can be quoted (INSERT INTO, RENAME TABLE, ALTER TABLE).
+  private tableNameOrString = this.RULE("tableNameOrString", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(StringLiteral) },
+      { ALT: () => this.SUBRULE(this.tableName) },
+    ])
   })
 
   private qualifiedName = this.RULE("qualifiedName", () => {
