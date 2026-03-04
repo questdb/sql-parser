@@ -840,6 +840,7 @@ export interface JoinClause extends AstNode {
     | "lt"
     | "splice"
     | "window"
+    | "horizon"
   outer?: boolean
   table: TableRef
   on?: Expression
@@ -849,6 +850,12 @@ export interface JoinClause extends AstNode {
   range?: { start: WindowJoinBound; end: WindowJoinBound }
   /** INCLUDE/EXCLUDE PREVAILING clause for WINDOW JOIN */
   prevailing?: "include" | "exclude"
+  /** RANGE FROM/TO/STEP for HORIZON JOIN */
+  horizonRange?: { from: string; to: string; step: string }
+  /** LIST offsets for HORIZON JOIN */
+  horizonList?: string[]
+  /** Alias for the horizon pseudo-table */
+  horizonAlias?: string
 }
 
 export interface WindowJoinBound extends AstNode {

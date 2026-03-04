@@ -110,6 +110,35 @@ describe("Content Assist", () => {
       )
       expect(tokens).toContain("DurationLiteral")
     })
+
+    // HORIZON JOIN
+    it("should suggest HORIZON as a join type", () => {
+      const tokens = getNextValidTokens("SELECT * FROM t ")
+      expect(tokens).toContain("Horizon")
+    })
+
+    it("should suggest JOIN after HORIZON", () => {
+      const tokens = getNextValidTokens("SELECT * FROM t HORIZON ")
+      expect(tokens).toContain("Join")
+    })
+
+    it("should suggest AS or Identifier after HORIZON JOIN table (alias mandatory)", () => {
+      const tokens = getNextValidTokens("SELECT * FROM t HORIZON JOIN u ")
+      expect(tokens).toContain("As")
+      expect(tokens).toContain("Identifier")
+    })
+
+    it("should suggest On after HORIZON JOIN table AS alias", () => {
+      const tokens = getNextValidTokens("SELECT * FROM t HORIZON JOIN u AS m ")
+      expect(tokens).toContain("On")
+    })
+
+    it("HORIZON JOIN: should not suggest TOLERANCE, INCLUDE, EXCLUDE", () => {
+      const tokens = getNextValidTokens("SELECT * FROM t HORIZON JOIN u AS m ")
+      expect(tokens).not.toContain("Tolerance")
+      expect(tokens).not.toContain("Include")
+      expect(tokens).not.toContain("Exclude")
+    })
   })
 
   describe("getContentAssist", () => {

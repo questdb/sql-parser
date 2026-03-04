@@ -216,6 +216,198 @@ describe("QuestDB Parser", () => {
       }
     })
 
+    // --- HORIZON JOIN ---
+
+    it("should parse HORIZON JOIN with RANGE form and ON clause", () => {
+      const result = parseToAst(
+        "SELECT h.offset / 1000000000 AS horizon_sec, t.symbol, avg((m.best_bid + m.best_ask) / 2) AS avg_mid FROM fx_trades AS t HORIZON JOIN market_data AS m ON (symbol) RANGE FROM 1s TO 60s STEP 1s AS h ORDER BY t.symbol, horizon_sec",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      expect(stmt.type).toBe("select")
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("horizon")
+        expect(join?.on).toBeDefined()
+        expect(join?.horizonRange).toEqual({
+          from: "1s",
+          to: "60s",
+          step: "1s",
+        })
+        expect(join?.horizonAlias).toBe("h")
+      }
+    })
+
+    it("should parse HORIZON JOIN with LIST form and ON clause", () => {
+      const result = parseToAst(
+        "SELECT h.offset / 1000000000 AS horizon_sec, t.symbol, avg((m.best_bid + m.best_ask) / 2 - t.price) AS avg_markout FROM fx_trades AS t HORIZON JOIN market_data AS m ON (symbol) LIST (1s, 5s, 30s, 1m) AS h ORDER BY t.symbol, horizon_sec",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("horizon")
+        expect(join?.horizonList).toEqual(["1s", "5s", "30s", "1m"])
+        expect(join?.horizonAlias).toBe("h")
+      }
+    })
+
+    it("should parse HORIZON JOIN with negative offsets", () => {
+      const result = parseToAst(
+        "SELECT h.offset / 1000000000 AS horizon_sec, t.symbol, avg((m.best_bid + m.best_ask) / 2) AS avg_mid, count() AS sample_size FROM fx_trades AS t HORIZON JOIN market_data AS m ON (symbol) RANGE FROM -5s TO 5s STEP 1s AS h ORDER BY t.symbol, horizon_sec",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.horizonRange).toEqual({
+          from: "-5s",
+          to: "5s",
+          step: "1s",
+        })
+      }
+    })
+
+    it("should parse HORIZON JOIN LIST with bare 0", () => {
+      const result = parseToAst(
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m ON (symbol) LIST (0, 1s, 5s, 30s, 1m, 5m) AS h",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.horizonList).toEqual(["0", "1s", "5s", "30s", "1m", "5m"])
+      }
+    })
+
+    it("should parse HORIZON JOIN RANGE without ON clause", () => {
+      const result = parseToAst(
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m RANGE FROM 1s TO 60s STEP 1s AS h",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("horizon")
+        expect(join?.on).toBeUndefined()
+        expect(join?.horizonRange).toBeDefined()
+      }
+    })
+
+    it("should parse HORIZON JOIN LIST without ON clause", () => {
+      const result = parseToAst(
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m LIST (1s, 5s, 30s) AS h",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("horizon")
+        expect(join?.on).toBeUndefined()
+        expect(join?.horizonList).toEqual(["1s", "5s", "30s"])
+      }
+    })
+
+    it("should parse HORIZON JOIN LIST with single offset", () => {
+      const result = parseToAst(
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m ON (symbol) LIST (5s) AS h",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.horizonList).toEqual(["5s"])
+      }
+    })
+
+    it("should roundtrip HORIZON JOIN with RANGE form", () => {
+      const sql =
+        "SELECT h.offset FROM fx_trades t HORIZON JOIN market_data m ON (symbol) RANGE FROM 1s TO 60s STEP 1s AS h"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+    })
+
+    it("should roundtrip HORIZON JOIN with LIST form", () => {
+      const sql =
+        "SELECT h.offset FROM fx_trades t HORIZON JOIN market_data m ON (symbol) LIST (1s, 5s, 30s, 1m) AS h"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+    })
+
+    it("should roundtrip HORIZON JOIN RANGE without ON", () => {
+      const sql =
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m RANGE FROM 1s TO 60s STEP 1s AS h"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+    })
+
+    it("should roundtrip HORIZON JOIN LIST without ON", () => {
+      const sql =
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m LIST (1s, 5s, 30s) AS h"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+    })
+
+    it("should roundtrip HORIZON JOIN with negative offsets", () => {
+      const sql =
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m ON (symbol) RANGE FROM -5s TO 5s STEP 1s AS h"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+    })
+
+    it("should parse EXPLAIN with HORIZON JOIN", () => {
+      const result = parseToAst(
+        "EXPLAIN SELECT h.offset / 1000000000 AS horizon_sec, t.symbol, avg((m.best_bid + m.best_ask) / 2) AS avg_mid FROM fx_trades AS t HORIZON JOIN market_data AS m ON (symbol) RANGE FROM 1s TO 60s STEP 1s AS h ORDER BY t.symbol, horizon_sec",
+      )
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast[0].type).toBe("explain")
+    })
+
+    it("should parse HORIZON JOIN with RANGE FROM 0s", () => {
+      const result = parseToAst(
+        "SELECT * FROM fx_trades t HORIZON JOIN market_data m ON (symbol) RANGE FROM 0s TO 5m STEP 1s AS h",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.horizonRange).toEqual({
+          from: "0s",
+          to: "5m",
+          step: "1s",
+        })
+      }
+    })
+
+    it("should parse HORIZON JOIN with WHERE and GROUP BY", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, h.offset / 1000000000 AS horizon_sec, count() AS n FROM fx_trades t HORIZON JOIN market_data m ON (symbol) RANGE FROM 0s TO 5m STEP 1s AS h WHERE t.timestamp IN '$yesterday' GROUP BY t.symbol, horizon_sec ORDER BY t.symbol, horizon_sec",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      expect(stmt.type).toBe("select")
+      if (stmt.type === "select") {
+        expect(stmt.where).toBeDefined()
+        expect(stmt.groupBy).toBeDefined()
+        expect(stmt.orderBy).toBeDefined()
+      }
+    })
+
     it("should parse INSERT statement", () => {
       const result = parseToAst(
         "INSERT INTO trades (symbol, price) VALUES ('BTC', 100)",
@@ -5856,9 +6048,12 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
   })
 
-  describe("'horizon' and 'step' as non-reserved identifier keywords", () => {
-    it("should parse 'horizon' as a table name", () => {
-      const result = parseToAst("SELECT * FROM horizon")
+  describe("'horizon' and 'step' as identifier keywords", () => {
+    // 'horizon' is not an identifier keyword (like WINDOW, ASOF, SPLICE)
+    // due to HORIZON JOIN. It must be quoted to use as an identifier.
+    // 'step' remains an identifier keyword.
+    it("should parse quoted 'horizon' as a table name", () => {
+      const result = parseToAst('SELECT * FROM "horizon"')
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0] as AST.SelectStatement
       const tableRef = stmt.from?.[0] as AST.TableRef
@@ -5870,8 +6065,8 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.errors).toHaveLength(0)
     })
 
-    it("should parse 'horizon' as a column name", () => {
-      const result = parseToAst("SELECT horizon FROM trades")
+    it("should parse quoted 'horizon' as a column name", () => {
+      const result = parseToAst('SELECT "horizon" FROM trades')
       expect(result.errors).toHaveLength(0)
     })
 
@@ -5883,8 +6078,8 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect((tableRef.table as AST.QualifiedName).parts).toEqual(["step"])
     })
 
-    it("should round-trip 'horizon' through toSql", () => {
-      const sql = "SELECT * FROM horizon"
+    it("should round-trip quoted 'horizon' through toSql", () => {
+      const sql = 'SELECT * FROM "horizon"'
       const result = parseToAst(sql)
       expect(result.errors).toHaveLength(0)
       expect(toSql(result.ast[0])).toBe(sql)

@@ -139,6 +139,8 @@ import type {
   SimpleSelectCstChildren,
   SnapshotStatementCstChildren,
   SpliceJoinCstChildren,
+  HorizonJoinCstChildren,
+  HorizonOffsetCstChildren,
   StandardJoinCstChildren,
   StatementCstChildren,
   StatementsCstChildren,
@@ -659,6 +661,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.asofLtJoin) return this.visit(ctx.asofLtJoin) as AST.JoinClause
     if (ctx.spliceJoin) return this.visit(ctx.spliceJoin) as AST.JoinClause
     if (ctx.windowJoin) return this.visit(ctx.windowJoin) as AST.JoinClause
+    if (ctx.horizonJoin) return this.visit(ctx.horizonJoin) as AST.JoinClause
     return this.visit(ctx.standardJoin!) as AST.JoinClause
   }
 
@@ -709,6 +712,60 @@ class QuestDBVisitor extends BaseVisitor {
       result.prevailing = ctx.Include ? "include" : "exclude"
     }
     return result
+  }
+
+  horizonJoin(ctx: HorizonJoinCstChildren): AST.JoinClause {
+    // Build TableRef from tableName + alias
+    const tableRef: AST.TableRef = {
+      type: "tableRef",
+      table: this.visit(ctx.tableName) as AST.QualifiedName,
+    }
+    if (ctx.Identifier) {
+      // Implicit alias (bare identifier, not a keyword)
+      tableRef.alias = ctx.Identifier[0].image
+    } else if (ctx.identifier && ctx.identifier.length > 1) {
+      // Explicit alias (AS <id>): first identifier is table alias, last is horizon alias
+      tableRef.alias = (
+        this.visit(ctx.identifier[0]) as AST.QualifiedName
+      ).parts[0]
+    }
+
+    const result: AST.JoinClause = {
+      type: "join",
+      joinType: "horizon",
+      table: tableRef,
+    }
+    if (ctx.expression) {
+      result.on = this.visit(ctx.expression) as AST.Expression
+    }
+    if (ctx.Range) {
+      // RANGE form: horizonOffset[0]=from, [1]=to, [2]=step
+      const offsets = ctx.horizonOffset!
+      result.horizonRange = {
+        from: this.visit(offsets[0]) as string,
+        to: this.visit(offsets[1]) as string,
+        step: this.visit(offsets[2]) as string,
+      }
+    } else if (ctx.List) {
+      // LIST form: all horizonOffset children are list entries
+      result.horizonList = ctx.horizonOffset!.map(
+        (o) => this.visit(o) as string,
+      )
+    }
+    // Horizon alias is always the last identifier
+    if (ctx.identifier) {
+      const lastId = ctx.identifier[ctx.identifier.length - 1]
+      result.horizonAlias = (this.visit(lastId) as AST.QualifiedName).parts[0]
+    }
+    return result
+  }
+
+  horizonOffset(ctx: HorizonOffsetCstChildren): string {
+    const sign = ctx.Minus ? "-" : ""
+    if (ctx.DurationLiteral) {
+      return sign + ctx.DurationLiteral[0].image
+    }
+    return sign + ctx.NumberLiteral![0].image
   }
 
   standardJoin(ctx: StandardJoinCstChildren): AST.JoinClause {

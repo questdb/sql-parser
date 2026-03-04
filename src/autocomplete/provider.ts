@@ -43,9 +43,7 @@ const TABLE_NAME_TOKENS = new Set([
  * Built once at provider creation time so per-request ranking is O(N×M)
  * rather than O(N×C).
  */
-function buildColumnIndex(
-  schema: SchemaInfo,
-): Map<string, Set<string>> {
+function buildColumnIndex(schema: SchemaInfo): Map<string, Set<string>> {
   const index = new Map<string, Set<string>>()
   for (const table of schema.tables) {
     const key = table.name.toLowerCase()
@@ -98,8 +96,8 @@ function rankTableSuggestions(
     if (score === undefined) continue
     s.priority =
       score === referencedColumns.size
-        ? SuggestionPriority.High    // full match
-        : SuggestionPriority.Medium  // partial match
+        ? SuggestionPriority.High // full match
+        : SuggestionPriority.Medium // partial match
   }
 }
 

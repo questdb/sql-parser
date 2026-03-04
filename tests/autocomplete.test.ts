@@ -746,6 +746,105 @@ describe("JOIN autocomplete", () => {
       expect(labels).not.toContain("TOLERANCE")
     })
 
+    it("HORIZON JOIN: should suggest ON, RANGE, LIST, not TOLERANCE/INCLUDE/EXCLUDE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ",
+      )
+      expect(labels).toContain("ON")
+      expect(labels).toContain("RANGE")
+      expect(labels).toContain("LIST")
+      expect(labels).not.toContain("TOLERANCE")
+      expect(labels).not.toContain("INCLUDE")
+      expect(labels).not.toContain("EXCLUDE")
+    })
+
+    it("HORIZON JOIN: should suggest AS after table name (alias mandatory)", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes ",
+      )
+      expect(labels).toContain("AS")
+    })
+
+    it("HORIZON JOIN: should suggest RANGE and LIST after ON clause", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) ",
+      )
+      expect(labels).toContain("RANGE")
+      expect(labels).toContain("LIST")
+    })
+
+    it("HORIZON JOIN RANGE: should suggest FROM after RANGE", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) RANGE ",
+      )
+      expect(labels).toContain("FROM")
+    })
+
+    it("HORIZON JOIN RANGE: should suggest TO after FROM offset", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) RANGE FROM 1s ",
+      )
+      expect(labels).toContain("TO")
+    })
+
+    it("HORIZON JOIN RANGE: should suggest STEP after TO offset", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) RANGE FROM 1s TO 60s ",
+      )
+      expect(labels).toContain("STEP")
+    })
+
+    it("HORIZON JOIN RANGE: should suggest AS after STEP offset", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) RANGE FROM 1s TO 60s STEP 1s ",
+      )
+      expect(labels).toContain("AS")
+    })
+
+    it("HORIZON JOIN RANGE: should suggest WHERE, GROUP BY, ORDER BY after AS alias", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) RANGE FROM 1s TO 60s STEP 1s AS h ",
+      )
+      expect(labels).toContain("WHERE")
+      expect(labels).toContain("GROUP")
+      expect(labels).toContain("ORDER")
+      expect(labels).toContain("LIMIT")
+      expect(labels).toContain("SAMPLE")
+    })
+
+    it("HORIZON JOIN LIST: should suggest AS after closing paren", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) LIST (1s, 5s) ",
+      )
+      expect(labels).toContain("AS")
+    })
+
+    it("HORIZON JOIN LIST: should suggest WHERE, GROUP BY, ORDER BY after AS alias", () => {
+      const labels = getLabelsAt(
+        provider,
+        "SELECT * FROM trades t HORIZON JOIN quotes q ON (symbol) LIST (1s, 5s) AS h ",
+      )
+      expect(labels).toContain("WHERE")
+      expect(labels).toContain("GROUP")
+      expect(labels).toContain("ORDER")
+      expect(labels).toContain("LIMIT")
+      expect(labels).toContain("SAMPLE")
+    })
+
+    it("should suggest join types including HORIZON after FROM table", () => {
+      const labels = getLabelsAt(provider, "SELECT * FROM trades t ")
+      expect(labels).toContain("HORIZON")
+    })
+
     it("INNER JOIN: should suggest ON, not TOLERANCE/INCLUDE/EXCLUDE/RANGE", () => {
       const labels = getLabelsAt(
         provider,
