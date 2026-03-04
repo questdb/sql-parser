@@ -229,9 +229,9 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Capacity",
   "Cancel",
   "Prevailing",
+  "Range",
   "Writer",
   "Materialized",
-  "Range",
   "Snapshot",
   "Unlock",
   "Refresh",
@@ -350,7 +350,6 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Every",
   "Prev",
   "Linear",
-  "Horizon",
   "Step",
 ])
 
@@ -481,6 +480,7 @@ export const Grant = getToken("Grant")
 export const Group = getToken("Group")
 export const Groups = getToken("Groups")
 export const Header = getToken("Header")
+export const Horizon = getToken("Horizon")
 export const Http = getToken("Http")
 export const If = getToken("If")
 export const Ignore = getToken("Ignore")
@@ -581,6 +581,7 @@ export const Snapshot = getToken("Snapshot")
 export const Splice = getToken("Splice")
 export const Squash = getToken("Squash")
 export const StandardConformingStrings = getToken("StandardConformingStrings")
+export const Step = getToken("Step")
 export const Start = getToken("Start")
 export const StatisticsEnabled = getToken("StatisticsEnabled")
 export const Suspend = getToken("Suspend")

@@ -259,6 +259,7 @@ export type JoinClauseCstChildren = {
   asofLtJoin?: AsofLtJoinCstNode[];
   spliceJoin?: SpliceJoinCstNode[];
   windowJoin?: WindowJoinCstNode[];
+  horizonJoin?: HorizonJoinCstNode[];
   standardJoin?: StandardJoinCstNode[];
 };
 
@@ -309,6 +310,42 @@ export type WindowJoinCstChildren = {
   And?: IToken[];
   Include?: IToken[];
   Exclude?: IToken[];
+};
+
+export interface HorizonJoinCstNode extends CstNode {
+  name: "horizonJoin";
+  children: HorizonJoinCstChildren;
+}
+
+export type HorizonJoinCstChildren = {
+  Horizon: IToken[];
+  Join: IToken[];
+  tableName: TableNameCstNode[];
+  As?: (IToken)[];
+  identifier?: (IdentifierCstNode)[];
+  Identifier?: IToken[];
+  On?: IToken[];
+  expression?: ExpressionCstNode[];
+  Range?: IToken[];
+  From?: IToken[];
+  horizonOffset?: (HorizonOffsetCstNode)[];
+  To?: IToken[];
+  Step?: IToken[];
+  List?: IToken[];
+  LParen?: IToken[];
+  Comma?: IToken[];
+  RParen?: IToken[];
+};
+
+export interface HorizonOffsetCstNode extends CstNode {
+  name: "horizonOffset";
+  children: HorizonOffsetCstChildren;
+}
+
+export type HorizonOffsetCstChildren = {
+  Minus?: IToken[];
+  DurationLiteral?: IToken[];
+  NumberLiteral?: IToken[];
 };
 
 export interface StandardJoinCstNode extends CstNode {
@@ -2417,6 +2454,8 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   asofLtJoin(children: AsofLtJoinCstChildren, param?: IN): OUT;
   spliceJoin(children: SpliceJoinCstChildren, param?: IN): OUT;
   windowJoin(children: WindowJoinCstChildren, param?: IN): OUT;
+  horizonJoin(children: HorizonJoinCstChildren, param?: IN): OUT;
+  horizonOffset(children: HorizonOffsetCstChildren, param?: IN): OUT;
   standardJoin(children: StandardJoinCstChildren, param?: IN): OUT;
   windowJoinBound(children: WindowJoinBoundCstChildren, param?: IN): OUT;
   durationExpression(children: DurationExpressionCstChildren, param?: IN): OUT;

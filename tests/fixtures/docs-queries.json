@@ -5239,5 +5239,44 @@
   },
   {
     "query": "INSERT INTO market_data VALUES\n  ('2025-07-01T12:00:00Z', 'EURUSD', ARRAY[ [5.0, 5.1], [10.0, 20] ], ARRAY[ [6.0, 6.1], [15.0, 25] ]),\n  ('2025-07-01T12:00:01Z', 'EURUSD', ARRAY[ [5.1, 5.2], [20.0, 25] ], ARRAY[ [6.2, 6.4], [20.0,  9] ])"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2) AS avg_mid\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM 1s TO 60s STEP 1s AS h\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2 - t.price) AS avg_markout\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nLIST (1s, 5s, 30s, 1m) AS h\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2) AS avg_mid,\n    count() AS sample_size\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM -5s TO 5s STEP 1s AS h\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    sum(((m.best_bid + m.best_ask) / 2 - t.price) * t.quantity)\n        / sum(t.quantity) AS vwap_markout\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM 1s TO 60s STEP 1s AS h\nORDER BY horizon_sec"
+  },
+  {
+    "query": "EXPLAIN SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2) AS avg_mid\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM 1s TO 60s STEP 1s AS h\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.counterparty,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ) AS avg_markout_bps,\n    sum(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             * t.quantity\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             * t.quantity\n        END\n    ) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 5m STEP 1s AS h\nWHERE t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, t.counterparty, t.passive, horizon_sec\nORDER BY t.symbol, t.ecn, t.counterparty, t.passive, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.ecn,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ), 3) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (0, 1s, 5s, 30s, 1m, 5m) AS h\nWHERE t.timestamp IN '$yesterday'\nGROUP BY t.ecn, t.passive, horizon_sec\nORDER BY t.ecn, t.passive, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ), 3) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM -30s TO 30s STEP 1s AS h\nWHERE t.timestamp IN '$yesterday'\nGROUP BY horizon_sec\nORDER BY horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.ecn,\n    t.side,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ), 3) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (0, 1s, 5s, 30s, 1m, 5m) AS h\nWHERE t.timestamp IN '$yesterday'\nGROUP BY t.ecn, t.side, horizon_sec\nORDER BY t.ecn, t.side, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price) / t.price * 10000) AS avg_markout_bps,\n    sum(((m.best_bid + m.best_ask) / 2 - t.price) * t.quantity) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 10m STEP 5s AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, horizon_sec\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg((t.price - (m.best_bid + m.best_ask) / 2) / t.price * 10000) AS avg_markout_bps,\n    sum((t.price - (m.best_bid + m.best_ask) / 2) * t.quantity) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 10m STEP 5s AS h\nWHERE t.side = 'sell'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, horizon_sec\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.counterparty,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price) / t.price * 10000) AS avg_markout_bps,\n    sum(t.quantity) AS total_volume\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (0, 1s, 5s, 10s, 30s, 1m, 5m) AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.counterparty, horizon_sec\nORDER BY t.symbol, t.counterparty, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS avg_markout_bps,\n    avg((m.best_ask - m.best_bid)\n        / ((m.best_bid + m.best_ask) / 2) * 10000) / 2 AS avg_half_spread_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 5m STEP 1s AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, t.passive, horizon_sec\nORDER BY t.symbol, t.ecn, t.passive, horizon_sec"
   }
 ]

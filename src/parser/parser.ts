@@ -310,6 +310,8 @@ import {
   LongLiteral,
   DecimalLiteral,
   Window,
+  Horizon,
+  Step,
   Ignore,
   Respect,
   Nulls,
@@ -818,6 +820,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.asofLtJoin) },
       { ALT: () => this.SUBRULE(this.spliceJoin) },
       { ALT: () => this.SUBRULE(this.windowJoin) },
+      { ALT: () => this.SUBRULE(this.horizonJoin) },
       { ALT: () => this.SUBRULE(this.standardJoin) },
     ])
   })
@@ -877,6 +880,72 @@ class QuestDBParser extends CstParser {
       ])
       this.CONSUME1(Prevailing)
     })
+  })
+
+  // HORIZON JOIN: tableName alias [ON expr] (RANGE FROM/TO/STEP | LIST (...)) AS alias
+  // Uses tableName + custom alias instead of tableRef to avoid ambiguity
+  // between implicit keyword aliases and RANGE/LIST/ON keywords.
+  private horizonJoin = this.RULE("horizonJoin", () => {
+    this.CONSUME(Horizon)
+    this.CONSUME(Join)
+    this.SUBRULE(this.tableName)
+    // Table alias (mandatory): explicit (AS <id>) or implicit (bare Identifier only, not keywords)
+    this.OR1([
+      {
+        ALT: () => {
+          this.CONSUME(As)
+          this.SUBRULE(this.identifier)
+        },
+      },
+      {
+        // Implicit alias: only base Identifier, never keywords like RANGE/LIST
+        ALT: () => this.CONSUME(Identifier),
+      },
+    ])
+    this.OPTION(() => {
+      this.CONSUME(On)
+      this.SUBRULE(this.expression)
+    })
+    this.OR2([
+      {
+        // RANGE FROM <offset> TO <offset> STEP <offset> AS <alias>
+        ALT: () => {
+          this.CONSUME(Range)
+          this.CONSUME(From)
+          this.SUBRULE(this.horizonOffset)
+          this.CONSUME(To)
+          this.SUBRULE1(this.horizonOffset)
+          this.CONSUME(Step)
+          this.SUBRULE2(this.horizonOffset)
+          this.CONSUME1(As)
+          this.SUBRULE1(this.identifier)
+        },
+      },
+      {
+        // LIST (<offset>, ...) AS <alias>
+        ALT: () => {
+          this.CONSUME(List)
+          this.CONSUME(LParen)
+          this.SUBRULE3(this.horizonOffset)
+          this.MANY(() => {
+            this.CONSUME(Comma)
+            this.SUBRULE4(this.horizonOffset)
+          })
+          this.CONSUME(RParen)
+          this.CONSUME2(As)
+          this.SUBRULE2(this.identifier)
+        },
+      },
+    ])
+  })
+
+  // Horizon offset value: optional minus sign + DurationLiteral | NumberLiteral
+  private horizonOffset = this.RULE("horizonOffset", () => {
+    this.OPTION(() => this.CONSUME(Minus))
+    this.OR([
+      { ALT: () => this.CONSUME(DurationLiteral) },
+      { ALT: () => this.CONSUME(NumberLiteral) },
+    ])
   })
 
   // Standard joins: (INNER | LEFT [OUTER] | RIGHT [OUTER] | FULL [OUTER] | CROSS)? JOIN + ON

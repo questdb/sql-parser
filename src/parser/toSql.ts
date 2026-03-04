@@ -373,6 +373,24 @@ function joinToSql(join: AST.JoinClause): string {
     )
   }
 
+  if (join.horizonRange) {
+    parts.push("RANGE FROM")
+    parts.push(join.horizonRange.from)
+    parts.push("TO")
+    parts.push(join.horizonRange.to)
+    parts.push("STEP")
+    parts.push(join.horizonRange.step)
+  }
+
+  if (join.horizonList) {
+    parts.push("LIST (" + join.horizonList.join(", ") + ")")
+  }
+
+  if (join.horizonAlias) {
+    parts.push("AS")
+    parts.push(escapeIdentifier(join.horizonAlias))
+  }
+
   return parts.join(" ")
 }
 
