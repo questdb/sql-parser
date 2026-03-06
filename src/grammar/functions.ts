@@ -89,6 +89,8 @@ export const functions: string[] = [
   "geomean",
   "glob",
   "greatest",
+  "grouping",
+  "grouping_id",
   "haversine_dist_deg",
   "headers",
   "hour",
