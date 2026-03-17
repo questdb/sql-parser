@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.1.4 - 2026.03.17
+### Added
+- Compound JOIN suggestions: suggest "LEFT JOIN", "ASOF JOIN" etc. as single completions instead of bare keywords [#13](https://github.com/questdb/sql-parser/pull/13)
+- CTE grammar: extract `selectBody` rule so DECLARE/WITH are not suggested after WITH clause [#13](https://github.com/questdb/sql-parser/pull/13)
+
+### Fixed
+- Table suggestion ranking: tables no longer interleave with columns in autocomplete [#13](https://github.com/questdb/sql-parser/pull/13)
+
+
 ## 0.1.3 - 2026.03.04
 ### Added
 - horizon join support [#9](https://github.com/questdb/sql-parser/pull/9)
