@@ -833,8 +833,6 @@ export interface JoinClause extends AstNode {
   joinType?:
     | "inner"
     | "left"
-    | "right"
-    | "full"
     | "cross"
     | "asof"
     | "lt"

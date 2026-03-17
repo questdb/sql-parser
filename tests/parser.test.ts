@@ -132,28 +132,6 @@ describe("QuestDB Parser", () => {
       }
     })
 
-    it("should parse RIGHT JOIN", () => {
-      const result = parseToAst(
-        "SELECT * FROM trades t RIGHT JOIN orders o ON t.id = o.trade_id",
-      )
-      expect(result.errors).toHaveLength(0)
-      const select = result.ast[0]
-      if (select.type === "select") {
-        expect(select.from?.[0].joins?.[0].joinType).toBe("right")
-      }
-    })
-
-    it("should parse FULL JOIN", () => {
-      const result = parseToAst(
-        "SELECT * FROM trades t FULL JOIN orders o ON t.id = o.trade_id",
-      )
-      expect(result.errors).toHaveLength(0)
-      const select = result.ast[0]
-      if (select.type === "select") {
-        expect(select.from?.[0].joins?.[0].joinType).toBe("full")
-      }
-    })
-
     it("should parse CROSS JOIN", () => {
       const result = parseToAst("SELECT * FROM trades t CROSS JOIN orders o")
       expect(result.errors).toHaveLength(0)
@@ -2102,8 +2080,6 @@ describe("QuestDB Parser", () => {
       "SELECT * FROM trades t JOIN orders o ON t.id = o.trade_id",
       "SELECT * FROM trades t LEFT JOIN orders o ON t.id = o.trade_id",
       "SELECT * FROM trades t LEFT OUTER JOIN orders o ON t.id = o.trade_id",
-      "SELECT * FROM trades t RIGHT JOIN orders o ON t.id = o.trade_id",
-      "SELECT * FROM trades t FULL JOIN orders o ON t.id = o.trade_id",
       "SELECT * FROM trades t CROSS JOIN orders o",
       "SELECT * FROM trades t ASOF JOIN quotes q ON t.symbol = q.symbol",
       "SELECT * FROM trades t ASOF JOIN quotes q ON t.ts = q.ts TOLERANCE 1h",
@@ -5742,6 +5718,80 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(stmt2.with).toHaveLength(2)
       expect(stmt2.with![0].name).toBe("a")
       expect(stmt2.with![1].name).toBe("b")
+    })
+
+    it("should parse three comma-separated CTEs", () => {
+      const result = parseToAst(
+        "WITH a AS (SELECT 1), b AS (SELECT 2), c AS (SELECT 3) SELECT * FROM c",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      expect(stmt.with).toHaveLength(3)
+      expect(stmt.with![0].name).toBe("a")
+      expect(stmt.with![1].name).toBe("b")
+      expect(stmt.with![2].name).toBe("c")
+    })
+
+    it("should parse DECLARE before WITH at statement level", () => {
+      const result = parseToAst(
+        "DECLARE @y := 10 WITH x AS (SELECT @y) SELECT * FROM x",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      expect(stmt.declare).toBeDefined()
+      expect(stmt.declare?.assignments[0].name).toBe("y")
+      expect(stmt.with).toHaveLength(1)
+      expect(stmt.with![0].name).toBe("x")
+    })
+
+    it("should parse DECLARE inside CTE subquery", () => {
+      const result = parseToAst(
+        "WITH x AS (DECLARE @y := 10 SELECT @y) SELECT * FROM x",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.SelectStatement
+      expect(stmt.with).toHaveLength(1)
+      const cteQuery = stmt.with![0].query
+      expect(cteQuery.declare).toBeDefined()
+      expect(cteQuery.declare?.assignments[0].name).toBe("y")
+    })
+
+    it("should fail to parse DECLARE after WITH clause", () => {
+      const result = parseToAst(
+        "WITH x AS (SELECT 1) DECLARE @y := 10 SELECT * FROM x",
+      )
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+
+    it("should fail to parse chained WITH keywords instead of comma", () => {
+      const result = parseToAst(
+        "WITH x AS (SELECT 1) WITH y AS (SELECT 2) SELECT * FROM y",
+      )
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+
+    it("should parse multiple CTEs with INSERT", () => {
+      const result = parseToAst(
+        "WITH a AS (SELECT 1 x), b AS (SELECT 2 y) INSERT INTO t SELECT * FROM a, b",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.InsertStatement
+      expect(stmt.type).toBe("insert")
+      expect(stmt.with).toHaveLength(2)
+      expect(stmt.with![0].name).toBe("a")
+      expect(stmt.with![1].name).toBe("b")
+    })
+
+    it("should parse multiple CTEs with UPDATE", () => {
+      const result = parseToAst(
+        "WITH a AS (SELECT 1 x), b AS (SELECT 2 y) UPDATE t SET col = a.x FROM a",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.UpdateStatement
+      expect(stmt.type).toBe("update")
+      expect(stmt.with).toHaveLength(2)
+      expect(stmt.with![0].name).toBe("a")
+      expect(stmt.with![1].name).toBe("b")
     })
   })
 

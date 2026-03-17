@@ -130,6 +130,7 @@ import type {
   SampleByClauseCstChildren,
   SelectItemCstChildren,
   SelectListCstChildren,
+  SelectBodyCstChildren,
   SelectStatementCstChildren,
   SetClauseCstChildren,
   SetExpressionCstChildren,
@@ -332,8 +333,8 @@ class QuestDBVisitor extends BaseVisitor {
       inner = this.visit(ctx.insertStatement) as AST.InsertStatement
     } else if (ctx.updateStatement) {
       inner = this.visit(ctx.updateStatement) as AST.UpdateStatement
-    } else if (ctx.selectStatement) {
-      inner = this.visit(ctx.selectStatement) as AST.SelectStatement
+    } else if (ctx.selectBody) {
+      inner = this.visit(ctx.selectBody) as AST.SelectStatement
     } else {
       throw new Error("withStatement: expected insert, update, or select")
     }
@@ -347,7 +348,7 @@ class QuestDBVisitor extends BaseVisitor {
   // ==========================================================================
 
   selectStatement(ctx: SelectStatementCstChildren): AST.SelectStatement {
-    const result = this.visit(ctx.simpleSelect) as AST.SelectStatement
+    const result = this.visit(ctx.selectBody) as AST.SelectStatement
 
     if (ctx.declareClause) {
       result.declare = this.visit(ctx.declareClause) as AST.DeclareClause
@@ -356,6 +357,12 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.withClause) {
       result.with = this.visit(ctx.withClause) as AST.CTE[]
     }
+
+    return result
+  }
+
+  selectBody(ctx: SelectBodyCstChildren): AST.SelectStatement {
+    const result = this.visit(ctx.simpleSelect) as AST.SelectStatement
 
     if (ctx.setOperation && ctx.setOperation.length > 0) {
       result.setOperations = ctx.setOperation.map(
@@ -775,8 +782,6 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Inner) result.joinType = "inner"
     else if (ctx.Left) result.joinType = "left"
-    else if (ctx.Right) result.joinType = "right"
-    else if (ctx.Full) result.joinType = "full"
     else if (ctx.Cross) result.joinType = "cross"
     if (ctx.Outer) result.outer = true
     if (ctx.expression) {

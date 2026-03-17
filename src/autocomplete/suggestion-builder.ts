@@ -76,6 +76,24 @@ function getAllColumns(schema: SchemaInfo): ColumnWithTable[] {
 }
 
 /**
+ * Join prefix tokens → compound keyword.
+ * When "Join" is among the valid next tokens, these prefixes are combined
+ * into compound suggestions (e.g., "Left" → "LEFT JOIN") instead of
+ * suggesting bare "LEFT" which is incomplete on its own.
+ */
+const JOIN_COMPOUND_MAP = new Map<string, string>([
+  ["Left", "LEFT JOIN"],
+  ["Inner", "INNER JOIN"],
+  ["Cross", "CROSS JOIN"],
+  ["Asof", "ASOF JOIN"],
+  ["Lt", "LT JOIN"],
+  ["Splice", "SPLICE JOIN"],
+  ["Window", "WINDOW JOIN"],
+  ["Horizon", "HORIZON JOIN"],
+  ["Outer", "OUTER JOIN"],
+])
+
+/**
  * Build suggestions from parser's nextTokenTypes
  *
  * @param tokenTypes - Valid next tokens from parser.computeContentAssist()
@@ -100,6 +118,10 @@ export function buildSuggestions(
   const includeTables = options?.includeTables ?? true
   const isMidWord = options?.isMidWord ?? false
 
+  // Detect join context: when "Join" is a valid next token, join prefix
+  // keywords (LEFT, RIGHT, ASOF, etc.) should be suggested as compounds.
+  const isJoinContext = tokenTypes.some((t) => t.name === "Join")
+
   // Process each token type from the parser
   for (const tokenType of tokenTypes) {
     const name = tokenType.name
@@ -117,6 +139,22 @@ export function buildSuggestions(
       continue
     }
     if (name === "Identifier" || name === "QuotedIdentifier") {
+      continue
+    }
+
+    // In join context, combine join prefix tokens into compound keywords
+    // (e.g., "Left" → "LEFT JOIN") instead of suggesting bare "LEFT".
+    if (isJoinContext && JOIN_COMPOUND_MAP.has(name)) {
+      const compound = JOIN_COMPOUND_MAP.get(name)!
+      if (seenKeywords.has(compound)) continue
+      seenKeywords.add(compound)
+      suggestions.push({
+        label: compound,
+        kind: SuggestionKind.Keyword,
+        insertText: compound,
+        filterText: compound.toLowerCase(),
+        priority: SuggestionPriority.Medium,
+      })
       continue
     }
 

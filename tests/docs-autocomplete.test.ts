@@ -341,10 +341,15 @@ function autocompleteWalkthrough(
       expectedLabel = word
       found = labels.some((l) => l.toLowerCase() === word)
     } else {
-      // Keyword token: check if keyword label appears in suggestions
+      // Keyword token: check if keyword label appears in suggestions.
+      // Join prefix tokens (LEFT, ASOF, etc.) are now suggested as compound
+      // keywords ("LEFT JOIN", "ASOF JOIN"), so also accept those forms.
       expectedLabel = tokenNameToKeyword(tokenType)
       const expectedUpper = expectedLabel.toUpperCase()
-      found = labels.some((l) => l.toUpperCase() === expectedUpper)
+      found = labels.some((l) => {
+        const upper = l.toUpperCase()
+        return upper === expectedUpper || upper === expectedUpper + " JOIN"
+      })
 
       // Fallback: keyword tokens used as identifiers (e.g., `timestamp`
       // as a column name). Accept if the word is a known column/table in

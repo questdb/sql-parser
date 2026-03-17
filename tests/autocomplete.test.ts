@@ -625,19 +625,25 @@ describe("SAMPLE BY walkthrough", () => {
 // =============================================================================
 
 describe("JOIN autocomplete", () => {
-  it("should suggest JOIN types after FROM table", () => {
+  it("should suggest compound JOIN types after FROM table", () => {
     const labels = getLabelsAt(provider, "SELECT * FROM trades ")
     expect(labels).toContain("JOIN")
-    expect(labels).toContain("INNER")
-    expect(labels).toContain("LEFT")
-    expect(labels).toContain("CROSS")
-    expect(labels).toContain("ASOF")
+    expect(labels).toContain("INNER JOIN")
+    expect(labels).toContain("LEFT JOIN")
+    expect(labels).toContain("CROSS JOIN")
+    expect(labels).toContain("ASOF JOIN")
+    // Bare prefixes should NOT appear when compounds are available
+    expect(labels).not.toContain("INNER")
+    expect(labels).not.toContain("LEFT")
+    expect(labels).not.toContain("CROSS")
+    expect(labels).not.toContain("ASOF")
   })
 
-  it("should suggest JOIN after LEFT/RIGHT/FULL", () => {
+  it("should suggest JOIN and OUTER JOIN after LEFT", () => {
     const labels = getLabelsAt(provider, "SELECT * FROM trades LEFT ")
     expect(labels).toContain("JOIN")
-    expect(labels).toContain("OUTER")
+    expect(labels).toContain("OUTER JOIN")
+    expect(labels).not.toContain("OUTER")
   })
 
   it("should suggest ON after JOIN table", () => {
@@ -661,7 +667,7 @@ describe("JOIN autocomplete", () => {
       assertSuggestionsWalkthrough(provider, [
         {
           typed: "SELECT * FROM trades ",
-          expects: ["JOIN", "ASOF", "LEFT", "CROSS"],
+          expects: ["JOIN", "ASOF JOIN", "LEFT JOIN", "CROSS JOIN"],
         },
         {
           typed: "SELECT * FROM trades ASOF ",
@@ -679,21 +685,21 @@ describe("JOIN autocomplete", () => {
       expect(labels).not.toContain("OUTER")
     })
 
-    it("should suggest OUTER after LEFT", () => {
+    it("should suggest OUTER JOIN after LEFT", () => {
       const labels = getLabelsAt(provider, "SELECT * FROM trades LEFT ")
-      expect(labels).toContain("OUTER")
+      expect(labels).toContain("OUTER JOIN")
       expect(labels).toContain("JOIN")
     })
 
-    it("should suggest join types after ON condition (chained joins)", () => {
+    it("should suggest compound join types after ON condition (chained joins)", () => {
       const labels = getLabelsAt(
         provider,
         "SELECT * FROM trades t ASOF JOIN quotes q ON (symbol) ",
       )
-      expect(labels).toContain("ASOF")
+      expect(labels).toContain("ASOF JOIN")
       expect(labels).toContain("JOIN")
-      expect(labels).toContain("CROSS")
-      expect(labels).toContain("LEFT")
+      expect(labels).toContain("CROSS JOIN")
+      expect(labels).toContain("LEFT JOIN")
     })
   })
 
@@ -840,9 +846,9 @@ describe("JOIN autocomplete", () => {
       expect(labels).toContain("SAMPLE")
     })
 
-    it("should suggest join types including HORIZON after FROM table", () => {
+    it("should suggest join types including HORIZON JOIN after FROM table", () => {
       const labels = getLabelsAt(provider, "SELECT * FROM trades t ")
-      expect(labels).toContain("HORIZON")
+      expect(labels).toContain("HORIZON JOIN")
     })
 
     it("INNER JOIN: should suggest ON, not TOLERANCE/INCLUDE/EXCLUDE/RANGE", () => {
@@ -1342,6 +1348,34 @@ describe("CTE autocomplete", () => {
     expect(labels).toContain("UPDATE")
     expect(labels).toContain("SELECT")
     expect(labels).toContain("INSERT")
+  })
+
+  it("should NOT suggest WITH or DECLARE after CTE definition", () => {
+    // Multiple CTEs use comma separation, not chained WITH keywords.
+    // DECLARE can only appear before WITH, not after it.
+    const sql = "WITH x AS (SELECT 1) "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).not.toContain("WITH")
+    expect(labels).not.toContain("DECLARE")
+  })
+
+  it("should suggest comma for additional CTEs after CTE definition", () => {
+    // WITH x AS (...), y AS (...) — comma separates CTEs
+    const sql = "WITH x AS (SELECT 1) , y AS (SELECT 2) "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("SELECT")
+  })
+
+  it("should allow DECLARE before WITH at statement level", () => {
+    const sql = "DECLARE @y := 10 WITH x AS (SELECT @y) "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("SELECT")
+  })
+
+  it("should allow DECLARE inside CTE subquery", () => {
+    const sql = "WITH x AS (DECLARE @y := 10 SELECT @y) "
+    const labels = getLabelsAt(provider, sql)
+    expect(labels).toContain("SELECT")
   })
 
   // ---------------------------------------------------------------------------
@@ -3014,38 +3048,20 @@ describe("CTE autocomplete", () => {
       const trades = tables.find((s) => s.label === "trades")
       const orders = tables.find((s) => s.label === "orders")
       const users = tables.find((s) => s.label === "users")
-      expect(trades?.priority).toBe(SuggestionPriority.High)
+      expect(trades?.priority).toBe(SuggestionPriority.Medium)
       expect(orders?.priority).toBe(SuggestionPriority.MediumLow)
       expect(users?.priority).toBe(SuggestionPriority.MediumLow)
     })
 
-    it("partially matching tables get Medium priority; no-match tables stay MediumLow", () => {
-      // "symbol" is in trades; "id" is in orders — each table has one of the two
+    it("partial column match does not boost tables", () => {
+      // "symbol" is in trades; "id" is in orders — neither has all columns
       const sql = "SELECT symbol, id FROM "
       const suggestions = provider.getSuggestions(sql, sql.length)
       const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
-      const trades = tables.find((s) => s.label === "trades")
-      const orders = tables.find((s) => s.label === "orders")
-      const users = tables.find((s) => s.label === "users")
-      // partial match → Medium (boosted but not full match)
-      expect(trades?.priority).toBe(SuggestionPriority.Medium)
-      expect(orders?.priority).toBe(SuggestionPriority.Medium)
-      // no match → default
-      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
-    })
-
-    it("columns from two tables: both partially-matching tables get Medium", () => {
-      // "symbol" and "price" only in trades; "status" only in orders; "name" only in users
-      // → trades and orders both partially match (2 and 1 out of 3); users has none
-      const sql = "SELECT symbol, price, status FROM "
-      const suggestions = provider.getSuggestions(sql, sql.length)
-      const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
-      const trades = tables.find((s) => s.label === "trades")
-      const orders = tables.find((s) => s.label === "orders")
-      const users = tables.find((s) => s.label === "users")
-      expect(trades?.priority).toBe(SuggestionPriority.Medium)
-      expect(orders?.priority).toBe(SuggestionPriority.Medium)
-      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
+      // No table contains both columns → no boost, all stay at default
+      for (const t of tables) {
+        expect(t.priority).toBe(SuggestionPriority.MediumLow)
+      }
     })
 
     it("graceful fallback: no boost when no table has any referenced column", () => {
@@ -3066,21 +3082,19 @@ describe("CTE autocomplete", () => {
       const trades = tables.find((s) => s.label === "trades")
       const orders = tables.find((s) => s.label === "orders")
       // trades has "symbol" → boosted; orders does not
-      expect(trades?.priority).toBe(SuggestionPriority.High)
+      expect(trades?.priority).toBe(SuggestionPriority.Medium)
       expect(orders?.priority).toBe(SuggestionPriority.MediumLow)
     })
 
-    it("qualified references from multiple aliases boost the correct tables", () => {
+    it("qualified references with partial match do not boost tables", () => {
       // c.symbol → symbol in trades; o.id → id in orders
+      // Neither table has both columns → no boost
       const sql = "SELECT c.symbol, o.id FROM "
       const suggestions = provider.getSuggestions(sql, sql.length)
       const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
-      const trades = tables.find((s) => s.label === "trades")
-      const orders = tables.find((s) => s.label === "orders")
-      const users = tables.find((s) => s.label === "users")
-      expect(trades?.priority).toBe(SuggestionPriority.Medium) // partial: symbol but not id
-      expect(orders?.priority).toBe(SuggestionPriority.Medium) // partial: id but not symbol
-      expect(users?.priority).toBe(SuggestionPriority.MediumLow)
+      for (const t of tables) {
+        expect(t.priority).toBe(SuggestionPriority.MediumLow)
+      }
     })
 
     it("function calls are excluded from column inference", () => {
@@ -3111,7 +3125,7 @@ describe("CTE autocomplete", () => {
       const tables = suggestions.filter((s) => s.kind === SuggestionKind.Table)
       const orders = tables.find((s) => s.label === "orders")
       const trades = tables.find((s) => s.label === "trades")
-      expect(orders?.priority).toBe(SuggestionPriority.High)
+      expect(orders?.priority).toBe(SuggestionPriority.Medium)
       expect(trades?.priority).toBe(SuggestionPriority.MediumLow)
     })
 

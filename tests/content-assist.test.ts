@@ -63,8 +63,9 @@ describe("Content Assist", () => {
       expect(tokens).toContain("Join")
       expect(tokens).toContain("Inner")
       expect(tokens).toContain("Left")
-      expect(tokens).toContain("Right")
       expect(tokens).toContain("Cross")
+      expect(tokens).not.toContain("Right")
+      expect(tokens).not.toContain("Full")
     })
 
     it("should suggest WHERE, ORDER BY, etc. after FROM clause", () => {
