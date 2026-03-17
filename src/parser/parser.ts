@@ -531,9 +531,8 @@ class QuestDBParser extends CstParser {
         ALT: () => this.SUBRULE(this.updateStatement),
       },
       {
-        // SELECT: delegate to selectStatement (its optional declareClause/
-        // withClause simply won't match since WITH was already consumed)
-        ALT: () => this.SUBRULE(this.selectStatement),
+        // SELECT after WITH: no DECLARE/WITH prefixes allowed here
+        ALT: () => this.SUBRULE(this.selectBody),
       },
     ])
   })
@@ -545,6 +544,10 @@ class QuestDBParser extends CstParser {
   private selectStatement = this.RULE("selectStatement", () => {
     this.OPTION(() => this.SUBRULE(this.declareClause))
     this.OPTION2(() => this.SUBRULE(this.withClause))
+    this.SUBRULE(this.selectBody)
+  })
+
+  private selectBody = this.RULE("selectBody", () => {
     this.SUBRULE(this.simpleSelect)
     this.MANY(() => {
       this.SUBRULE(this.setOperation)
@@ -948,17 +951,13 @@ class QuestDBParser extends CstParser {
     ])
   })
 
-  // Standard joins: (INNER | LEFT [OUTER] | RIGHT [OUTER] | FULL [OUTER] | CROSS)? JOIN + ON
+  // Standard joins: (INNER | LEFT [OUTER] | CROSS)? JOIN + ON
   private standardJoin = this.RULE("standardJoin", () => {
     this.OPTION(() => {
       this.OR([
         {
           ALT: () => {
-            this.OR1([
-              { ALT: () => this.CONSUME(Left) },
-              { ALT: () => this.CONSUME(Right) },
-              { ALT: () => this.CONSUME(Full) },
-            ])
+            this.CONSUME(Left)
             this.OPTION1(() => this.CONSUME(Outer))
           },
         },

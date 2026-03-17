@@ -96,8 +96,8 @@ function rankTableSuggestions(
     if (score === undefined) continue
     s.priority =
       score === referencedColumns.size
-        ? SuggestionPriority.High // full match
-        : SuggestionPriority.Medium // partial match
+        ? SuggestionPriority.Medium // full match — below columns (High)
+        : SuggestionPriority.MediumLow // partial match
   }
 }
 

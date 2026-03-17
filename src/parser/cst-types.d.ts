@@ -59,7 +59,7 @@ export type WithStatementCstChildren = {
   withClause: WithClauseCstNode[];
   insertStatement?: InsertStatementCstNode[];
   updateStatement?: UpdateStatementCstNode[];
-  selectStatement?: SelectStatementCstNode[];
+  selectBody?: SelectBodyCstNode[];
 };
 
 export interface SelectStatementCstNode extends CstNode {
@@ -70,6 +70,15 @@ export interface SelectStatementCstNode extends CstNode {
 export type SelectStatementCstChildren = {
   declareClause?: DeclareClauseCstNode[];
   withClause?: WithClauseCstNode[];
+  selectBody: SelectBodyCstNode[];
+};
+
+export interface SelectBodyCstNode extends CstNode {
+  name: "selectBody";
+  children: SelectBodyCstChildren;
+}
+
+export type SelectBodyCstChildren = {
   simpleSelect: SimpleSelectCstNode[];
   setOperation?: SetOperationCstNode[];
 };
@@ -355,8 +364,6 @@ export interface StandardJoinCstNode extends CstNode {
 
 export type StandardJoinCstChildren = {
   Left?: IToken[];
-  Right?: IToken[];
-  Full?: IToken[];
   Outer?: IToken[];
   Inner?: IToken[];
   Cross?: IToken[];
@@ -2437,6 +2444,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   statement(children: StatementCstChildren, param?: IN): OUT;
   withStatement(children: WithStatementCstChildren, param?: IN): OUT;
   selectStatement(children: SelectStatementCstChildren, param?: IN): OUT;
+  selectBody(children: SelectBodyCstChildren, param?: IN): OUT;
   withClause(children: WithClauseCstChildren, param?: IN): OUT;
   cteDefinition(children: CteDefinitionCstChildren, param?: IN): OUT;
   simpleSelect(children: SimpleSelectCstChildren, param?: IN): OUT;
