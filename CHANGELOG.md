@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.1.5 - 2026.03.18
+### Fixed
+boost expression operators over clause keywords in WHERE context [#15](https://github.com/questdb/sql-parser/pull/15)
+
+
 ## 0.1.4 - 2026.03.17
 ### Added
 - Compound JOIN suggestions: suggest "LEFT JOIN", "ASOF JOIN" etc. as single completions instead of bare keywords [#13](https://github.com/questdb/sql-parser/pull/13)
