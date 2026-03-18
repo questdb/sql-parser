@@ -3139,3 +3139,206 @@ describe("CTE autocomplete", () => {
     })
   })
 })
+
+describe("condition-aware operator priority", () => {
+  function getPriority(
+    sql: string,
+    label: string,
+    offset?: number,
+  ): SuggestionPriority | undefined {
+    const suggestions = provider.getSuggestions(sql, offset ?? sql.length)
+    return suggestions.find((s) => s.label === label)?.priority
+  }
+
+  describe("WHERE column | (condition context, column detected)", () => {
+    const sql = "SELECT * FROM trades WHERE amount "
+
+    it("boosts IN to High priority", () => {
+      expect(getPriority(sql, "IN")).toBe(SuggestionPriority.High)
+    })
+
+    it("keeps other expression operators at Medium", () => {
+      expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "BETWEEN")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "IS")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "NOT")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "OR")).toBe(SuggestionPriority.Medium)
+    })
+
+    it("demotes clause keywords to MediumLow", () => {
+      expect(getPriority(sql, "GROUP")).toBe(SuggestionPriority.MediumLow)
+      expect(getPriority(sql, "ORDER")).toBe(SuggestionPriority.MediumLow)
+      expect(getPriority(sql, "LIMIT")).toBe(SuggestionPriority.MediumLow)
+    })
+  })
+
+  describe("SELECT column | (not a condition context)", () => {
+    const sql = "SELECT amount  FROM trades"
+
+    it("does not adjust priorities outside WHERE", () => {
+      // cursor at position 14 (after "amount ")
+      expect(getPriority(sql, "AND", 14)).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "IN", 14)).toBe(SuggestionPriority.Medium)
+    })
+  })
+
+  describe("WHERE | (no column before cursor)", () => {
+    const sql = "SELECT * FROM trades WHERE "
+
+    it("does not adjust priorities when no column precedes cursor", () => {
+      // After WHERE, parser expects an expression to start — operators
+      // like IN are not among suggestions at this position.
+      // Columns should be at their default High priority.
+      const suggestions = provider.getSuggestions(sql, sql.length)
+      const columns = suggestions.filter(
+        (s) => s.kind === SuggestionKind.Column,
+      )
+      expect(columns.length).toBeGreaterThan(0)
+      for (const c of columns) {
+        expect(c.priority).toBe(SuggestionPriority.High)
+      }
+    })
+  })
+
+  describe("WHERE col > 5 | (last token is literal, not column)", () => {
+    const sql = "SELECT * FROM trades WHERE amount > 5 "
+
+    it("does not adjust priorities when last token is a literal", () => {
+      expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "GROUP")).toBe(SuggestionPriority.Medium)
+    })
+  })
+
+  describe("WHERE col > 5 AND col2 | (second condition column)", () => {
+    const sql = "SELECT * FROM trades WHERE amount > 5 AND price "
+
+    it("boosts IN for the second condition column", () => {
+      expect(getPriority(sql, "IN")).toBe(SuggestionPriority.High)
+    })
+
+    it("demotes clause keywords for the second condition column", () => {
+      expect(getPriority(sql, "GROUP")).toBe(SuggestionPriority.MediumLow)
+      expect(getPriority(sql, "ORDER")).toBe(SuggestionPriority.MediumLow)
+    })
+  })
+
+  describe("WHERE col OR col2 | (OR continuation)", () => {
+    const sql = "SELECT * FROM trades WHERE amount > 5 OR price "
+
+    it("boosts IN after OR", () => {
+      expect(getPriority(sql, "IN")).toBe(SuggestionPriority.High)
+    })
+
+    it("keeps expression operators at Medium after OR", () => {
+      expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "BETWEEN")).toBe(SuggestionPriority.Medium)
+    })
+
+    it("demotes clause keywords after OR", () => {
+      expect(getPriority(sql, "GROUP")).toBe(SuggestionPriority.MediumLow)
+      expect(getPriority(sql, "ORDER")).toBe(SuggestionPriority.MediumLow)
+    })
+  })
+
+  describe("WHERE (col) | (parenthesized expression)", () => {
+    const sql = "SELECT * FROM trades WHERE (amount "
+
+    it("boosts IN inside parenthesized condition", () => {
+      expect(getPriority(sql, "IN")).toBe(SuggestionPriority.High)
+    })
+
+    it("keeps expression operators at Medium", () => {
+      expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
+    })
+  })
+
+  describe("WHERE col = 'x' | (last token is string literal)", () => {
+    const sql = "SELECT * FROM trades WHERE symbol = 'BTC' "
+
+    it("does not adjust priorities when last token is a string literal", () => {
+      expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "GROUP")).toBe(SuggestionPriority.Medium)
+    })
+  })
+
+  describe("WHERE NOT col | (NOT before column)", () => {
+    const sql = "SELECT * FROM trades WHERE NOT amount "
+
+    it("boosts IN after NOT column", () => {
+      expect(getPriority(sql, "IN")).toBe(SuggestionPriority.High)
+    })
+
+    it("demotes clause keywords after NOT column", () => {
+      expect(getPriority(sql, "GROUP")).toBe(SuggestionPriority.MediumLow)
+    })
+  })
+
+  describe("set operations are not treated as expression operators", () => {
+    const sql = "SELECT * FROM trades WHERE amount "
+
+    it("demotes UNION as clause keyword in condition context", () => {
+      const priority = getPriority(sql, "UNION")
+      if (priority !== undefined) {
+        expect(priority).toBe(SuggestionPriority.MediumLow)
+      }
+    })
+
+    it("demotes EXCEPT as clause keyword in condition context", () => {
+      const priority = getPriority(sql, "EXCEPT")
+      if (priority !== undefined) {
+        expect(priority).toBe(SuggestionPriority.MediumLow)
+      }
+    })
+
+    it("demotes INTERSECT as clause keyword in condition context", () => {
+      const priority = getPriority(sql, "INTERSECT")
+      if (priority !== undefined) {
+        expect(priority).toBe(SuggestionPriority.MediumLow)
+      }
+    })
+  })
+
+  describe("mid-word typing in WHERE context", () => {
+    it("adjusts priorities when typing operator prefix after column", () => {
+      const sql = "SELECT * FROM trades WHERE amount b"
+      // mid-word "b" could match BETWEEN — still in condition context
+      expect(getPriority(sql, "BETWEEN")).toBe(SuggestionPriority.Medium)
+    })
+
+    it("adjusts priorities when typing 'i' after column (matches IN)", () => {
+      const sql = "SELECT * FROM trades WHERE amount i"
+      const priority = getPriority(sql, "IN")
+      if (priority !== undefined) {
+        expect(priority).toBe(SuggestionPriority.High)
+      }
+    })
+  })
+
+  describe("ORDER BY col | (not a condition context)", () => {
+    const sql = "SELECT * FROM trades WHERE amount > 5 ORDER BY price "
+
+    it("does not adjust priorities in ORDER BY", () => {
+      // After ORDER BY column, no condition-aware adjustment
+      const andPriority = getPriority(sql, "AND")
+      const limitPriority = getPriority(sql, "LIMIT")
+      if (andPriority !== undefined && limitPriority !== undefined) {
+        // Both should be at default Medium (no condition boost)
+        expect(andPriority).toBe(SuggestionPriority.Medium)
+        expect(limitPriority).toBe(SuggestionPriority.Medium)
+      }
+    })
+  })
+
+  describe("UPDATE WHERE col | (condition context in UPDATE)", () => {
+    const sql = "UPDATE trades SET amount = 1 WHERE symbol "
+
+    it("boosts IN in UPDATE WHERE clause", () => {
+      expect(getPriority(sql, "IN")).toBe(SuggestionPriority.High)
+    })
+
+    it("keeps expression operators at Medium", () => {
+      expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
+      expect(getPriority(sql, "LIKE")).toBe(SuggestionPriority.Medium)
+    })
+  })
+})

@@ -3,7 +3,10 @@ import { parser, parse as parseRaw } from "../parser/parser"
 import { visitor } from "../parser/visitor"
 import { QuestDBLexer } from "../parser/lexer"
 import type { Statement } from "../parser/ast"
-import { IDENTIFIER_KEYWORD_TOKENS } from "./token-classification"
+import {
+  IDENTIFIER_KEYWORD_TOKENS,
+  EXPRESSION_OPERATORS,
+} from "./token-classification"
 
 // =============================================================================
 // Constants
@@ -85,6 +88,8 @@ export interface ContentAssistResult {
    * context. Used by the provider to boost tables containing all these columns.
    */
   referencedColumns: Set<string>
+  /** Whether the cursor is inside a WHERE clause expression */
+  isConditionContext: boolean
 }
 
 // =============================================================================
@@ -683,6 +688,7 @@ interface ComputeResult {
   nextTokenTypes: TokenType[]
   suggestColumns: boolean
   suggestTables: boolean
+  isConditionContext: boolean
 }
 
 /**
@@ -767,7 +773,21 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
     }
   }
 
-  return { nextTokenTypes: result, suggestColumns, suggestTables }
+  // Check if an expression operator's ruleStack includes "whereClause".
+  // Must check operators specifically — Chevrotain explores ahead into
+  // not-yet-started WHERE paths even from JOIN ON positions.
+  const isConditionContext = effectiveSuggestions.some(
+    (s) =>
+      EXPRESSION_OPERATORS.has(s.nextTokenType.name) &&
+      s.ruleStack.includes("whereClause"),
+  )
+
+  return {
+    nextTokenTypes: result,
+    suggestColumns,
+    suggestTables,
+    isConditionContext,
+  }
 }
 
 /**
@@ -906,6 +926,7 @@ export function getContentAssist(
         suggestColumns: false,
         suggestTables: false,
         referencedColumns: new Set(),
+        isConditionContext: false,
       }
     }
   }
@@ -934,11 +955,13 @@ export function getContentAssist(
   let nextTokenTypes: TokenType[] = []
   let suggestColumns = false
   let suggestTables = false
+  let isConditionContext = false
   try {
     const computed = computeSuggestions(tokensForAssist)
     nextTokenTypes = computed.nextTokenTypes
     suggestColumns = computed.suggestColumns
     suggestTables = computed.suggestTables
+    isConditionContext = computed.isConditionContext
   } catch (e) {
     // If content assist fails, return empty suggestions
     // This can happen with malformed input
@@ -1025,6 +1048,7 @@ export function getContentAssist(
     suggestColumns,
     suggestTables,
     referencedColumns,
+    isConditionContext,
   }
 }
 

@@ -17,7 +17,6 @@ import {
 import {
   SKIP_TOKENS,
   PUNCTUATION_TOKENS,
-  EXPRESSION_OPERATORS,
   tokenNameToKeyword,
 } from "./token-classification"
 import { functions } from "../grammar/index"
@@ -170,16 +169,13 @@ export function buildSuggestions(
     // All parser keyword tokens are keywords (not functions).
     // Functions are suggested separately in the functions loop below.
     const kind = SuggestionKind.Keyword
-    const priority = EXPRESSION_OPERATORS.has(name)
-      ? SuggestionPriority.MediumLow
-      : SuggestionPriority.Medium
 
     suggestions.push({
       label: keyword,
       kind,
       insertText: keyword,
       filterText: keyword.toLowerCase(),
-      priority,
+      priority: SuggestionPriority.Medium,
     })
   }
 
