@@ -21,9 +21,35 @@
 import type { IToken } from "chevrotain"
 import { getContentAssist } from "./content-assist"
 import { buildSuggestions } from "./suggestion-builder"
-import { shouldSkipToken } from "./token-classification"
+import {
+  shouldSkipToken,
+  SKIP_TOKENS,
+  PUNCTUATION_TOKENS,
+  EXPRESSION_OPERATORS,
+  tokenNameToKeyword,
+} from "./token-classification"
 import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types"
 import { SuggestionKind, SuggestionPriority } from "./types"
+
+const EXPRESSION_OPERATOR_LABELS = new Set(
+  [...EXPRESSION_OPERATORS].map(tokenNameToKeyword),
+)
+
+function isSchemaColumn(
+  image: string,
+  tablesInScope: { table: string; alias?: string }[],
+  schema: SchemaInfo,
+): boolean {
+  const nameLower = image.toLowerCase()
+  for (const ref of tablesInScope) {
+    const cols = schema.columns[ref.table.toLowerCase()]
+    if (cols?.some((c) => c.name.toLowerCase() === nameLower)) return true
+  }
+  for (const cols of Object.values(schema.columns)) {
+    if (cols.some((c) => c.name.toLowerCase() === nameLower)) return true
+  }
+  return false
+}
 
 const TABLE_NAME_TOKENS = new Set([
   "From",
@@ -163,6 +189,7 @@ export function createAutocompleteProvider(
         suggestColumns,
         suggestTables,
         referencedColumns,
+        isConditionContext,
       } = getContentAssist(query, cursorOffset)
 
       // Merge CTE columns into the schema so getColumnsInScope() can find them
@@ -226,6 +253,42 @@ export function createAutocompleteProvider(
         if (suggestTables) {
           rankTableSuggestions(suggestions, referencedColumns, columnIndex)
         }
+
+        // In WHERE after a column, boost operators over clause keywords.
+        if (isConditionContext) {
+          const hasExpressionOperators = nextTokenTypes.some((t) =>
+            EXPRESSION_OPERATORS.has(t.name),
+          )
+          if (hasExpressionOperators) {
+            const effectiveTokens =
+              isMidWord && tokensBefore.length > 0
+                ? tokensBefore.slice(0, -1)
+                : tokensBefore
+            const lastToken = effectiveTokens[effectiveTokens.length - 1]
+            const lastTokenName = lastToken?.tokenType?.name
+
+            if (
+              lastTokenName &&
+              !SKIP_TOKENS.has(lastTokenName) &&
+              !PUNCTUATION_TOKENS.has(lastTokenName) &&
+              isSchemaColumn(
+                lastToken.image,
+                effectiveTablesInScope,
+                effectiveSchema,
+              )
+            ) {
+              for (const s of suggestions) {
+                if (s.kind !== SuggestionKind.Keyword) continue
+                if (s.label === "IN") {
+                  s.priority = SuggestionPriority.High
+                } else if (!EXPRESSION_OPERATOR_LABELS.has(s.label)) {
+                  s.priority = SuggestionPriority.MediumLow
+                }
+              }
+            }
+          }
+        }
+
         return suggestions
       }
 

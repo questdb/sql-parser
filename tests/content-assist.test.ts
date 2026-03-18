@@ -923,4 +923,203 @@ describe("Content Assist", () => {
       expect(tokens).toContain("As")
     })
   })
+
+  describe("isConditionContext", () => {
+    function isCondition(sql: string, offset?: number): boolean {
+      const result = getContentAssist(sql, offset ?? sql.length)
+      return result.isConditionContext
+    }
+
+    describe("WHERE clause positions", () => {
+      it("true after WHERE column", () => {
+        expect(isCondition("SELECT * FROM t WHERE col ")).toBe(true)
+      })
+
+      it("true after WHERE column with complex query", () => {
+        expect(isCondition("SELECT a, b FROM trades WHERE amount ")).toBe(true)
+      })
+
+      it("true after WHERE col > 5 AND col2", () => {
+        expect(isCondition("SELECT * FROM t WHERE a > 5 AND b ")).toBe(true)
+      })
+
+      it("true after WHERE col BETWEEN 1 AND col2", () => {
+        expect(isCondition("SELECT * FROM t WHERE a BETWEEN 1 AND b ")).toBe(
+          true,
+        )
+      })
+
+      it("true after WHERE with nested conditions", () => {
+        expect(isCondition("SELECT * FROM t WHERE (a > 1 AND b ")).toBe(true)
+      })
+
+      it("true after WHERE col > 5", () => {
+        // Even after a literal — we're still in WHERE context
+        expect(isCondition("SELECT * FROM t WHERE col > 5 ")).toBe(true)
+      })
+
+      it("true at WHERE start (before any column)", () => {
+        expect(isCondition("SELECT * FROM t WHERE ")).toBe(true)
+      })
+
+      it("true after WHERE with OR", () => {
+        expect(isCondition("SELECT * FROM t WHERE a = 1 OR b ")).toBe(true)
+      })
+
+      it("true after WHERE NOT", () => {
+        expect(isCondition("SELECT * FROM t WHERE NOT a ")).toBe(true)
+      })
+    })
+
+    describe("non-WHERE positions", () => {
+      it("false after SELECT column", () => {
+        expect(isCondition("SELECT col ")).toBe(false)
+      })
+
+      it("false after SELECT column with FROM", () => {
+        expect(isCondition("SELECT col  FROM t", 11)).toBe(false)
+      })
+
+      it("false after FROM", () => {
+        expect(isCondition("SELECT * FROM ")).toBe(false)
+      })
+
+      it("false at start of query", () => {
+        expect(isCondition("")).toBe(false)
+      })
+
+      it("false after ORDER BY", () => {
+        expect(isCondition("SELECT * FROM t ORDER BY ")).toBe(false)
+      })
+
+      it("false after GROUP BY", () => {
+        expect(isCondition("SELECT * FROM t GROUP BY ")).toBe(false)
+      })
+
+      it("false after HAVING column", () => {
+        // HAVING is semantically similar to WHERE, but ruleStack won't
+        // include "whereClause" — it's a separate "havingClause" rule.
+        expect(
+          isCondition("SELECT a, count() FROM t GROUP BY a HAVING count() "),
+        ).toBe(false)
+      })
+
+      it("false after INSERT INTO", () => {
+        expect(isCondition("INSERT INTO ")).toBe(false)
+      })
+
+      it("false after CREATE TABLE", () => {
+        expect(isCondition("CREATE TABLE ")).toBe(false)
+      })
+
+      it("false after LIMIT", () => {
+        expect(isCondition("SELECT * FROM t LIMIT ")).toBe(false)
+      })
+    })
+
+    describe("subquery WHERE positions", () => {
+      it("true in subquery WHERE", () => {
+        expect(isCondition("SELECT * FROM (SELECT * FROM t WHERE col ")).toBe(
+          true,
+        )
+      })
+
+      it("true in WHERE with subquery completed", () => {
+        expect(
+          isCondition(
+            "SELECT * FROM t WHERE col IN (SELECT id FROM s) AND col2 ",
+          ),
+        ).toBe(true)
+      })
+    })
+
+    describe("UPDATE and DELETE WHERE positions", () => {
+      it("true after UPDATE SET ... WHERE column", () => {
+        expect(isCondition("UPDATE t SET a = 1 WHERE b ")).toBe(true)
+      })
+    })
+
+    describe("JOIN ON positions (should NOT be condition context)", () => {
+      it("false after JOIN ON column", () => {
+        expect(isCondition("SELECT * FROM a JOIN b ON a.id ")).toBe(false)
+      })
+
+      it("false after LEFT JOIN ON column", () => {
+        expect(isCondition("SELECT * FROM a LEFT JOIN b ON a.id ")).toBe(false)
+      })
+
+      it("false after CROSS JOIN ON column", () => {
+        expect(isCondition("SELECT * FROM a CROSS JOIN b ON a.id ")).toBe(false)
+      })
+
+      it("false after JOIN ON col = col AND col2", () => {
+        expect(
+          isCondition("SELECT * FROM a JOIN b ON a.id = b.id AND a.name "),
+        ).toBe(false)
+      })
+    })
+
+    describe("CASE WHEN positions (should NOT be condition context)", () => {
+      it("false inside CASE WHEN in SELECT", () => {
+        expect(isCondition("SELECT CASE WHEN col ")).toBe(false)
+      })
+
+      it("false after CASE WHEN col = val THEN ... WHEN col2", () => {
+        expect(isCondition("SELECT CASE WHEN a = 1 THEN 'x' WHEN b ")).toBe(
+          false,
+        )
+      })
+
+      it("false inside CASE WHEN ELSE in SELECT", () => {
+        expect(
+          isCondition("SELECT CASE WHEN a > 1 THEN a ELSE b  FROM t", 38),
+        ).toBe(false)
+      })
+    })
+
+    describe("SELECT expression positions (should NOT be condition context)", () => {
+      it("false after SELECT with arithmetic", () => {
+        expect(isCondition("SELECT a + b  FROM t", 13)).toBe(false)
+      })
+
+      it("false after SELECT function call", () => {
+        expect(isCondition("SELECT count(a)  FROM t", 16)).toBe(false)
+      })
+
+      it("false after SELECT DISTINCT column", () => {
+        expect(isCondition("SELECT DISTINCT col ")).toBe(false)
+      })
+    })
+
+    describe("other clause positions (should NOT be condition context)", () => {
+      it("false in SAMPLE BY clause", () => {
+        expect(isCondition("SELECT * FROM t SAMPLE BY ")).toBe(false)
+      })
+
+      it("false in LATEST ON clause", () => {
+        expect(isCondition("SELECT * FROM t LATEST ON ")).toBe(false)
+      })
+
+      it("false after LIMIT expression", () => {
+        expect(isCondition("SELECT * FROM t WHERE a > 1 LIMIT 10 ")).toBe(false)
+      })
+
+      it("false after ORDER BY column with trailing position", () => {
+        expect(isCondition("SELECT * FROM t WHERE a > 1 ORDER BY col ")).toBe(
+          false,
+        )
+      })
+
+      it("false in INSERT VALUES", () => {
+        expect(isCondition("INSERT INTO t VALUES (1, ")).toBe(false)
+      })
+    })
+
+    describe("CASE WHEN inside WHERE (should be condition context)", () => {
+      it("true for CASE WHEN inside WHERE", () => {
+        // CASE WHEN nested inside WHERE — ruleStack should include whereClause
+        expect(isCondition("SELECT * FROM t WHERE CASE WHEN a ")).toBe(true)
+      })
+    })
+  })
 })

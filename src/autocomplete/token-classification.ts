@@ -33,9 +33,7 @@ export const IDENTIFIER_TOKENS = new Set([
 export const IDENTIFIER_KEYWORD_TOKENS = IDENTIFIER_KEYWORD_NAMES
 
 /**
- * Expression-continuation operators that are valid after any expression but
- * should be deprioritized so clause-level keywords (ASC, DESC, LIMIT, etc.)
- * appear first in the suggestion list.
+ * Expression-level operators and keywords (as opposed to clause-level keywords).
  */
 export const EXPRESSION_OPERATORS = new Set([
   "And",
@@ -47,18 +45,11 @@ export const EXPRESSION_OPERATORS = new Set([
   "Like",
   "Ilike",
   "Within",
-  // Subquery/set operators
   "All",
   "Any",
   "Some",
-  // Expression-start keywords that continue an expression context
   "Case",
   "Cast",
-  // Query connectors — valid after any complete query but should not
-  // overshadow clause-level keywords the user is more likely typing.
-  "Union",
-  "Except",
-  "Intersect",
 ])
 
 /**
