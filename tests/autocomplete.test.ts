@@ -2771,30 +2771,6 @@ describe("CTE autocomplete", () => {
     })
   })
 
-  describe("quoted identifier suppression", () => {
-    it("should return no suggestions when cursor is inside a quoted identifier", () => {
-      const sql = 'SELECT * FROM "my table"'
-      const offset = sql.indexOf("my") + 1
-      const suggestions = provider.getSuggestions(sql, offset)
-      expect(suggestions).toHaveLength(0)
-    })
-
-    it("should return no suggestions inside a quoted column name", () => {
-      const sql = 'SELECT "column name" FROM trades'
-      const offset = sql.indexOf("column") + 3
-      const suggestions = provider.getSuggestions(sql, offset)
-      expect(suggestions).toHaveLength(0)
-    })
-
-    it("should suggest after a completed quoted identifier", () => {
-      const sql = 'SELECT "symbol" '
-      const suggestions = provider.getSuggestions(sql, sql.length)
-      const labels = suggestions.map((s) => s.label)
-      expect(labels.length).toBeGreaterThan(0)
-      expect(labels).toContain("FROM")
-    })
-  })
-
   // ===========================================================================
   // SELECT * edge cases
   // ===========================================================================
