@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.1.6 - 2026.03.26
+### Changed
+- remove quoted identifier suppression [#17](https://github.com/questdb/sql-parser/pull/17)
+
+
 ## 0.1.5 - 2026.03.18
 ### Fixed
 boost expression operators over clause keywords in WHERE context [#15](https://github.com/questdb/sql-parser/pull/15)
