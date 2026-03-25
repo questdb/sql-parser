@@ -908,11 +908,7 @@ export function getContentAssist(
   // problems than it solves (prefix filtering breaks, ambiguity with string values).
   const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
   for (const token of fullTokens) {
-    if (
-      token.tokenType.name !== "StringLiteral" &&
-      token.tokenType.name !== "QuotedIdentifier"
-    )
-      continue
+    if (token.tokenType.name !== "StringLiteral") continue
     const start = token.startOffset
     const end = token.startOffset + token.image.length
     if (cursorOffset > start && cursorOffset < end) {
