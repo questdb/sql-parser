@@ -878,6 +878,114 @@ describe("JOIN autocomplete", () => {
 })
 
 // =============================================================================
+// LATERAL JOIN Autocomplete Tests
+// =============================================================================
+
+describe("LATERAL JOIN autocomplete", () => {
+  it("should suggest tables after CROSS JOIN (before LATERAL)", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM trades CROSS JOIN ")
+    expect(labels).toContain("trades")
+    expect(labels).toContain("orders")
+  })
+
+  it("should suggest clauses after LATERAL JOIN subquery alias", () => {
+    const labels = getLabelsAt(
+      provider,
+      "SELECT * FROM trades t CROSS JOIN LATERAL (SELECT * FROM orders) sub ",
+    )
+    expect(labels).toContain("WHERE")
+    expect(labels).toContain("ORDER")
+    expect(labels).toContain("GROUP")
+  })
+
+  describe("LATERAL JOIN walkthrough", () => {
+    it("CROSS JOIN LATERAL walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "SELECT * FROM trades ",
+          expects: ["JOIN", "CROSS JOIN", "LEFT JOIN"],
+        },
+        {
+          typed:
+            "SELECT * FROM trades t CROSS JOIN LATERAL (SELECT avg(price) FROM trades) sub ",
+          expects: ["WHERE", "ORDER", "GROUP"],
+        },
+      ])
+    })
+  })
+})
+
+// =============================================================================
+// UNNEST Autocomplete Tests
+// =============================================================================
+
+describe("UNNEST autocomplete", () => {
+  it("should suggest UNNEST after FROM", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM ")
+    expect(labels).toContain("UNNEST")
+  })
+
+  it("should suggest UNNEST after comma in FROM", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM trades, ")
+    expect(labels).toContain("UNNEST")
+  })
+
+  it("should suggest WITH after UNNEST closing paren", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM UNNEST(ARRAY[1]) ")
+    expect(labels).toContain("WITH")
+  })
+
+  it("should suggest ORDINALITY after UNNEST(...) WITH", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM UNNEST(ARRAY[1]) WITH ")
+    expect(labels).toContain("ORDINALITY")
+  })
+
+  describe("UNNEST walkthrough", () => {
+    it("UNNEST with ORDINALITY walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "SELECT * FROM ",
+          expects: ["UNNEST", "trades", "orders"],
+        },
+        {
+          typed: "SELECT * FROM UNNEST(ARRAY[1, 2]) WITH ",
+          expects: ["ORDINALITY"],
+        },
+        {
+          typed: "SELECT * FROM UNNEST(ARRAY[1, 2]) WITH ORDINALITY ",
+          expects: ["WHERE", "ORDER", "GROUP"],
+        },
+      ])
+    })
+  })
+
+  it("should suggest clauses after UNNEST alias in comma-join", () => {
+    const labels = getLabelsAt(
+      provider,
+      "SELECT * FROM trades t, UNNEST(ARRAY[1, 2]) u ",
+    )
+    expect(labels).toContain("WHERE")
+    expect(labels).toContain("GROUP")
+    expect(labels).toContain("ORDER")
+  })
+
+  it("should suggest COLUMNS after expression inside UNNEST", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM UNNEST(e.payload ")
+    expect(labels).toContain("COLUMNS")
+  })
+
+  it("should suggest clauses after JSON UNNEST with COLUMNS alias", () => {
+    const labels = getLabelsAt(
+      provider,
+      "SELECT * FROM events e, UNNEST(e.payload COLUMNS(price DOUBLE, name VARCHAR)) u ",
+    )
+    expect(labels).toContain("WHERE")
+    expect(labels).toContain("ORDER")
+    expect(labels).toContain("GROUP")
+  })
+})
+
+// =============================================================================
 // CREATE TABLE Autocomplete Tests (Chunk 4)
 // =============================================================================
 
@@ -919,6 +1027,29 @@ describe("CREATE TABLE autocomplete", () => {
     )
     expect(labels).toContain("WAL")
     expect(labels).toContain("TTL")
+  })
+
+  it("should suggest PARQUET after column type in CREATE TABLE", () => {
+    const labels = getLabelsAt(provider, "CREATE TABLE t (a INT ")
+    expect(labels).toContain("PARQUET")
+  })
+
+  it("should suggest encoding options inside PARQUET()", () => {
+    const labels = getLabelsAt(provider, "CREATE TABLE t (a INT PARQUET(")
+    expect(labels).toContain("PLAIN")
+    expect(labels).toContain("DELTA_BINARY_PACKED")
+    expect(labels).toContain("BLOOM_FILTER")
+    expect(labels).toContain("DEFAULT")
+  })
+
+  it("should suggest BLOOM_FILTER after PARQUET(encoding,", () => {
+    const labels = getLabelsAt(
+      provider,
+      "CREATE TABLE t (a INT PARQUET(PLAIN, ",
+    )
+    expect(labels).toContain("BLOOM_FILTER")
+    expect(labels).toContain("SNAPPY")
+    expect(labels).toContain("ZSTD")
   })
 
   describe("PIVOT walkthrough", () => {

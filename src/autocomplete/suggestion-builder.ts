@@ -80,6 +80,9 @@ function getAllColumns(schema: SchemaInfo): ColumnWithTable[] {
  * into compound suggestions (e.g., "Left" → "LEFT JOIN") instead of
  * suggesting bare "LEFT" which is incomplete on its own.
  */
+// Keywords that are valid but rarely the primary intent — suggest at MediumLow.
+const MEDIUM_LOW_KEYWORDS = new Set(["Unnest"])
+
 const JOIN_COMPOUND_MAP = new Map<string, string>([
   ["Left", "LEFT JOIN"],
   ["Inner", "INNER JOIN"],
@@ -170,12 +173,17 @@ export function buildSuggestions(
     // Functions are suggested separately in the functions loop below.
     const kind = SuggestionKind.Keyword
 
+    // Some keywords are valid but rarely typed directly — suggest them lower.
+    const priority = MEDIUM_LOW_KEYWORDS.has(name)
+      ? SuggestionPriority.MediumLow
+      : SuggestionPriority.Medium
+
     suggestions.push({
       label: keyword,
       kind,
       insertText: keyword,
       filterText: keyword.toLowerCase(),
-      priority: SuggestionPriority.Medium,
+      priority,
     })
   }
 

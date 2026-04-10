@@ -325,6 +325,17 @@ import {
   External,
   Alias,
   Compile,
+  Lateral,
+  Unnest,
+  Ordinality,
+  // PARQUET clause tokens
+  Parquet,
+  BloomFilter,
+  Plain,
+  RleDictionary,
+  DeltaBinaryPacked,
+  DeltaLengthByteArray,
+  Default,
   IdentifierKeyword,
 } from "./lexer"
 
@@ -682,17 +693,90 @@ class QuestDBParser extends CstParser {
   // ==========================================================================
 
   private fromClause = this.RULE("fromClause", () => {
-    this.SUBRULE(this.tableRef)
+    this.SUBRULE(this.fromSource)
     this.MANY(() => {
       this.OR([
         { ALT: () => this.SUBRULE(this.joinClause) },
         {
           ALT: () => {
             this.CONSUME(Comma)
-            this.SUBRULE1(this.tableRef)
+            this.OPTION(() => this.CONSUME(Lateral))
+            this.SUBRULE1(this.fromSource)
           },
         },
       ])
+    })
+  })
+
+  private fromSource = this.RULE("fromSource", () => {
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === Unnest,
+        ALT: () => this.SUBRULE(this.unnestClause),
+      },
+      { ALT: () => this.SUBRULE(this.tableRef) },
+    ])
+  })
+
+  // Single UNNEST argument: expression [COLUMNS(name TYPE, ...)]
+  private unnestArg = this.RULE("unnestArg", () => {
+    this.SUBRULE(this.expression)
+    // Optional JSON COLUMNS specification
+    this.OPTION(() => {
+      this.CONSUME(Columns)
+      this.CONSUME(LParen)
+      this.SUBRULE(this.unnestColumnDef)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE1(this.unnestColumnDef)
+      })
+      this.CONSUME(RParen)
+    })
+  })
+
+  // Single UNNEST COLUMNS definition: name TYPE
+  private unnestColumnDef = this.RULE("unnestColumnDef", () => {
+    this.SUBRULE(this.identifier)
+    this.SUBRULE(this.dataType)
+  })
+
+  // UNNEST clause: UNNEST(unnestArg, ...) [WITH ORDINALITY] [AS alias | alias] [(col1, col2, ...)]
+  // unnestArg: expression [COLUMNS(name TYPE, ...)]
+  private unnestClause = this.RULE("unnestClause", () => {
+    this.CONSUME(Unnest)
+    this.CONSUME(LParen)
+    this.SUBRULE(this.unnestArg)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.unnestArg)
+    })
+    this.CONSUME(RParen)
+    // Optional WITH ORDINALITY
+    this.OPTION(() => {
+      this.CONSUME(With)
+      this.CONSUME(Ordinality)
+    })
+    // Optional alias + column aliases
+    this.OPTION1(() => {
+      this.OR([
+        {
+          ALT: () => {
+            this.CONSUME(As)
+            this.SUBRULE(this.identifier)
+          },
+        },
+        { ALT: () => this.SUBRULE1(this.identifier) },
+      ])
+      // Optional column alias list: (col1, col2, ...)
+      this.OPTION2(() => {
+        this.CONSUME1(LParen)
+        this.SUBRULE2(this.identifier)
+        this.MANY1(() => {
+          this.CONSUME1(Comma)
+          this.SUBRULE3(this.identifier)
+        })
+        this.CONSUME1(RParen)
+      })
     })
   })
 
@@ -951,7 +1035,7 @@ class QuestDBParser extends CstParser {
     ])
   })
 
-  // Standard joins: (INNER | LEFT [OUTER] | CROSS)? JOIN + ON
+  // Standard joins: (INNER | LEFT [OUTER] | CROSS)? JOIN [LATERAL] + ON
   private standardJoin = this.RULE("standardJoin", () => {
     this.OPTION(() => {
       this.OR([
@@ -966,6 +1050,7 @@ class QuestDBParser extends CstParser {
       ])
     })
     this.CONSUME(Join)
+    this.OPTION3(() => this.CONSUME(Lateral))
     this.SUBRULE(this.tableRef)
     this.OPTION2(() => {
       this.CONSUME(On)
@@ -1800,6 +1885,76 @@ class QuestDBParser extends CstParser {
         this.CONSUME1(NumberLiteral)
       })
     })
+    // Optional PARQUET config
+    this.OPTION4(() => this.SUBRULE(this.parquetConfig))
+  })
+
+  // PARQUET( BLOOM_FILTER | encoding [, compression[(level)]] [, BLOOM_FILTER] )
+  private parquetConfig = this.RULE("parquetConfig", () => {
+    this.CONSUME(Parquet)
+    this.CONSUME(LParen)
+    this.OR([
+      // PARQUET(BLOOM_FILTER)
+      {
+        GATE: () => this.LA(1).tokenType === BloomFilter,
+        ALT: () => this.CONSUME(BloomFilter),
+      },
+      // PARQUET(encoding [, compression[(level)]] [, BLOOM_FILTER])
+      {
+        ALT: () => {
+          this.SUBRULE(this.parquetEncoding)
+          this.OPTION(() => {
+            this.CONSUME(Comma)
+            this.OR1([
+              // , BLOOM_FILTER
+              {
+                GATE: () => this.LA(1).tokenType === BloomFilter,
+                ALT: () => this.CONSUME1(BloomFilter),
+              },
+              // , compression[(level)] [, BLOOM_FILTER]
+              {
+                ALT: () => {
+                  this.SUBRULE(this.parquetCompression)
+                  // optional compression level: (N)
+                  this.OPTION1(() => {
+                    this.CONSUME1(LParen)
+                    this.CONSUME(NumberLiteral)
+                    this.CONSUME1(RParen)
+                  })
+                  // optional , BLOOM_FILTER
+                  this.OPTION2(() => {
+                    this.CONSUME1(Comma)
+                    this.CONSUME2(BloomFilter)
+                  })
+                },
+              },
+            ])
+          })
+        },
+      },
+    ])
+    this.CONSUME(RParen)
+  })
+
+  private parquetEncoding = this.RULE("parquetEncoding", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Plain) },
+      { ALT: () => this.CONSUME(RleDictionary) },
+      { ALT: () => this.CONSUME(DeltaBinaryPacked) },
+      { ALT: () => this.CONSUME(DeltaLengthByteArray) },
+      { ALT: () => this.CONSUME(Default) },
+    ])
+  })
+
+  private parquetCompression = this.RULE("parquetCompression", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Uncompressed) },
+      { ALT: () => this.CONSUME(Snappy) },
+      { ALT: () => this.CONSUME(Gzip) },
+      { ALT: () => this.CONSUME(Brotli) },
+      { ALT: () => this.CONSUME(Zstd) },
+      { ALT: () => this.CONSUME(Lz4Raw) },
+    ])
   })
 
   private castDefinition = this.RULE("castDefinition", () => {
@@ -2146,6 +2301,13 @@ class QuestDBParser extends CstParser {
             },
             { ALT: () => this.CONSUME(Cache) },
             { ALT: () => this.CONSUME(Nocache) },
+            // SET PARQUET(...)
+            {
+              ALT: () => {
+                this.CONSUME(Set)
+                this.SUBRULE(this.parquetConfig)
+              },
+            },
           ])
         },
       },

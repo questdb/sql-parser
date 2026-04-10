@@ -140,6 +140,146 @@ describe("Content Assist", () => {
       expect(tokens).not.toContain("Include")
       expect(tokens).not.toContain("Exclude")
     })
+
+    // --- LATERAL JOIN ---
+
+    it("should suggest LATERAL after JOIN", () => {
+      const tokens = getNextValidTokens("SELECT * FROM trades t JOIN ")
+      expect(tokens).toContain("Lateral")
+    })
+
+    it("should suggest LATERAL after LEFT JOIN", () => {
+      const tokens = getNextValidTokens("SELECT * FROM trades t LEFT JOIN ")
+      expect(tokens).toContain("Lateral")
+    })
+
+    it("should suggest LATERAL after CROSS JOIN", () => {
+      const tokens = getNextValidTokens("SELECT * FROM trades t CROSS JOIN ")
+      expect(tokens).toContain("Lateral")
+    })
+
+    it("should suggest table source after JOIN LATERAL", () => {
+      const tokens = getNextValidTokens("SELECT * FROM trades t JOIN LATERAL ")
+      expect(tokens).toContain("LParen") // for subquery
+      expect(tokens).toContain("Identifier")
+    })
+
+    it("should suggest ON after LATERAL JOIN subquery alias", () => {
+      const tokens = getNextValidTokens(
+        "SELECT * FROM trades t CROSS JOIN LATERAL (SELECT 1) sub ",
+      )
+      expect(tokens).toContain("Where")
+      expect(tokens).toContain("Order")
+    })
+
+    it("should suggest LATERAL after comma in FROM clause", () => {
+      const tokens = getNextValidTokens("SELECT * FROM trades t, ")
+      expect(tokens).toContain("Lateral")
+    })
+
+    // --- UNNEST ---
+
+    it("should suggest UNNEST as a FROM source", () => {
+      const tokens = getNextValidTokens("SELECT * FROM ")
+      expect(tokens).toContain("Unnest")
+    })
+
+    it("should suggest UNNEST after comma in FROM", () => {
+      const tokens = getNextValidTokens("SELECT * FROM trades t, ")
+      expect(tokens).toContain("Unnest")
+    })
+
+    it("should suggest WITH after UNNEST closing paren", () => {
+      const tokens = getNextValidTokens("SELECT * FROM UNNEST(ARRAY[1, 2]) ")
+      expect(tokens).toContain("With")
+    })
+
+    it("should suggest ORDINALITY after UNNEST(...) WITH", () => {
+      const tokens = getNextValidTokens(
+        "SELECT * FROM UNNEST(ARRAY[1, 2]) WITH ",
+      )
+      expect(tokens).toContain("Ordinality")
+    })
+
+    it("should suggest alias options after UNNEST(...) WITH ORDINALITY", () => {
+      const tokens = getNextValidTokens(
+        "SELECT * FROM UNNEST(ARRAY[1, 2]) WITH ORDINALITY ",
+      )
+      expect(tokens).toContain("As")
+      expect(tokens).toContain("Identifier")
+    })
+
+    it("should suggest clauses after UNNEST alias", () => {
+      const tokens = getNextValidTokens("SELECT * FROM UNNEST(ARRAY[1]) u ")
+      expect(tokens).toContain("Where")
+      expect(tokens).toContain("Order")
+      expect(tokens).toContain("Group")
+    })
+
+    // --- JSON UNNEST COLUMNS ---
+
+    it("should suggest COLUMNS after expression inside UNNEST", () => {
+      const tokens = getNextValidTokens("SELECT * FROM UNNEST(e.payload ")
+      expect(tokens).toContain("Columns")
+    })
+
+    it("should suggest data types inside COLUMNS definition", () => {
+      const tokens = getNextValidTokens(
+        "SELECT * FROM UNNEST(e.payload COLUMNS(price ",
+      )
+      expect(tokens).toContain("Double")
+      expect(tokens).toContain("Varchar")
+      expect(tokens).toContain("Int")
+      expect(tokens).toContain("Long")
+      expect(tokens).toContain("Boolean")
+      expect(tokens).toContain("Timestamp")
+    })
+
+    it("should suggest comma or RParen after COLUMNS column def", () => {
+      const tokens = getNextValidTokens(
+        "SELECT * FROM UNNEST(e.payload COLUMNS(price DOUBLE ",
+      )
+      expect(tokens).toContain("Comma")
+      expect(tokens).toContain("RParen")
+    })
+
+    // --- PARQUET clause ---
+
+    it("should suggest PARQUET after column dataType in CREATE TABLE", () => {
+      const tokens = getNextValidTokens("CREATE TABLE t (a INT ")
+      expect(tokens).toContain("Parquet")
+    })
+
+    it("should suggest encoding names after PARQUET(", () => {
+      const tokens = getNextValidTokens("CREATE TABLE t (a INT PARQUET(")
+      expect(tokens).toContain("Plain")
+      expect(tokens).toContain("DeltaBinaryPacked")
+      expect(tokens).toContain("RleDictionary")
+      expect(tokens).toContain("DeltaLengthByteArray")
+      expect(tokens).toContain("Default")
+      expect(tokens).toContain("BloomFilter")
+    })
+
+    it("should suggest compression or BLOOM_FILTER after PARQUET(encoding,", () => {
+      const tokens = getNextValidTokens("CREATE TABLE t (a INT PARQUET(PLAIN, ")
+      expect(tokens).toContain("Snappy")
+      expect(tokens).toContain("Gzip")
+      expect(tokens).toContain("Zstd")
+      expect(tokens).toContain("Lz4Raw")
+      expect(tokens).toContain("Brotli")
+      expect(tokens).toContain("Uncompressed")
+      expect(tokens).toContain("BloomFilter")
+    })
+
+    it("should suggest SET after ALTER TABLE ALTER COLUMN name", () => {
+      const tokens = getNextValidTokens("ALTER TABLE t ALTER COLUMN c ")
+      expect(tokens).toContain("Set")
+    })
+
+    it("should suggest PARQUET after ALTER COLUMN SET", () => {
+      const tokens = getNextValidTokens("ALTER TABLE t ALTER COLUMN c SET ")
+      expect(tokens).toContain("Parquet")
+    })
   })
 
   describe("getContentAssist", () => {

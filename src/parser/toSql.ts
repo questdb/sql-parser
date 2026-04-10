@@ -302,11 +302,32 @@ function tableFunctionCallToSql(fn: AST.TableFunctionCall): string {
   return `${fn.name}(${args})`
 }
 
+function unnestArgToSql(arg: AST.UnnestArg): string {
+  let sql = expressionToSql(arg.expression)
+  if (arg.columns && arg.columns.length > 0) {
+    const colDefs = arg.columns.map(
+      (c) => `${escapeIdentifier(c.name)} ${c.dataType.toUpperCase()}`,
+    )
+    sql += ` COLUMNS(${colDefs.join(", ")})`
+  }
+  return sql
+}
+
+function unnestSourceToSql(unnest: AST.UnnestSource): string {
+  let sql = `UNNEST(${unnest.args.map(unnestArgToSql).join(", ")})`
+  if (unnest.withOrdinality) {
+    sql += " WITH ORDINALITY"
+  }
+  return sql
+}
+
 function tableRefToSql(ref: AST.TableRef): string {
   let sql: string
 
   if (!ref.table) {
     sql = ""
+  } else if ("type" in ref.table && ref.table.type === "unnest") {
+    sql = unnestSourceToSql(ref.table)
   } else if ("type" in ref.table && ref.table.type === "select") {
     sql = `(${selectToSql(ref.table)})`
   } else if ("type" in ref.table && ref.table.type === "tableFunctionCall") {
@@ -317,12 +338,20 @@ function tableRefToSql(ref: AST.TableRef): string {
     sql = qualifiedNameToSql(ref.table)
   }
 
+  if (ref.lateral) {
+    sql = "LATERAL " + sql
+  }
+
   if (ref.timestampDesignation) {
     sql += ` TIMESTAMP(${escapeIdentifier(ref.timestampDesignation)})`
   }
 
   if (ref.alias) {
     sql += ` AS ${escapeIdentifier(ref.alias)}`
+  }
+
+  if (ref.columnAliases && ref.columnAliases.length > 0) {
+    sql += `(${ref.columnAliases.map(escapeIdentifier).join(", ")})`
   }
 
   if (ref.joins) {
@@ -346,6 +375,9 @@ function joinToSql(join: AST.JoinClause): string {
   }
 
   parts.push("JOIN")
+  if (join.lateral) {
+    parts.push("LATERAL")
+  }
   parts.push(tableRefToSql(join.table))
 
   if (join.on) {
@@ -523,7 +555,28 @@ function columnDefToSql(c: AST.ColumnDefinition): string {
       sql += ` CAPACITY ${c.indexCapacity}`
     }
   }
+  if (c.parquetConfig) {
+    sql += " " + parquetConfigToSql(c.parquetConfig)
+  }
   return sql
+}
+
+function parquetConfigToSql(config: AST.ParquetConfig): string {
+  const parts: string[] = []
+  if (config.encoding) {
+    parts.push(config.encoding.toLowerCase())
+  }
+  if (config.compression) {
+    let comp = config.compression.toLowerCase()
+    if (config.compressionLevel != null) {
+      comp += `(${config.compressionLevel})`
+    }
+    parts.push(comp)
+  }
+  if (config.bloomFilter) {
+    parts.push("bloom_filter")
+  }
+  return `PARQUET(${parts.join(", ")})`
 }
 
 function createTableToSql(stmt: AST.CreateTableStatement): string {
@@ -716,6 +769,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
         parts.push("CACHE")
       } else if (action.alterType === "nocache") {
         parts.push("NOCACHE")
+      } else if (action.alterType === "setParquet" && action.parquetConfig) {
+        parts.push("SET")
+        parts.push(parquetConfigToSql(action.parquetConfig))
       }
       break
     case "dropPartition":

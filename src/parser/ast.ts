@@ -233,6 +233,18 @@ export interface MaterializedViewPeriod extends AstNode {
   sampleByInterval?: boolean
 }
 
+export interface ParquetConfig extends AstNode {
+  type: "parquetConfig"
+  /** Encoding: PLAIN, RLE_DICTIONARY, DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY, DEFAULT */
+  encoding?: string
+  /** Compression codec: UNCOMPRESSED, SNAPPY, GZIP, BROTLI, ZSTD, LZ4_RAW */
+  compression?: string
+  /** Compression level, e.g. 3 for ZSTD(3) */
+  compressionLevel?: number
+  /** Whether BLOOM_FILTER is enabled */
+  bloomFilter?: boolean
+}
+
 export interface ColumnDefinition extends AstNode {
   type: "columnDefinition"
   name: string
@@ -245,6 +257,8 @@ export interface ColumnDefinition extends AstNode {
   indexed?: boolean
   /** INDEX CAPACITY value */
   indexCapacity?: number
+  /** PARQUET encoding/compression/bloom filter config */
+  parquetConfig?: ParquetConfig
 }
 
 export interface AlterTableStatement extends AstNode {
@@ -411,9 +425,12 @@ export interface AlterColumnAction {
     | "cache"
     | "nocache"
     | "symbolCapacity"
+    | "setParquet"
   newType?: string
   capacity?: number
   cache?: boolean
+  /** PARQUET config for SET PARQUET(...) */
+  parquetConfig?: ParquetConfig
 }
 
 export interface DropPartitionAction {
@@ -820,10 +837,38 @@ export interface TableFunctionCall extends AstNode {
   args: Expression[]
 }
 
+export interface UnnestArg extends AstNode {
+  type: "unnestArg"
+  expression: Expression
+  /** JSON UNNEST column definitions: COLUMNS(name TYPE, ...) */
+  columns?: UnnestColumnDef[]
+}
+
+export interface UnnestColumnDef extends AstNode {
+  type: "unnestColumnDef"
+  name: string
+  dataType: string
+}
+
+export interface UnnestSource extends AstNode {
+  type: "unnest"
+  args: UnnestArg[]
+  withOrdinality?: boolean
+}
+
 export interface TableRef extends AstNode {
   type: "tableRef"
-  table: QualifiedName | SelectStatement | TableFunctionCall | ShowStatement
+  table:
+    | QualifiedName
+    | SelectStatement
+    | TableFunctionCall
+    | ShowStatement
+    | UnnestSource
+  /** Whether this table ref was preceded by LATERAL in comma-separated FROM */
+  lateral?: boolean
   alias?: string
+  /** Column alias list for UNNEST sources, e.g. UNNEST(arr) u(val, ord) */
+  columnAliases?: string[]
   joins?: JoinClause[]
   timestampDesignation?: string
 }
@@ -840,6 +885,8 @@ export interface JoinClause extends AstNode {
     | "window"
     | "horizon"
   outer?: boolean
+  /** Whether LATERAL was specified after JOIN keyword */
+  lateral?: boolean
   table: TableRef
   on?: Expression
   /** Tolerance interval for ASOF and LT joins (e.g., "1h", "30s") */

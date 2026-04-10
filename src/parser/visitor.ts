@@ -80,6 +80,7 @@ import type {
   FillClauseCstChildren,
   FillValueCstChildren,
   FromClauseCstChildren,
+  FromSourceCstChildren,
   FromToClauseCstChildren,
   FunctionCallCstChildren,
   FunctionNameCstChildren,
@@ -108,6 +109,9 @@ import type {
   OrderByClauseCstChildren,
   OrderByItemCstChildren,
   OverClauseCstChildren,
+  ParquetCompressionCstChildren,
+  ParquetConfigCstChildren,
+  ParquetEncodingCstChildren,
   PartitionPeriodCstChildren,
   PermissionListCstChildren,
   PermissionTokenCstChildren,
@@ -159,6 +163,9 @@ import type {
   TruncateTableStatementCstChildren,
   TypeCastExpressionCstChildren,
   UnaryExpressionCstChildren,
+  UnnestArgCstChildren,
+  UnnestClauseCstChildren,
+  UnnestColumnDefCstChildren,
   UpdateStatementCstChildren,
   VacuumTableStatementCstChildren,
   ValuesClauseCstChildren,
@@ -529,11 +536,24 @@ class QuestDBVisitor extends BaseVisitor {
 
   fromClause(ctx: FromClauseCstChildren): AST.TableRef[] {
     const tables: AST.TableRef[] = []
+    let lateralIndex = 0
 
-    if (ctx.tableRef) {
-      // Handle all table refs (first one and any comma-separated ones)
-      for (let i = 0; i < ctx.tableRef.length; i++) {
-        const table = this.visit(ctx.tableRef[i]) as AST.TableRef
+    if (ctx.fromSource) {
+      // Handle all from sources (first one and any comma-separated ones)
+      for (let i = 0; i < ctx.fromSource.length; i++) {
+        const source = ctx.fromSource[i]
+        const table = this.visit(source) as AST.TableRef
+        // Comma-separated items after the first may have LATERAL before the source.
+        // Match each flat LATERAL token to the next source that starts after it.
+        const sourceOffset = this.getFirstTokenOffset(source)
+        if (
+          i > 0 &&
+          ctx.Lateral?.[lateralIndex] &&
+          ctx.Lateral[lateralIndex].startOffset < sourceOffset
+        ) {
+          table.lateral = true
+          lateralIndex++
+        }
         tables.push(table)
       }
 
@@ -546,6 +566,60 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     return tables
+  }
+
+  fromSource(ctx: FromSourceCstChildren): AST.TableRef {
+    if (ctx.unnestClause) {
+      return this.visit(ctx.unnestClause) as AST.TableRef
+    }
+    return this.visit(ctx.tableRef!) as AST.TableRef
+  }
+
+  unnestArg(ctx: UnnestArgCstChildren): AST.UnnestArg {
+    const result: AST.UnnestArg = {
+      type: "unnestArg",
+      expression: this.visit(ctx.expression) as AST.Expression,
+    }
+    if (ctx.unnestColumnDef && ctx.unnestColumnDef.length > 0) {
+      result.columns = ctx.unnestColumnDef.map(
+        (c: CstNode) => this.visit(c) as AST.UnnestColumnDef,
+      )
+    }
+    return result
+  }
+
+  unnestColumnDef(ctx: UnnestColumnDefCstChildren): AST.UnnestColumnDef {
+    return {
+      type: "unnestColumnDef",
+      name: this.extractIdentifierName(ctx.identifier[0].children),
+      dataType: this.visit(ctx.dataType) as string,
+    }
+  }
+
+  unnestClause(ctx: UnnestClauseCstChildren): AST.TableRef {
+    const unnest: AST.UnnestSource = {
+      type: "unnest",
+      args: ctx.unnestArg.map(
+        (a: CstNode) => this.visit(a) as AST.UnnestArg,
+      ),
+    }
+    if (ctx.With && ctx.Ordinality) {
+      unnest.withOrdinality = true
+    }
+    const result: AST.TableRef = {
+      type: "tableRef",
+      table: unnest,
+    }
+    const identifiers = ctx.identifier || []
+    if (identifiers.length > 0) {
+      result.alias = this.extractIdentifierName(identifiers[0].children)
+    }
+    if (identifiers.length > 1) {
+      result.columnAliases = identifiers
+        .slice(1)
+        .map((id: CstNode) => this.extractIdentifierName(id.children))
+    }
+    return result
   }
 
   implicitSelectBody(ctx: ImplicitSelectBodyCstChildren): AST.SelectStatement {
@@ -784,6 +858,7 @@ class QuestDBVisitor extends BaseVisitor {
     else if (ctx.Left) result.joinType = "left"
     else if (ctx.Cross) result.joinType = "cross"
     if (ctx.Outer) result.outer = true
+    if (ctx.Lateral) result.lateral = true
     if (ctx.expression) {
       result.on = this.visit(ctx.expression) as AST.Expression
     }
@@ -1255,7 +1330,52 @@ class QuestDBVisitor extends BaseVisitor {
       result.indexed = true
     }
 
+    // PARQUET config
+    if (ctx.parquetConfig) {
+      result.parquetConfig = this.visit(ctx.parquetConfig) as AST.ParquetConfig
+    }
+
     return result
+  }
+
+  parquetConfig(ctx: ParquetConfigCstChildren): AST.ParquetConfig {
+    const result: AST.ParquetConfig = { type: "parquetConfig" }
+    if (ctx.parquetEncoding) {
+      result.encoding = (this.visit(ctx.parquetEncoding) as string).toUpperCase()
+    }
+    if (ctx.parquetCompression) {
+      result.compression = (
+        this.visit(ctx.parquetCompression) as string
+      ).toUpperCase()
+    }
+    if (ctx.NumberLiteral) {
+      result.compressionLevel = parseInt(ctx.NumberLiteral[0].image)
+    }
+    if (ctx.BloomFilter) {
+      result.bloomFilter = true
+    }
+    return result
+  }
+
+  parquetEncoding(ctx: ParquetEncodingCstChildren): string {
+    // Find the first token present in the context
+    for (const key of Object.keys(ctx)) {
+      const val = (ctx as Record<string, unknown>)[key]
+      if (Array.isArray(val) && val.length > 0 && val[0].image) {
+        return val[0].image.toUpperCase()
+      }
+    }
+    return "DEFAULT"
+  }
+
+  parquetCompression(ctx: ParquetCompressionCstChildren): string {
+    for (const key of Object.keys(ctx)) {
+      const val = (ctx as Record<string, unknown>)[key]
+      if (Array.isArray(val) && val.length > 0 && val[0].image) {
+        return val[0].image.toUpperCase()
+      }
+    }
+    return ""
   }
 
   castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
@@ -1819,6 +1939,18 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Alter && ctx.columnRef) {
       const colRef = this.visit(ctx.columnRef[0]) as AST.ColumnRef
       const column = colRef.name.parts[colRef.name.parts.length - 1]
+      // SET PARQUET(...)
+      if (ctx.Set && ctx.parquetConfig) {
+        return {
+          actionType: "alterColumn",
+          column,
+          alterType: "setParquet",
+          parquetConfig: this.visit(
+            ctx.parquetConfig,
+          ) as AST.ParquetConfig,
+        } as AST.AlterColumnAction
+      }
+
       let alterType:
         | "type"
         | "addIndex"
@@ -3338,8 +3470,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
-  /** Get the startOffset of the first token in a CstNode */
-  private getFirstTokenOffset(node: CstNode | IToken): number {
+  /** Get the startOffset of the first token in a CST node or token */
+  private getFirstTokenOffset(node: CstNode | IToken | undefined): number {
+    if (!node) return Infinity
     if ("startOffset" in node) return node.startOffset
     let min = Infinity
     for (const children of Object.values(node.children)) {

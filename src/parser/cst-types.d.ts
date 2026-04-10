@@ -186,9 +186,61 @@ export interface FromClauseCstNode extends CstNode {
 }
 
 export type FromClauseCstChildren = {
-  tableRef: (TableRefCstNode)[];
+  fromSource: (FromSourceCstNode)[];
   joinClause?: JoinClauseCstNode[];
   Comma?: IToken[];
+  Lateral?: IToken[];
+};
+
+export interface FromSourceCstNode extends CstNode {
+  name: "fromSource";
+  children: FromSourceCstChildren;
+}
+
+export type FromSourceCstChildren = {
+  unnestClause?: UnnestClauseCstNode[];
+  tableRef?: TableRefCstNode[];
+};
+
+export interface UnnestArgCstNode extends CstNode {
+  name: "unnestArg";
+  children: UnnestArgCstChildren;
+}
+
+export type UnnestArgCstChildren = {
+  expression: ExpressionCstNode[];
+  Columns?: IToken[];
+  LParen?: IToken[];
+  unnestColumnDef?: (UnnestColumnDefCstNode)[];
+  Comma?: IToken[];
+  RParen?: IToken[];
+};
+
+export interface UnnestColumnDefCstNode extends CstNode {
+  name: "unnestColumnDef";
+  children: UnnestColumnDefCstChildren;
+}
+
+export type UnnestColumnDefCstChildren = {
+  identifier: IdentifierCstNode[];
+  dataType: DataTypeCstNode[];
+};
+
+export interface UnnestClauseCstNode extends CstNode {
+  name: "unnestClause";
+  children: UnnestClauseCstChildren;
+}
+
+export type UnnestClauseCstChildren = {
+  Unnest: IToken[];
+  LParen: (IToken)[];
+  unnestArg: (UnnestArgCstNode)[];
+  Comma?: (IToken)[];
+  RParen: (IToken)[];
+  With?: IToken[];
+  Ordinality?: IToken[];
+  As?: IToken[];
+  identifier?: (IdentifierCstNode)[];
 };
 
 export interface ImplicitSelectBodyCstNode extends CstNode {
@@ -368,6 +420,7 @@ export type StandardJoinCstChildren = {
   Inner?: IToken[];
   Cross?: IToken[];
   Join: IToken[];
+  Lateral?: IToken[];
   tableRef: TableRefCstNode[];
   On?: IToken[];
   expression?: ExpressionCstNode[];
@@ -911,6 +964,50 @@ export type ColumnDefinitionCstChildren = {
   Cache?: IToken[];
   Nocache?: IToken[];
   Index?: IToken[];
+  parquetConfig?: ParquetConfigCstNode[];
+};
+
+export interface ParquetConfigCstNode extends CstNode {
+  name: "parquetConfig";
+  children: ParquetConfigCstChildren;
+}
+
+export type ParquetConfigCstChildren = {
+  Parquet: IToken[];
+  LParen: (IToken)[];
+  BloomFilter?: (IToken)[];
+  parquetEncoding?: ParquetEncodingCstNode[];
+  Comma?: (IToken)[];
+  parquetCompression?: ParquetCompressionCstNode[];
+  NumberLiteral?: IToken[];
+  RParen: (IToken)[];
+};
+
+export interface ParquetEncodingCstNode extends CstNode {
+  name: "parquetEncoding";
+  children: ParquetEncodingCstChildren;
+}
+
+export type ParquetEncodingCstChildren = {
+  Plain?: IToken[];
+  RleDictionary?: IToken[];
+  DeltaBinaryPacked?: IToken[];
+  DeltaLengthByteArray?: IToken[];
+  Default?: IToken[];
+};
+
+export interface ParquetCompressionCstNode extends CstNode {
+  name: "parquetCompression";
+  children: ParquetCompressionCstChildren;
+}
+
+export type ParquetCompressionCstChildren = {
+  Uncompressed?: IToken[];
+  Snappy?: IToken[];
+  Gzip?: IToken[];
+  Brotli?: IToken[];
+  Zstd?: IToken[];
+  Lz4Raw?: IToken[];
 };
 
 export interface CastDefinitionCstNode extends CstNode {
@@ -1140,11 +1237,12 @@ export type AlterTableActionCstChildren = {
   Nocache?: (IToken)[];
   Index?: (IToken)[];
   Symbol?: IToken[];
+  Set?: (IToken)[];
+  parquetConfig?: ParquetConfigCstNode[];
   Attach?: IToken[];
   Detach?: IToken[];
   Squash?: IToken[];
   Partitions?: IToken[];
-  Set?: IToken[];
   Param?: IToken[];
   tableParam?: (TableParamCstNode)[];
   Ttl?: IToken[];
@@ -2453,6 +2551,10 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   selectItem(children: SelectItemCstChildren, param?: IN): OUT;
   qualifiedStar(children: QualifiedStarCstChildren, param?: IN): OUT;
   fromClause(children: FromClauseCstChildren, param?: IN): OUT;
+  fromSource(children: FromSourceCstChildren, param?: IN): OUT;
+  unnestArg(children: UnnestArgCstChildren, param?: IN): OUT;
+  unnestColumnDef(children: UnnestColumnDefCstChildren, param?: IN): OUT;
+  unnestClause(children: UnnestClauseCstChildren, param?: IN): OUT;
   implicitSelectBody(children: ImplicitSelectBodyCstChildren, param?: IN): OUT;
   implicitSelectStatement(children: ImplicitSelectStatementCstChildren, param?: IN): OUT;
   tableRef(children: TableRefCstChildren, param?: IN): OUT;
@@ -2498,6 +2600,9 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   materializedViewPeriod(children: MaterializedViewPeriodCstChildren, param?: IN): OUT;
   materializedViewPartition(children: MaterializedViewPartitionCstChildren, param?: IN): OUT;
   columnDefinition(children: ColumnDefinitionCstChildren, param?: IN): OUT;
+  parquetConfig(children: ParquetConfigCstChildren, param?: IN): OUT;
+  parquetEncoding(children: ParquetEncodingCstChildren, param?: IN): OUT;
+  parquetCompression(children: ParquetCompressionCstChildren, param?: IN): OUT;
   castDefinition(children: CastDefinitionCstChildren, param?: IN): OUT;
   indexDefinition(children: IndexDefinitionCstChildren, param?: IN): OUT;
   tableParamName(children: TableParamNameCstChildren, param?: IN): OUT;

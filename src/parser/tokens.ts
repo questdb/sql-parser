@@ -322,6 +322,11 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Lz4Raw",
   "Brotli",
   "Lzo",
+  // Parquet encoding names
+  "Plain",
+  "RleDictionary",
+  "DeltaBinaryPacked",
+  "DeltaLengthByteArray",
   // Other non-reserved keywords
   "Compile",
   "Delete",
@@ -351,6 +356,10 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Prev",
   "Linear",
   "Step",
+  // LATERAL / UNNEST related
+  "Lateral",
+  "Ordinality",
+  "BloomFilter",
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
@@ -417,6 +426,7 @@ export const Backup = getToken("Backup")
 export const Base = getToken("Base")
 export const Batch = getToken("Batch")
 export const Between = getToken("Between")
+export const BloomFilter = getToken("BloomFilter")
 export const By = getToken("By")
 export const Bypass = getToken("Bypass")
 export const Cache = getToken("Cache")
@@ -450,6 +460,8 @@ export const DefaultTransactionReadOnly = getToken("DefaultTransactionReadOnly")
 export const Deferred = getToken("Deferred")
 export const Delay = getToken("Delay")
 export const Delete = getToken("Delete")
+export const DeltaBinaryPacked = getToken("DeltaBinaryPacked")
+export const DeltaLengthByteArray = getToken("DeltaLengthByteArray")
 export const Delimiter = getToken("Delimiter")
 export const Detach = getToken("Detach")
 export const Details = getToken("Details")
@@ -501,6 +513,7 @@ export const Join = getToken("Join")
 export const Keep = getToken("Keep")
 export const Key = getToken("Key")
 export const Keys = getToken("Keys")
+export const Lateral = getToken("Lateral")
 export const Latest = getToken("Latest")
 export const Left = getToken("Left")
 export const Length = getToken("Length")
@@ -527,6 +540,7 @@ export const Only = getToken("Only")
 export const Option = getToken("Option")
 export const Or = getToken("Or")
 export const Order = getToken("Order")
+export const Ordinality = getToken("Ordinality")
 export const Others = getToken("Others")
 export const Outer = getToken("Outer")
 export const Over = getToken("Over")
@@ -543,6 +557,7 @@ export const Password = getToken("Password")
 export const Period = getToken("Period")
 export const Permissions = getToken("Permissions")
 export const Pivot = getToken("Pivot")
+export const Plain = getToken("Plain")
 export const Prepare = getToken("Prepare")
 export const Preceding = getToken("Preceding")
 export const Prevailing = getToken("Prevailing")
@@ -563,6 +578,7 @@ export const Respect = getToken("Respect")
 export const Resume = getToken("Resume")
 export const Revoke = getToken("Revoke")
 export const Right = getToken("Right")
+export const RleDictionary = getToken("RleDictionary")
 export const Row = getToken("Row")
 export const RowGroupSize = getToken("RowGroupSize")
 export const Rows = getToken("Rows")
@@ -603,6 +619,7 @@ export const Type = getToken("Type")
 export const Unbounded = getToken("Unbounded")
 export const Union = getToken("Union")
 export const Unlock = getToken("Unlock")
+export const Unnest = getToken("Unnest")
 export const Unpivot = getToken("Unpivot")
 export const Update = getToken("Update")
 export const Upsert = getToken("Upsert")

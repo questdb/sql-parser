@@ -386,6 +386,495 @@ describe("QuestDB Parser", () => {
       }
     })
 
+    // --- LATERAL JOIN ---
+
+    it("should parse CROSS JOIN LATERAL", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.avg_price FROM trades t CROSS JOIN LATERAL (SELECT avg(price) AS avg_price FROM trades WHERE symbol = t.symbol) sub",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("cross")
+        expect(join?.lateral).toBe(true)
+        expect(join?.table.table).toHaveProperty("type", "select")
+        expect(join?.table.alias).toBe("sub")
+      }
+    })
+
+    it("should parse LEFT JOIN LATERAL with ON clause", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, t.price, sub.total_qty FROM trades t LEFT JOIN LATERAL (SELECT sum(quantity) AS total_qty FROM fx_trades WHERE symbol = t.symbol) sub ON true",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("left")
+        expect(join?.lateral).toBe(true)
+        expect(join?.on).toBeDefined()
+      }
+    })
+
+    it("should parse LEFT OUTER JOIN LATERAL", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.cnt FROM trades t LEFT OUTER JOIN LATERAL (SELECT count(*) AS cnt FROM fx_trades WHERE symbol = t.symbol) sub ON true",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("left")
+        expect(join?.outer).toBe(true)
+        expect(join?.lateral).toBe(true)
+      }
+    })
+
+    it("should parse INNER JOIN LATERAL", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.avg_price FROM trades t INNER JOIN LATERAL (SELECT avg(price) AS avg_price FROM fx_trades WHERE symbol = t.symbol) sub ON true",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("inner")
+        expect(join?.lateral).toBe(true)
+      }
+    })
+
+    it("should parse bare JOIN LATERAL (implicit inner)", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.avg_price FROM trades t JOIN LATERAL (SELECT avg(price) AS avg_price FROM fx_trades WHERE symbol = t.symbol) sub ON true",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const join = stmt.from?.[0].joins?.[0]
+        expect(join?.joinType).toBeUndefined() // bare JOIN = implicit inner
+        expect(join?.lateral).toBe(true)
+      }
+    })
+
+    it("should parse standalone LATERAL in comma-separated FROM", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.avg_price FROM trades t, LATERAL (SELECT avg(price) AS avg_price FROM fx_trades WHERE symbol = t.symbol) sub",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from).toHaveLength(2)
+        expect(stmt.from?.[1].lateral).toBe(true)
+        expect(stmt.from?.[1].table).toHaveProperty("type", "select")
+        expect(stmt.from?.[1].alias).toBe("sub")
+      }
+    })
+
+    it("should parse non-lateral JOIN (lateral should be undefined)", () => {
+      const result = parseToAst(
+        "SELECT * FROM trades t JOIN fx_trades f ON t.symbol = f.symbol",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from?.[0].joins?.[0].lateral).toBeUndefined()
+      }
+    })
+
+    it("should parse LATERAL JOIN with nested subquery containing joins", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.avg_price FROM trades t JOIN LATERAL (SELECT avg(f.price) AS avg_price FROM fx_trades f JOIN market_data md ON f.symbol = md.symbol WHERE f.symbol = t.symbol) sub ON true",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse LATERAL JOIN with WHERE and GROUP BY", () => {
+      const result = parseToAst(
+        "SELECT t.symbol, sub.total FROM trades t CROSS JOIN LATERAL (SELECT sum(amount) AS total FROM trades WHERE symbol = t.symbol) sub WHERE t.side = 'buy' GROUP BY t.symbol, sub.total",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.where).toBeDefined()
+        expect(stmt.groupBy).toHaveLength(2)
+      }
+    })
+
+    it("should roundtrip CROSS JOIN LATERAL", () => {
+      const sql =
+        "SELECT t.symbol, sub.avg_price FROM trades t CROSS JOIN LATERAL (SELECT avg(price) AS avg_price FROM trades WHERE symbol = t.symbol) sub"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("should roundtrip LEFT JOIN LATERAL with ON", () => {
+      const sql =
+        "SELECT t.symbol, sub.total_qty FROM trades t LEFT JOIN LATERAL (SELECT sum(quantity) AS total_qty FROM fx_trades WHERE symbol = t.symbol) sub ON true"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("should roundtrip standalone LATERAL in comma-separated FROM", () => {
+      const sql =
+        "SELECT t.symbol, sub.avg_price FROM trades t, LATERAL (SELECT avg(price) AS avg_price FROM fx_trades WHERE symbol = t.symbol) sub"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("should roundtrip mixed comma FROM with LATERAL on the third source", () => {
+      const sql =
+        "SELECT * FROM trades t, fx_trades f, LATERAL (SELECT avg(price) AS avg_price FROM trades WHERE symbol = t.symbol) sub"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      expect(stmt.type).toBe("select")
+      if (stmt.type === "select") {
+        expect(stmt.from).toHaveLength(3)
+        expect(stmt.from?.[1].lateral).toBeUndefined()
+        expect(stmt.from?.[2].lateral).toBe(true)
+      }
+      const regenerated = toSql(stmt)
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    // --- UNNEST ---
+
+    it("should parse basic UNNEST with array literal", () => {
+      const result = parseToAst("SELECT * FROM UNNEST(ARRAY[1, 2, 3])")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from?.[0].table).toHaveProperty("type", "unnest")
+        if (stmt.from?.[0].table.type === "unnest") {
+          expect(stmt.from[0].table.args).toHaveLength(1)
+        }
+      }
+    })
+
+    it("should parse UNNEST with multiple expressions", () => {
+      const result = parseToAst(
+        "SELECT * FROM UNNEST(ARRAY[1, 2], ARRAY[10, 20])",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const table = stmt.from?.[0].table
+        if (table?.type === "unnest") {
+          expect(table.args).toHaveLength(2)
+        }
+      }
+    })
+
+    it("should parse UNNEST WITH ORDINALITY", () => {
+      const result = parseToAst(
+        "SELECT * FROM UNNEST(ARRAY[10.0, 20.0, 30.0]) WITH ORDINALITY",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const table = stmt.from?.[0].table
+        if (table?.type === "unnest") {
+          expect(table.withOrdinality).toBe(true)
+        }
+      }
+    })
+
+    it("should parse UNNEST with AS alias and column aliases", () => {
+      const result = parseToAst(
+        "SELECT val, ord FROM UNNEST(ARRAY[10.0, 20.0]) WITH ORDINALITY AS t(val, ord)",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from?.[0].alias).toBe("t")
+        expect(stmt.from?.[0].columnAliases).toEqual(["val", "ord"])
+      }
+    })
+
+    it("should parse UNNEST with bare alias and column aliases", () => {
+      const result = parseToAst(
+        "SELECT u.val FROM UNNEST(ARRAY[1, 2, 3]) u(val)",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from?.[0].alias).toBe("u")
+        expect(stmt.from?.[0].columnAliases).toEqual(["val"])
+      }
+    })
+
+    it("should parse UNNEST with bare alias and no column aliases", () => {
+      const result = parseToAst(
+        "SELECT u.value FROM UNNEST(ARRAY[1, 2, 3]) u",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from?.[0].alias).toBe("u")
+        expect(stmt.from?.[0].columnAliases).toBeUndefined()
+      }
+    })
+
+    it("should parse UNNEST in comma-join with real table (market_data)", () => {
+      const result = parseToAst(
+        "SELECT md.symbol, u.value, u.ordinality FROM market_data md, UNNEST(md.bids) WITH ORDINALITY u",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from).toHaveLength(2)
+        expect(stmt.from?.[0].table).toHaveProperty("type", "qualifiedName")
+        expect(stmt.from?.[1].table).toHaveProperty("type", "unnest")
+        expect(stmt.from?.[1].alias).toBe("u")
+      }
+    })
+
+    it("should parse UNNEST with column aliases in comma-join", () => {
+      const result = parseToAst(
+        "SELECT md.symbol, bid.price FROM market_data md, UNNEST(md.bids) WITH ORDINALITY bid(price, idx)",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from?.[1].alias).toBe("bid")
+        expect(stmt.from?.[1].columnAliases).toEqual(["price", "idx"])
+      }
+    })
+
+    it("should parse multiple UNNEST in same query", () => {
+      const result = parseToAst(
+        "SELECT u1.value, u2.value FROM UNNEST(ARRAY[1, 2]) u1, UNNEST(ARRAY[10, 20]) u2",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.from).toHaveLength(2)
+        expect(stmt.from?.[0].table).toHaveProperty("type", "unnest")
+        expect(stmt.from?.[1].table).toHaveProperty("type", "unnest")
+      }
+    })
+
+    it("should parse UNNEST with GROUP BY", () => {
+      const result = parseToAst(
+        "SELECT u.val, count(*) cnt FROM market_data md, UNNEST(md.bids) u(val) GROUP BY u.val",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.groupBy).toHaveLength(1)
+      }
+    })
+
+    it("should parse UNNEST with WHERE and ORDER BY", () => {
+      const result = parseToAst(
+        "SELECT u.value FROM UNNEST(ARRAY[3.0, 1.0, 2.0]) u WHERE u.value > 1.0 ORDER BY u.value DESC",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.where).toBeDefined()
+        expect(stmt.orderBy).toHaveLength(1)
+      }
+    })
+
+    // --- JSON UNNEST with COLUMNS ---
+
+    it("should parse JSON UNNEST with COLUMNS", () => {
+      const result = parseToAst(
+        "SELECT u.price, u.name FROM events e, UNNEST(e.payload COLUMNS(price DOUBLE, name VARCHAR)) u",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const table = stmt.from?.[1].table
+        if (table?.type === "unnest") {
+          expect(table.args).toHaveLength(1)
+          expect(table.args[0].columns).toHaveLength(2)
+          expect(table.args[0].columns?.[0].name).toBe("price")
+          expect(table.args[0].columns?.[0].dataType).toBe("DOUBLE")
+          expect(table.args[0].columns?.[1].name).toBe("name")
+          expect(table.args[0].columns?.[1].dataType).toBe("VARCHAR")
+        }
+      }
+    })
+
+    it("should parse JSON UNNEST with single COLUMNS def", () => {
+      const result = parseToAst(
+        "SELECT u.val FROM t, UNNEST(t.json_col COLUMNS(val DOUBLE)) u",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const table = stmt.from?.[1].table
+        if (table?.type === "unnest") {
+          expect(table.args[0].columns).toHaveLength(1)
+          expect(table.args[0].columns?.[0].name).toBe("val")
+          expect(table.args[0].columns?.[0].dataType).toBe("DOUBLE")
+        }
+      }
+    })
+
+    it("should parse JSON UNNEST with json_extract and COLUMNS", () => {
+      const result = parseToAst(
+        "SELECT u.price, u.side FROM events e, UNNEST(json_extract(e.payload, '$.trades') COLUMNS(price DOUBLE, side VARCHAR)) u",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse mixed JSON + typed array in same UNNEST", () => {
+      const result = parseToAst(
+        "SELECT u.tag, u.score FROM t, UNNEST(t.tags_json COLUMNS(tag VARCHAR), t.scores_array) u(tag, score)",
+      )
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const table = stmt.from?.[1].table
+        if (table?.type === "unnest") {
+          expect(table.args).toHaveLength(2)
+          // First arg has COLUMNS
+          expect(table.args[0].columns).toHaveLength(1)
+          expect(table.args[0].columns?.[0].name).toBe("tag")
+          // Second arg has no COLUMNS (typed array)
+          expect(table.args[1].columns).toBeUndefined()
+        }
+      }
+    })
+
+    // --- PR #6830 examples (questdb/questdb) ---
+
+    it("should parse PR #6830 array example: flatten array column", () => {
+      const result = parseToAst(
+        "SELECT t.ts, u.price FROM trades t, UNNEST(t.prices) u(price)",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 array example: unnest multiple arrays", () => {
+      const result = parseToAst(
+        "SELECT t.ts, u.bid, u.ask FROM orderbook t, UNNEST(t.bid_prices, t.ask_prices) u(bid, ask)",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 array example: WITH ORDINALITY", () => {
+      const result = parseToAst(
+        "SELECT u.val, u.pos FROM t, UNNEST(t.arr) WITH ORDINALITY u(val, pos)",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 array example: standalone", () => {
+      const result = parseToAst(
+        "SELECT * FROM UNNEST(ARRAY[1.0, 2.0, 3.0]) u(val)",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 JSON example: object array with typed columns", () => {
+      const result = parseToAst(
+        "SELECT u.price, u.name FROM events e, UNNEST(e.payload COLUMNS(price DOUBLE, name VARCHAR)) u",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 JSON example: scalar array", () => {
+      const result = parseToAst(
+        "SELECT u.val FROM t, UNNEST(t.json_col COLUMNS(val DOUBLE)) u",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 JSON example: json_extract with COLUMNS", () => {
+      const result = parseToAst(
+        "SELECT u.price, u.side FROM events e, UNNEST(json_extract(e.payload, '$.trades') COLUMNS(price DOUBLE, side VARCHAR)) u",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse PR #6830 JSON example: mixed JSON + typed array", () => {
+      const result = parseToAst(
+        "SELECT u.tag, u.score FROM t, UNNEST(t.tags_json COLUMNS(tag VARCHAR), t.scores_array) u(tag, score)",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should roundtrip JSON UNNEST with COLUMNS", () => {
+      const sql =
+        "SELECT u.price, u.name FROM events e, UNNEST(e.payload COLUMNS(price DOUBLE, name VARCHAR)) u"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("should roundtrip basic UNNEST", () => {
+      const sql = "SELECT * FROM UNNEST(ARRAY[1, 2, 3])"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("should roundtrip UNNEST WITH ORDINALITY and column aliases", () => {
+      const sql =
+        "SELECT val, ord FROM UNNEST(ARRAY[10.0, 20.0]) WITH ORDINALITY AS t(val, ord)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("should roundtrip UNNEST in comma-join with table", () => {
+      const sql =
+        "SELECT md.symbol, u.value FROM market_data md, UNNEST(md.bids) WITH ORDINALITY u"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    // --- Non-reserved keyword edge cases ---
+
+    it("should parse 'lateral' as column alias", () => {
+      const result = parseToAst("SELECT price AS lateral FROM trades")
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse 'ordinality' as column alias", () => {
+      const result = parseToAst("SELECT price AS ordinality FROM trades")
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("should parse 'bloom_filter' and 'raw_array_encoding' as aliases", () => {
+      const result = parseToAst(
+        "SELECT price AS bloom_filter, amount AS raw_array_encoding FROM trades",
+      )
+      expect(result.errors).toHaveLength(0)
+    })
+
     it("should parse INSERT statement", () => {
       const result = parseToAst(
         "INSERT INTO trades (symbol, price) VALUES ('BTC', 100)",
@@ -1464,6 +1953,238 @@ describe("QuestDB Parser", () => {
         ) {
           expect(result.ast[0].action.alterType).toBe("addIndex")
         }
+      })
+
+      // --- PARQUET clause in column definitions ---
+
+      it("should parse CREATE TABLE with PARQUET(BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (a VARCHAR PARQUET(BLOOM_FILTER), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[0]
+          expect(col?.parquetConfig?.bloomFilter).toBe(true)
+          expect(col?.parquetConfig?.encoding).toBeUndefined()
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(encoding, BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (a INT PARQUET(DELTA_BINARY_PACKED, BLOOM_FILTER), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[0]
+          expect(col?.parquetConfig?.encoding).toBe("DELTA_BINARY_PACKED")
+          expect(col?.parquetConfig?.bloomFilter).toBe(true)
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(encoding, compression(level), BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (a INT PARQUET(DELTA_BINARY_PACKED, ZSTD(3), BLOOM_FILTER), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[0]
+          expect(col?.parquetConfig?.encoding).toBe("DELTA_BINARY_PACKED")
+          expect(col?.parquetConfig?.compression).toBe("ZSTD")
+          expect(col?.parquetConfig?.compressionLevel).toBe(3)
+          expect(col?.parquetConfig?.bloomFilter).toBe(true)
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(encoding only)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (a INT PARQUET(PLAIN), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[0]
+          expect(col?.parquetConfig?.encoding).toBe("PLAIN")
+          expect(col?.parquetConfig?.compression).toBeUndefined()
+          expect(col?.parquetConfig?.bloomFilter).toBeUndefined()
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(encoding, compression)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (a DOUBLE PARQUET(PLAIN, SNAPPY), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[0]
+          expect(col?.parquetConfig?.encoding).toBe("PLAIN")
+          expect(col?.parquetConfig?.compression).toBe("SNAPPY")
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(encoding, compression(level))", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (a DOUBLE PARQUET(PLAIN, GZIP(9)), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[0]
+          expect(col?.parquetConfig?.encoding).toBe("PLAIN")
+          expect(col?.parquetConfig?.compression).toBe("GZIP")
+          expect(col?.parquetConfig?.compressionLevel).toBe(9)
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(default)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (ts TIMESTAMP, d DOUBLE PARQUET(default)) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          const col = result.ast[0].columns?.[1]
+          expect(col?.parquetConfig?.encoding).toBe("DEFAULT")
+        }
+      })
+
+      it("should parse CREATE TABLE with multiple PARQUET columns", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (ts TIMESTAMP, a INT PARQUET(DELTA_BINARY_PACKED, ZSTD(3), BLOOM_FILTER), b VARCHAR PARQUET(BLOOM_FILTER)) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          expect(result.ast[0].columns?.[1].parquetConfig?.encoding).toBe(
+            "DELTA_BINARY_PACKED",
+          )
+          expect(result.ast[0].columns?.[1].parquetConfig?.bloomFilter).toBe(
+            true,
+          )
+          expect(result.ast[0].columns?.[2].parquetConfig?.bloomFilter).toBe(
+            true,
+          )
+          expect(
+            result.ast[0].columns?.[2].parquetConfig?.encoding,
+          ).toBeUndefined()
+        }
+      })
+
+      it("should parse CREATE TABLE with PARQUET(DELTA_LENGTH_BYTE_ARRAY, BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "CREATE TABLE t (ts TIMESTAMP, a INT PARQUET(BLOOM_FILTER), b VARCHAR PARQUET(DELTA_LENGTH_BYTE_ARRAY, BLOOM_FILTER), c DOUBLE) TIMESTAMP(ts) PARTITION BY DAY",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (result.ast[0].type === "createTable") {
+          expect(result.ast[0].columns?.[2].parquetConfig?.encoding).toBe(
+            "DELTA_LENGTH_BYTE_ARRAY",
+          )
+          // Column without PARQUET
+          expect(
+            result.ast[0].columns?.[3].parquetConfig,
+          ).toBeUndefined()
+        }
+      })
+
+      // --- ALTER TABLE ALTER COLUMN SET PARQUET ---
+
+      it("should parse ALTER TABLE ALTER COLUMN SET PARQUET(BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "ALTER TABLE t ALTER COLUMN c SET PARQUET(BLOOM_FILTER)",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (
+          result.ast[0].type === "alterTable" &&
+          result.ast[0].action.actionType === "alterColumn"
+        ) {
+          expect(result.ast[0].action.alterType).toBe("setParquet")
+          expect(result.ast[0].action.parquetConfig?.bloomFilter).toBe(true)
+        }
+      })
+
+      it("should parse ALTER TABLE ALTER COLUMN SET PARQUET(encoding, compression(level), BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "ALTER TABLE t ALTER COLUMN i SET PARQUET(DELTA_BINARY_PACKED, ZSTD(3), BLOOM_FILTER)",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (
+          result.ast[0].type === "alterTable" &&
+          result.ast[0].action.actionType === "alterColumn"
+        ) {
+          expect(result.ast[0].action.alterType).toBe("setParquet")
+          expect(result.ast[0].action.parquetConfig?.encoding).toBe(
+            "DELTA_BINARY_PACKED",
+          )
+          expect(result.ast[0].action.parquetConfig?.compression).toBe("ZSTD")
+          expect(result.ast[0].action.parquetConfig?.compressionLevel).toBe(3)
+          expect(result.ast[0].action.parquetConfig?.bloomFilter).toBe(true)
+        }
+      })
+
+      it("should parse ALTER TABLE ALTER COLUMN SET PARQUET(default)", () => {
+        const result = parseToAst(
+          "ALTER TABLE t ALTER COLUMN a SET PARQUET(default)",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (
+          result.ast[0].type === "alterTable" &&
+          result.ast[0].action.actionType === "alterColumn"
+        ) {
+          expect(result.ast[0].action.alterType).toBe("setParquet")
+          expect(result.ast[0].action.parquetConfig?.encoding).toBe("DEFAULT")
+        }
+      })
+
+      it("should parse ALTER TABLE ALTER COLUMN SET PARQUET(default, UNCOMPRESSED)", () => {
+        const result = parseToAst(
+          "ALTER TABLE t ALTER COLUMN d SET PARQUET(default, UNCOMPRESSED)",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (
+          result.ast[0].type === "alterTable" &&
+          result.ast[0].action.actionType === "alterColumn"
+        ) {
+          expect(result.ast[0].action.parquetConfig?.encoding).toBe("DEFAULT")
+          expect(result.ast[0].action.parquetConfig?.compression).toBe(
+            "UNCOMPRESSED",
+          )
+        }
+      })
+
+      it("should parse ALTER TABLE ALTER COLUMN SET PARQUET(default, UNCOMPRESSED, BLOOM_FILTER)", () => {
+        const result = parseToAst(
+          "ALTER TABLE t ALTER COLUMN i SET PARQUET(default, UNCOMPRESSED, BLOOM_FILTER)",
+        )
+        expect(result.errors).toHaveLength(0)
+        if (
+          result.ast[0].type === "alterTable" &&
+          result.ast[0].action.actionType === "alterColumn"
+        ) {
+          expect(result.ast[0].action.parquetConfig?.encoding).toBe("DEFAULT")
+          expect(result.ast[0].action.parquetConfig?.compression).toBe(
+            "UNCOMPRESSED",
+          )
+          expect(result.ast[0].action.parquetConfig?.bloomFilter).toBe(true)
+        }
+      })
+
+      // --- PARQUET roundtrips ---
+
+      it("should roundtrip CREATE TABLE with PARQUET columns", () => {
+        const sql =
+          "CREATE TABLE t (ts TIMESTAMP, a INT PARQUET(DELTA_BINARY_PACKED, ZSTD(3), BLOOM_FILTER), b VARCHAR PARQUET(BLOOM_FILTER)) TIMESTAMP(ts) PARTITION BY DAY"
+        const result = parseToAst(sql)
+        expect(result.errors).toHaveLength(0)
+        const regenerated = toSql(result.ast[0])
+        const reparsed = parseToAst(regenerated)
+        expect(reparsed.errors).toHaveLength(0)
+        expect(reparsed.ast[0]).toEqual(result.ast[0])
+      })
+
+      it("should roundtrip ALTER TABLE ALTER COLUMN SET PARQUET", () => {
+        const sql =
+          "ALTER TABLE t ALTER COLUMN i SET PARQUET(DELTA_BINARY_PACKED, ZSTD(3), BLOOM_FILTER)"
+        const result = parseToAst(sql)
+        expect(result.errors).toHaveLength(0)
+        const regenerated = toSql(result.ast[0])
+        const reparsed = parseToAst(regenerated)
+        expect(reparsed.errors).toHaveLength(0)
+        expect(reparsed.ast[0]).toEqual(result.ast[0])
       })
 
       it("should parse ALTER TABLE DROP PARTITION", () => {
