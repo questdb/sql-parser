@@ -97,6 +97,7 @@ export const keywords: string[] = [
   "key",
   "keys",
   "latest",
+  "lateral",
   "left",
   "length",
   "level",
