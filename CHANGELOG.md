@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 0.1.7 - 2026.04.13
+### Added
+- LATERAL JOIN support: `{INNER|LEFT|CROSS} JOIN LATERAL (subquery)` and standalone `FROM t, LATERAL (subquery)` [6e5e5e7](https://github.com/questdb/sql-parser/commit/6e5e5e7)
+- UNNEST support including JSON UNNEST [6e5e5e7](https://github.com/questdb/sql-parser/commit/6e5e5e7)
+- PARQUET column config in CREATE/ALTER table statements [6e5e5e7](https://github.com/questdb/sql-parser/commit/6e5e5e7)
+
+
 ## 0.1.6 - 2026.03.26
 ### Changed
 - remove quoted identifier suppression [#17](https://github.com/questdb/sql-parser/pull/17)

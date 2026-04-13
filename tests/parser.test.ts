@@ -619,9 +619,7 @@ describe("QuestDB Parser", () => {
     })
 
     it("should parse UNNEST with bare alias and no column aliases", () => {
-      const result = parseToAst(
-        "SELECT u.value FROM UNNEST(ARRAY[1, 2, 3]) u",
-      )
+      const result = parseToAst("SELECT u.value FROM UNNEST(ARRAY[1, 2, 3]) u")
       expect(result.errors).toHaveLength(0)
       const stmt = result.ast[0]
       if (stmt.type === "select") {
@@ -2075,9 +2073,7 @@ describe("QuestDB Parser", () => {
             "DELTA_LENGTH_BYTE_ARRAY",
           )
           // Column without PARQUET
-          expect(
-            result.ast[0].columns?.[3].parquetConfig,
-          ).toBeUndefined()
+          expect(result.ast[0].columns?.[3].parquetConfig).toBeUndefined()
         }
       })
 

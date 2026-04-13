@@ -207,6 +207,17 @@ class QuestDBVisitor extends BaseVisitor {
     return token?.image ?? ""
   }
 
+  /** Return the image of the first token found in a single-alternative CST children record. */
+  private firstTokenImage(ctx: CstChildrenRecord): string | undefined {
+    for (const key of Object.keys(ctx)) {
+      const tokens = (ctx as Record<string, IToken[]>)[key]
+      if (Array.isArray(tokens) && tokens.length > 0 && tokens[0].image) {
+        return tokens[0].image
+      }
+    }
+    return undefined
+  }
+
   // ==========================================================================
   // Entry Points
   // ==========================================================================
@@ -599,9 +610,7 @@ class QuestDBVisitor extends BaseVisitor {
   unnestClause(ctx: UnnestClauseCstChildren): AST.TableRef {
     const unnest: AST.UnnestSource = {
       type: "unnest",
-      args: ctx.unnestArg.map(
-        (a: CstNode) => this.visit(a) as AST.UnnestArg,
-      ),
+      args: ctx.unnestArg.map((a: CstNode) => this.visit(a) as AST.UnnestArg),
     }
     if (ctx.With && ctx.Ordinality) {
       unnest.withOrdinality = true
@@ -1341,7 +1350,9 @@ class QuestDBVisitor extends BaseVisitor {
   parquetConfig(ctx: ParquetConfigCstChildren): AST.ParquetConfig {
     const result: AST.ParquetConfig = { type: "parquetConfig" }
     if (ctx.parquetEncoding) {
-      result.encoding = (this.visit(ctx.parquetEncoding) as string).toUpperCase()
+      result.encoding = (
+        this.visit(ctx.parquetEncoding) as string
+      ).toUpperCase()
     }
     if (ctx.parquetCompression) {
       result.compression = (
@@ -1358,24 +1369,11 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   parquetEncoding(ctx: ParquetEncodingCstChildren): string {
-    // Find the first token present in the context
-    for (const key of Object.keys(ctx)) {
-      const val = (ctx as Record<string, unknown>)[key]
-      if (Array.isArray(val) && val.length > 0 && val[0].image) {
-        return val[0].image.toUpperCase()
-      }
-    }
-    return "DEFAULT"
+    return this.firstTokenImage(ctx)?.toUpperCase() ?? "DEFAULT"
   }
 
   parquetCompression(ctx: ParquetCompressionCstChildren): string {
-    for (const key of Object.keys(ctx)) {
-      const val = (ctx as Record<string, unknown>)[key]
-      if (Array.isArray(val) && val.length > 0 && val[0].image) {
-        return val[0].image.toUpperCase()
-      }
-    }
-    return ""
+    return this.firstTokenImage(ctx)?.toUpperCase() ?? ""
   }
 
   castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
@@ -1945,9 +1943,7 @@ class QuestDBVisitor extends BaseVisitor {
           actionType: "alterColumn",
           column,
           alterType: "setParquet",
-          parquetConfig: this.visit(
-            ctx.parquetConfig,
-          ) as AST.ParquetConfig,
+          parquetConfig: this.visit(ctx.parquetConfig) as AST.ParquetConfig,
         } as AST.AlterColumnAction
       }
 
