@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.1.8 - 2026.04.13
+### Added
+- Add `timestamp_sequence_ns` function [#21](https://github.com/questdb/sql-parser/pull/21)
+- `array_elem_min`, `array_elem_max`, `array_elem_sum`, `array_elem_avg`, `now_ns`, `systimestamp_ns`, `rnd_timestamp_ns` functions [#19](https://github.com/questdb/sql-parser/pull/19)
+
+
 ## 0.1.7 - 2026.04.13
 ### Added
 - LATERAL JOIN support: `{INNER|LEFT|CROSS} JOIN LATERAL (subquery)` and standalone `FROM t, LATERAL (subquery)` [6e5e5e7](https://github.com/questdb/sql-parser/commit/6e5e5e7)
