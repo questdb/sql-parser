@@ -286,6 +286,7 @@ export const functions: string[] = [
   "timestamp_ceil",
   "timestamp_floor",
   "timestamp_sequence",
+  "timestamp_sequence_ns",
   "timestamp_shuffle",
   "to_char",
   "to_date",
