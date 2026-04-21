@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.1.9 - 2026.04.21
+### Added
+- `bar` and `sparkline` functions [#22](https://github.com/questdb/sql-parser/pull/22)
+- Storage policy keywords and `local`/`remote` constants [#20](https://github.com/questdb/sql-parser/pull/20)
+
+### Changed
+- Position-aware autocomplete: functions are categorized into scalar / aggregate / window / table-valued buckets, remove implicit select filter. [5a422b0](https://github.com/questdb/sql-parser/commit/5a422b0)
+
+
 ## 0.1.8 - 2026.04.13
 ### Added
 - Add `timestamp_sequence_ns` function [#21](https://github.com/questdb/sql-parser/pull/21)
