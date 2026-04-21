@@ -188,6 +188,10 @@ export function createAutocompleteProvider(
         qualifiedTableRef,
         suggestColumns,
         suggestTables,
+        suggestScalarFunctions,
+        suggestAggregateFunctions,
+        suggestWindowFunctions,
+        suggestTableValuedFunctions,
         referencedColumns,
         isConditionContext,
       } = getContentAssist(query, cursorOffset)
@@ -247,6 +251,10 @@ export function createAutocompleteProvider(
           {
             includeColumns: suggestColumns,
             includeTables: suggestTables,
+            includeScalarFunctions: suggestScalarFunctions,
+            includeAggregateFunctions: suggestAggregateFunctions,
+            includeWindowFunctions: suggestWindowFunctions,
+            includeTableValuedFunctions: suggestTableValuedFunctions,
             isMidWord,
           },
         )

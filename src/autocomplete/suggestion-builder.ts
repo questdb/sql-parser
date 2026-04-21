@@ -19,7 +19,12 @@ import {
   PUNCTUATION_TOKENS,
   tokenNameToKeyword,
 } from "./token-classification"
-import { functions } from "../grammar/index"
+import {
+  scalarFunctions,
+  aggregateFunctions,
+  windowFunctions,
+  tableValuedFunctions,
+} from "../grammar/index"
 import type { TableRef } from "./content-assist"
 
 /**
@@ -110,6 +115,10 @@ export function buildSuggestions(
   options?: {
     includeColumns?: boolean
     includeTables?: boolean
+    includeScalarFunctions?: boolean
+    includeAggregateFunctions?: boolean
+    includeWindowFunctions?: boolean
+    includeTableValuedFunctions?: boolean
     isMidWord?: boolean
   },
 ): Suggestion[] {
@@ -118,6 +127,14 @@ export function buildSuggestions(
   let expectsIdentifier = false
   const includeColumns = options?.includeColumns ?? true
   const includeTables = options?.includeTables ?? true
+  // Function category flags default to false — context-driven emission means
+  // no suggestions unless the caller (content-assist.ts) explicitly opts in
+  // based on the position's PositionKind.
+  const includeScalarFunctions = options?.includeScalarFunctions ?? false
+  const includeAggregateFunctions = options?.includeAggregateFunctions ?? false
+  const includeWindowFunctions = options?.includeWindowFunctions ?? false
+  const includeTableValuedFunctions =
+    options?.includeTableValuedFunctions ?? false
   const isMidWord = options?.isMidWord ?? false
 
   // Detect join context: when "Join" is a valid next token, join prefix
@@ -273,22 +290,35 @@ export function buildSuggestions(
       }
     }
 
-    // Add functions when the user is mid-word (typing a prefix).
-    // This avoids flooding the list with ~300 functions when the user
-    // just typed "SELECT " with no prefix. Functions are valid in both
-    // expression context (SELECT md5(...)) and table context (FROM long_sequence(...)).
-    // Skip functions in post-expression position (includeColumns=false,
-    // includeTables=false) — e.g., after "SELECT *" the user is typing a
-    // keyword (FROM) or alias, not a function call.
-    if (isMidWord && (includeColumns || includeTables)) {
-      for (const fn of functions) {
-        if (seenKeywords.has(fn.toUpperCase())) continue
+    // Add functions per category. Only mid-word so we don't flood empty
+    // positions (e.g. just-typed "SELECT " with no prefix). The category
+    // include flags are derived from PositionKind in content-assist:
+    //   - expression           → scalar + aggregate + window
+    //   - restrictedExpression → scalar only (WHERE / GROUP BY / JOIN ON /
+    //                            SET RHS / VALUES / DECLARE assignment)
+    //   - tableSource          → tableValued
+    //   - tableName / numeric  → none
+    if (isMidWord) {
+      const emitFn = (name: string) => {
+        if (seenKeywords.has(name.toUpperCase())) return
         suggestions.push({
-          label: fn,
+          label: name,
           kind: SuggestionKind.Function,
-          insertText: fn,
+          insertText: name,
           priority: SuggestionPriority.Low,
         })
+      }
+      if (includeScalarFunctions) {
+        for (const fn of scalarFunctions) emitFn(fn)
+      }
+      if (includeAggregateFunctions) {
+        for (const fn of aggregateFunctions) emitFn(fn)
+      }
+      if (includeWindowFunctions) {
+        for (const fn of windowFunctions) emitFn(fn)
+      }
+      if (includeTableValuedFunctions) {
+        for (const fn of tableValuedFunctions) emitFn(fn)
       }
     }
 

@@ -83,6 +83,14 @@ export interface ContentAssistResult {
   suggestColumns: boolean
   /** Whether the grammar context expects table names (tableName positions, or expression context) */
   suggestTables: boolean
+  /** Whether scalar functions are valid at this position (any expression context) */
+  suggestScalarFunctions: boolean
+  /** Whether aggregate functions are valid at this position (SELECT/ORDER BY/HAVING) */
+  suggestAggregateFunctions: boolean
+  /** Whether window functions are valid at this position (SELECT/ORDER BY) */
+  suggestWindowFunctions: boolean
+  /** Whether table-valued functions are valid at this position (FROM/JOIN) */
+  suggestTableValuedFunctions: boolean
   /**
    * Bare column names (lowercase) referenced before the cursor in expression
    * context. Used by the provider to boost tables containing all these columns.
@@ -595,27 +603,6 @@ function extractTables(fullSql: string, tokens: IToken[]): ExtractResult {
 // =============================================================================
 
 /**
- * Check if a ruleStack path represents the catch-all implicit SELECT or pivot
- * at the top-level statement dispatch. These are BACKTRACK alternatives that
- * computeContentAssist explores unconditionally, producing noise when a
- * specific statement rule already matched.
- *
- * Detects: statement → implicitSelectBody / implicitSelectStatement / pivotStatement (top-level catch-all)
- * Does NOT match nested uses (e.g., cteDefinition → implicitSelectBody).
- */
-function isImplicitStatementPath(
-  ruleStack: string[],
-  implicitRules: Set<string>,
-): boolean {
-  for (let i = 0; i < ruleStack.length - 1; i++) {
-    if (ruleStack[i] === "statement" && implicitRules.has(ruleStack[i + 1])) {
-      return true
-    }
-  }
-  return false
-}
-
-/**
  * Collapse a trailing qualified reference (ident.ident...ident) in the token
  * stream into a single identifier token. This allows re-computing suggestions
  * as if the user typed a simple column name, working around Chevrotain's
@@ -665,29 +652,181 @@ function collapseTrailingQualifiedRef(tokens: IToken[]): IToken[] | null {
 }
 
 /**
- * Classify an identifier suggestion path based on its ruleStack.
- * - "column": identifierExpression or columnRef → suggest columns + tables
- * - "table": tableName rule → suggest tables only
- * - "newName": everything else (CREATE TABLE name, user names, etc.) → no suggestions
+ * Position categories used to drive context-aware suggestion emission.
+ *
+ * - "newName"             — name being defined (CREATE TABLE <name>): suppress
+ *                           all schema/function suggestions.
+ * - "expression"          — expression position where aggregates and windows
+ *                           are syntactically valid: SELECT items, ORDER BY.
+ * - "restrictedExpression"— any expression where aggregates and windows are
+ *                           NOT valid: WHERE / GROUP BY / JOIN ON predicates,
+ *                           UPDATE SET RHS, INSERT VALUES rows, DECLARE
+ *                           assignment RHS.
+ * - "columnReference"     — bare column-name reference with no surrounding
+ *                           expression context: ALTER TABLE … DROP COLUMN
+ *                           <name>, ALTER TABLE … RENAME COLUMN <name>.
+ *                           Columns suggested; functions never valid here.
+ * - "tableSource"         — FROM/JOIN positions: tables + table-valued fns.
+ * - "tableName"           — DROP TABLE / INSERT INTO / UPDATE / TRUNCATE
+ *                           TABLE / RENAME TABLE: tables only, no functions.
+ * - "numeric"             — LIMIT / OFFSET: numeric literal expected; nothing
+ *                           useful to suggest from schema or functions.
  */
-function classifyIdentifierPath(
-  ruleStack: string[],
-): "column" | "table" | "newName" {
-  if (ruleStack.includes("valuesClause")) return "newName"
-  if (
+export type PositionKind =
+  | "newName"
+  | "expression"
+  | "restrictedExpression"
+  | "columnReference"
+  | "tableSource"
+  | "tableName"
+  | "numeric"
+
+// Marker rules that, when encountered before any "fresh expression" marker
+// while walking the ruleStack innermost-to-outermost, restrict the position
+// to scalar-only (no aggregates, no windows). These are positions where SQL
+// disallows aggregation: WHERE/GROUP BY/JOIN ON predicates, UPDATE SET, INSERT
+// VALUES rows, DECLARE assignments.
+const RESTRICTED_EXPRESSION_RULES = new Set([
+  "whereClause",
+  "groupByClause",
+  "setClause", // UPDATE x SET col = <expr>
+  "valuesList", // INSERT INTO t VALUES (<expr>, ...)
+  "joinClause", // ... JOIN ... ON <expr>
+  "declareAssignment", // DECLARE @x := <expr>
+])
+
+// Marker rules that introduce a fresh expression context. When walking the
+// ruleStack innermost-to-outermost, hitting one of these BEFORE a restriction
+// marker means we're inside a nested expression where aggregates/windows are
+// valid again — e.g. `WHERE id IN (SELECT count(*) FROM ...)`. The inner
+// selectItem overrides the outer whereClause restriction.
+const FRESH_EXPRESSION_RULES = new Set(["selectItem"])
+
+/**
+ * Classify an identifier suggestion path based on its ruleStack.
+ * Walks ruleStack markers to map a Chevrotain parse position onto a semantic
+ * PositionKind that the suggestion-builder can dispatch on.
+ */
+function classifyIdentifierPath(ruleStack: string[]): PositionKind {
+  if (ruleStack.includes("limitClause")) return "numeric"
+
+  // Full expression context: the parser explicitly entered identifierExpression
+  // (the productive expression rule) OR qualifiedStar (`t.*` — only legal in
+  // selectItem position). Both allow aggregates/windows where applicable.
+  const hasExpressionMarker =
     ruleStack.includes("identifierExpression") ||
-    ruleStack.includes("columnRef") ||
     ruleStack.includes("qualifiedStar")
-  )
-    return "column"
-  if (ruleStack.includes("tableName")) return "table"
+  if (hasExpressionMarker) {
+    // Walk innermost-to-outermost. The first scope marker we hit wins:
+    // - selectItem → fresh expression context, aggregates allowed (handles
+    //   subqueries inside WHERE/SET/JOIN-ON without inheriting restriction)
+    // - whereClause/groupByClause/etc. → restricted, scalar only
+    for (let i = ruleStack.length - 1; i >= 0; i--) {
+      const r = ruleStack[i]
+      if (FRESH_EXPRESSION_RULES.has(r)) return "expression"
+      if (RESTRICTED_EXPRESSION_RULES.has(r)) return "restrictedExpression"
+    }
+    return "expression"
+  }
+
+  // columnRef without an enclosing expression rule = bare column-name reference.
+  // E.g. ALTER TABLE x DROP COLUMN <name>, CREATE INDEX ON x(<name>).
+  // Columns are valid; functions and other tables are not.
+  if (ruleStack.includes("columnRef")) return "columnReference"
+
+  if (ruleStack.includes("tableName")) {
+    // tableSource = under fromClause / joinClause / tableRef (functions OK).
+    // Anything else (DROP/INSERT INTO/UPDATE/etc.) is a bare table reference
+    // where table-valued functions don't apply.
+    if (
+      ruleStack.includes("fromClause") ||
+      ruleStack.includes("joinClause") ||
+      ruleStack.includes("tableRef")
+    ) {
+      return "tableSource"
+    }
+    return "tableName"
+  }
+
   return "newName"
 }
 
-interface ComputeResult {
-  nextTokenTypes: TokenType[]
+/**
+ * Set of category flags that the suggestion-builder consults to decide which
+ * function and schema buckets to emit.
+ */
+export interface CategoryFlags {
   suggestColumns: boolean
   suggestTables: boolean
+  suggestScalarFunctions: boolean
+  suggestAggregateFunctions: boolean
+  suggestWindowFunctions: boolean
+  suggestTableValuedFunctions: boolean
+}
+
+/** All flags off — starting point for OR-accumulation across ruleStacks. */
+function emptyCategoryFlags(): CategoryFlags {
+  return {
+    suggestColumns: false,
+    suggestTables: false,
+    suggestScalarFunctions: false,
+    suggestAggregateFunctions: false,
+    suggestWindowFunctions: false,
+    suggestTableValuedFunctions: false,
+  }
+}
+
+/**
+ * Map a PositionKind to the set of category flags valid at that position.
+ * The suggestion-builder unions flags from every ruleStack the parser explored.
+ */
+function flagsForPosition(kind: PositionKind): Partial<CategoryFlags> {
+  switch (kind) {
+    case "expression":
+      return {
+        suggestColumns: true,
+        suggestTables: true,
+        suggestScalarFunctions: true,
+        suggestAggregateFunctions: true,
+        suggestWindowFunctions: true,
+      }
+    case "restrictedExpression":
+      return {
+        suggestColumns: true,
+        suggestTables: true,
+        suggestScalarFunctions: true,
+      }
+    case "columnReference":
+      // Bare column name (e.g. ALTER DROP COLUMN <name>) — only columns of
+      // the relevant table. No functions, no other tables.
+      return {
+        suggestColumns: true,
+      }
+    case "tableSource":
+      return {
+        suggestTables: true,
+        suggestTableValuedFunctions: true,
+      }
+    case "tableName":
+      return {
+        suggestTables: true,
+      }
+    case "numeric":
+    case "newName":
+      return {}
+  }
+}
+
+/** Accumulate (OR) the flags for one PositionKind into the running set. */
+function accumulateFlags(target: CategoryFlags, kind: PositionKind): void {
+  const partial = flagsForPosition(kind)
+  for (const key of Object.keys(partial) as (keyof CategoryFlags)[]) {
+    if (partial[key]) target[key] = true
+  }
+}
+
+interface ComputeResult extends CategoryFlags {
+  nextTokenTypes: TokenType[]
   isConditionContext: boolean
 }
 
@@ -698,73 +837,53 @@ interface ComputeResult {
  * the insertStatement path when WITH is present, missing selectStatement and
  * updateStatement paths. This function detects that case and merges suggestions
  * from all WITH-capable statement types.
+ *
+ * Note on the implicit-SELECT / pivot backtrack paths: a previous version of
+ * this file filtered ruleStacks that traversed `implicitSelectBody` /
+ * `implicitSelectStatement` / `pivotStatement` to suppress noise when a
+ * specific statement rule had matched. That filter was removed because the
+ * category flags below already gate function emission per PositionKind, so
+ * the implicit/pivot paths can only contribute tableSource-style identifier
+ * suggestions — which is the desired behaviour for shorthand table queries.
  */
 function computeSuggestions(tokens: IToken[]): ComputeResult {
   const ruleName = tokens.some((t) => t.tokenType.name === "Semicolon")
     ? "statements"
     : "statement"
   const suggestions = parser.computeContentAssist(ruleName, tokens)
+  const result = suggestions.map((s) => s.nextTokenType)
 
-  // Filter out noise from implicit SELECT / pivot catch-all paths.
-  const IMPLICIT_RULES = new Set([
-    "implicitSelectBody",
-    "implicitSelectStatement",
-    "pivotStatement",
-  ])
-  const specific = suggestions.filter(
-    (s) => !isImplicitStatementPath(s.ruleStack, IMPLICIT_RULES),
-  )
-  const effectiveSuggestions = specific.length > 0 ? specific : suggestions
-  const result = effectiveSuggestions.map((s) => s.nextTokenType)
-
-  // Classify each IdentifierKeyword path to determine whether columns/tables
-  // should be suggested, based on the grammar rule that expects the identifier.
-  let suggestColumns = false
-  let suggestTables = false
-  for (const s of effectiveSuggestions) {
+  // Walk every IdentifierKeyword path and union the category flags valid at
+  // that position. Multiple paths may be alive simultaneously (Chevrotain
+  // explores all reachable alternatives) — OR-ing covers all valid contexts.
+  const flags = emptyCategoryFlags()
+  for (const s of suggestions) {
     if (s.nextTokenType.name === "IdentifierKeyword") {
-      const cls = classifyIdentifierPath(s.ruleStack)
-      if (cls === "column") {
-        suggestColumns = true
-        suggestTables = true
-      } else if (cls === "table") {
-        suggestTables = true
-      }
+      accumulateFlags(flags, classifyIdentifierPath(s.ruleStack))
     }
   }
 
   // qualifiedStar fix: When computeContentAssist finds the qualifiedStar
   // path in selectItem (suggesting just Dot), the expression path is missed.
-  // Detect this by checking if the *specific* (non-catch-all) suggestions are
-  // all from qualifiedStar, then re-compute with the qualified reference
-  // collapsed to a single identifier to get expression-path suggestions.
+  // Detect this by checking if the suggestions are all from qualifiedStar,
+  // then re-compute with the qualified reference collapsed to a single
+  // identifier to get expression-path suggestions.
   if (
-    effectiveSuggestions.length > 0 &&
-    effectiveSuggestions.every((s) => s.ruleStack.includes("qualifiedStar"))
+    suggestions.length > 0 &&
+    suggestions.every((s) => s.ruleStack.includes("qualifiedStar"))
   ) {
     const collapsed = collapseTrailingQualifiedRef(tokens)
     if (collapsed) {
       try {
         const extra = parser.computeContentAssist(ruleName, collapsed)
-        const filteredExtra = extra.filter(
-          (s) => !isImplicitStatementPath(s.ruleStack, IMPLICIT_RULES),
-        )
-        const extraEffective = filteredExtra.length > 0 ? filteredExtra : extra
         const seen = new Set(result.map((t) => t.name))
-        for (const s of extraEffective) {
+        for (const s of extra) {
           if (!seen.has(s.nextTokenType.name)) {
             seen.add(s.nextTokenType.name)
             result.push(s.nextTokenType)
           }
-          // Classify extra paths too
           if (s.nextTokenType.name === "IdentifierKeyword") {
-            const cls = classifyIdentifierPath(s.ruleStack)
-            if (cls === "column") {
-              suggestColumns = true
-              suggestTables = true
-            } else if (cls === "table") {
-              suggestTables = true
-            }
+            accumulateFlags(flags, classifyIdentifierPath(s.ruleStack))
           }
         }
       } catch (e) {
@@ -776,7 +895,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   // Check if an expression operator's ruleStack includes "whereClause".
   // Must check operators specifically — Chevrotain explores ahead into
   // not-yet-started WHERE paths even from JOIN ON positions.
-  const isConditionContext = effectiveSuggestions.some(
+  const isConditionContext = suggestions.some(
     (s) =>
       EXPRESSION_OPERATORS.has(s.nextTokenType.name) &&
       s.ruleStack.includes("whereClause"),
@@ -784,8 +903,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
 
   return {
     nextTokenTypes: result,
-    suggestColumns,
-    suggestTables,
+    ...flags,
     isConditionContext,
   }
 }
@@ -921,6 +1039,10 @@ export function getContentAssist(
         lexErrors: [],
         suggestColumns: false,
         suggestTables: false,
+        suggestScalarFunctions: false,
+        suggestAggregateFunctions: false,
+        suggestWindowFunctions: false,
+        suggestTableValuedFunctions: false,
         referencedColumns: new Set(),
         isConditionContext: false,
       }
@@ -951,12 +1073,20 @@ export function getContentAssist(
   let nextTokenTypes: TokenType[] = []
   let suggestColumns = false
   let suggestTables = false
+  let suggestScalarFunctions = false
+  let suggestAggregateFunctions = false
+  let suggestWindowFunctions = false
+  let suggestTableValuedFunctions = false
   let isConditionContext = false
   try {
     const computed = computeSuggestions(tokensForAssist)
     nextTokenTypes = computed.nextTokenTypes
     suggestColumns = computed.suggestColumns
     suggestTables = computed.suggestTables
+    suggestScalarFunctions = computed.suggestScalarFunctions
+    suggestAggregateFunctions = computed.suggestAggregateFunctions
+    suggestWindowFunctions = computed.suggestWindowFunctions
+    suggestTableValuedFunctions = computed.suggestTableValuedFunctions
     isConditionContext = computed.isConditionContext
   } catch (e) {
     // If content assist fails, return empty suggestions
@@ -1043,6 +1173,10 @@ export function getContentAssist(
     qualifiedTableRef: qualifiedRef?.table,
     suggestColumns,
     suggestTables,
+    suggestScalarFunctions,
+    suggestAggregateFunctions,
+    suggestWindowFunctions,
+    suggestTableValuedFunctions,
     referencedColumns,
     isConditionContext,
   }

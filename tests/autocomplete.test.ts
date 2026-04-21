@@ -1052,25 +1052,6 @@ describe("CREATE TABLE autocomplete", () => {
     expect(labels).toContain("ZSTD")
   })
 
-  describe("PIVOT walkthrough", () => {
-    it("should provide correct suggestions at each word boundary", () => {
-      assertSuggestionsWalkthrough(provider, [
-        {
-          typed: "trades ",
-          expects: ["PIVOT"],
-        },
-        {
-          typed: "trades PIVOT (sum(amount) ",
-          expects: ["FOR"],
-        },
-        {
-          typed: "trades PIVOT (sum(amount) FOR category ",
-          expects: ["IN"],
-        },
-      ])
-    })
-  })
-
   describe("CREATE VIEW walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
       assertSuggestionsWalkthrough(provider, [
@@ -1371,23 +1352,420 @@ describe("Expression autocomplete", () => {
 })
 
 describe("Implicit SELECT autocomplete", () => {
-  it("should suggest columns after implicit select WHERE", () => {
-    const labels = getLabelsAt(provider, "trades WHERE ")
-    expect(labels).toContain("symbol")
-    expect(labels).toContain("price")
-    expect(labels).toContain("NOT")
-    expect(labels).toContain("CASE")
-  })
-
-  it("should suggest keywords after bare table name", () => {
-    const labels = getLabelsAt(provider, "trades ")
-    expect(labels).toContain("WHERE")
-  })
-
   it("should suggest columns for incomplete implicit select in multi-statement context", () => {
     const labels = getLabelsAt(provider, "SELECT 1; trades WHERE ")
     // Should get suggestions even after semicolon with implicit select
     expect(labels.length).toBeGreaterThan(0)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Statement start: keywords + tables both suggested (shorthand form enabled)
+  // ---------------------------------------------------------------------------
+
+  describe("at statement start", () => {
+    it("suggests both top-level keywords and table names at empty buffer", () => {
+      const labels = getLabelsAt(provider, "")
+      // Top-level statement keywords
+      expect(labels).toContain("SELECT")
+      expect(labels).toContain("INSERT")
+      expect(labels).toContain("UPDATE")
+      expect(labels).toContain("CREATE")
+      expect(labels).toContain("DROP")
+      expect(labels).toContain("ALTER")
+      expect(labels).toContain("EXPLAIN")
+      expect(labels).toContain("WITH")
+      expect(labels).toContain("DECLARE")
+      expect(labels).toContain("TRUNCATE")
+      expect(labels).toContain("VACUUM")
+      // Tables for implicit select / pivot shorthand
+      expect(labels).toContain("trades")
+      expect(labels).toContain("orders")
+      expect(labels).toContain("users")
+    })
+
+    it("ranks tables lower than keywords (MediumLow vs Medium)", () => {
+      const suggestions = provider.getSuggestions("", 0)
+      const select = suggestions.find((s) => s.label === "SELECT")
+      const trades = suggestions.find((s) => s.label === "trades")
+      expect(select).toBeDefined()
+      expect(trades).toBeDefined()
+      // Lower priority value = sorts higher. Keywords should sort above tables.
+      expect(select!.priority).toBeLessThan(trades!.priority)
+    })
+
+    it("suggests tables as Table kind at statement start", () => {
+      const tables = getSuggestionsOfKind(provider, "", SuggestionKind.Table)
+      const labels = tables.map((s) => s.label).sort()
+      expect(labels).toEqual(["orders", "trades", "users"])
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Full walkthrough: bare table → WHERE → SAMPLE BY → ORDER BY → LIMIT → UNION
+  // ---------------------------------------------------------------------------
+
+  describe("clause-by-clause walkthrough", () => {
+    it("after bare table name, suggests all clause starters", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades ",
+          expects: [
+            "WHERE",
+            "SAMPLE",
+            "LATEST",
+            "GROUP",
+            "ORDER",
+            "LIMIT",
+            "UNION",
+            "INTERSECT",
+            "EXCEPT",
+            "PIVOT",
+            "JOIN",
+            "LEFT JOIN",
+            "INNER JOIN",
+            "CROSS JOIN",
+            "ASOF JOIN",
+            "LT JOIN",
+            "SPLICE JOIN",
+            "AS",
+            "TIMESTAMP",
+          ],
+          // No columns or top-level statement keywords here
+          rejects: ["symbol", "price", "SELECT", "INSERT", "CREATE"],
+        },
+      ])
+    })
+
+    it("WHERE clause walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades WHERE ",
+          // Columns + expression starters
+          expects: [
+            "symbol",
+            "price",
+            "amount",
+            "timestamp",
+            "CASE",
+            "CAST",
+            "NOT",
+            "NULL",
+            "TRUE",
+            "FALSE",
+          ],
+          rejects: ["WHERE", "SELECT"],
+        },
+        {
+          typed: "trades WHERE price ",
+          // Comparison/predicate operators
+          expects: ["BETWEEN", "IN", "LIKE", "ILIKE", "IS", "NOT"],
+        },
+        {
+          typed: "trades WHERE price > 1 ",
+          // Boolean continuation + PIVOT (since WHERE can precede PIVOT)
+          expects: ["AND", "OR", "PIVOT"],
+        },
+        {
+          typed: "trades WHERE price > 1 AND ",
+          // Back to expression start
+          expects: ["symbol", "price", "NOT", "CASE"],
+          rejects: ["WHERE"],
+        },
+      ])
+    })
+
+    it("SAMPLE BY walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        { typed: "trades SAMPLE ", expects: ["BY"], rejects: ["WHERE"] },
+        {
+          typed: "trades SAMPLE BY 1h ",
+          // After SAMPLE BY interval: modifiers and downstream clauses
+          expects: [
+            "ALIGN",
+            "FILL",
+            "FROM",
+            "TO",
+            "GROUP",
+            "ORDER",
+            "LIMIT",
+            "UNION",
+            "EXCEPT",
+            "INTERSECT",
+          ],
+        },
+      ])
+    })
+
+    it("LATEST ON walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades LATEST ",
+          // LATEST ON and LATEST BY + clause continuation
+          expects: ["ON", "BY"],
+        },
+        {
+          typed: "trades LATEST ON ",
+          expects: ["symbol", "price", "timestamp"],
+          rejects: ["WHERE", "SELECT"],
+        },
+        {
+          typed: "trades LATEST ON timestamp ",
+          expects: ["PARTITION"],
+        },
+      ])
+    })
+
+    it("GROUP BY walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        { typed: "trades GROUP ", expects: ["BY"] },
+        {
+          typed: "trades GROUP BY ",
+          expects: ["symbol", "price", "CASE", "CAST", "NOT"],
+        },
+      ])
+    })
+
+    it("ORDER BY walkthrough", () => {
+      assertSuggestionsWalkthrough(provider, [
+        { typed: "trades ORDER ", expects: ["BY"] },
+        {
+          typed: "trades ORDER BY ",
+          expects: ["symbol", "price", "CASE", "CAST", "NOT"],
+        },
+        {
+          typed: "trades ORDER BY price ",
+          // Direction + downstream clauses + set operations
+          expects: ["ASC", "DESC", "LIMIT", "UNION", "INTERSECT", "EXCEPT"],
+        },
+        {
+          typed: "trades ORDER BY price ASC ",
+          expects: ["LIMIT", "UNION", "INTERSECT", "EXCEPT"],
+          rejects: ["ASC", "DESC"],
+        },
+      ])
+    })
+
+    it("LIMIT walkthrough", () => {
+      // LIMIT/OFFSET expect a numeric literal — schema and functions are not
+      // useful here. Position is classified as "numeric" → no column / table /
+      // function suggestions.
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades LIMIT ",
+          expects: [],
+          rejects: ["symbol", "price", "max", "count", "materialized_views"],
+        },
+        {
+          typed: "trades LIMIT 10, ",
+          expects: [],
+          rejects: ["symbol", "price", "max", "count"],
+        },
+      ])
+    })
+
+    it("UNION / INTERSECT / EXCEPT suggests set-op body starters", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades UNION ",
+          // ALL modifier + explicit SELECT body + implicit bare table
+          expects: ["ALL", "SELECT", "trades", "orders", "users"],
+        },
+        {
+          typed: "trades UNION ALL ",
+          expects: ["SELECT", "trades", "orders"],
+          rejects: ["ALL"],
+        },
+        {
+          typed: "trades INTERSECT ",
+          expects: ["ALL", "SELECT", "trades"],
+        },
+        {
+          typed: "trades EXCEPT ",
+          expects: ["ALL", "SELECT", "trades"],
+        },
+      ])
+    })
+
+    it("comma-separated sources suggest another table reference", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades, ",
+          expects: ["trades", "orders", "users", "LATERAL"],
+          rejects: ["WHERE", "SELECT"],
+        },
+      ])
+    })
+
+    it("alias (explicit AS and implicit) does not break continuation", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades AS t ",
+          expects: ["WHERE", "ORDER", "GROUP", "LIMIT", "JOIN"],
+        },
+        {
+          typed: "trades t ",
+          expects: ["WHERE", "ORDER", "GROUP", "LIMIT", "JOIN"],
+        },
+      ])
+    })
+  })
+})
+
+// =============================================================================
+// PIVOT autocomplete walkthrough
+// =============================================================================
+
+describe("PIVOT autocomplete walkthrough", () => {
+  describe("pivot over a bare table", () => {
+    it("suggests PIVOT alongside other clauses after bare table", () => {
+      const labels = getLabelsAt(provider, "trades ")
+      expect(labels).toContain("PIVOT")
+    })
+
+    it("suggests opening paren after PIVOT keyword", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT ",
+          expects: ["("],
+        },
+      ])
+    })
+
+    it("suggests aggregation expression tokens inside PIVOT (", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (",
+          expects: ["CASE", "CAST", "NOT", "TRUE", "FALSE", "NULL"],
+        },
+      ])
+    })
+
+    it("suggests FOR/AS and expression continuation after aggregation", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) ",
+          expects: [
+            "FOR",
+            "AS",
+            "AND",
+            "OR",
+            "BETWEEN",
+            "IN",
+            "LIKE",
+            "ILIKE",
+            "IS",
+            "NOT",
+            "OVER",
+            "IGNORE",
+            "RESPECT",
+            "WITHIN",
+          ],
+        },
+      ])
+    })
+
+    it("suggests FOR after aggregation with AS alias", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) AS total ",
+          expects: ["FOR"],
+        },
+      ])
+    })
+
+    it("suggests pivot column identifiers after FOR", () => {
+      const labels = getLabelsAt(provider, "trades PIVOT (sum(price) FOR ")
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("price")
+      expect(labels).toContain("amount")
+      expect(labels).toContain("timestamp")
+    })
+
+    it("suggests IN after FOR column", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) FOR symbol ",
+          expects: ["IN"],
+        },
+      ])
+    })
+
+    it("suggests subquery starters and literals inside FOR ... IN (", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) FOR symbol IN (",
+          expects: [
+            "SELECT",
+            "WITH",
+            "DECLARE",
+            "CASE",
+            "CAST",
+            "TRUE",
+            "FALSE",
+            "NULL",
+            "NOT",
+          ],
+        },
+      ])
+    })
+
+    it("suggests another FOR or GROUP BY after closing a single IN clause", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) FOR symbol IN ('BTC') ",
+          expects: ["FOR", "GROUP"],
+        },
+      ])
+    })
+
+    it("GROUP BY walkthrough inside PIVOT", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) FOR symbol IN ('BTC') GROUP ",
+          expects: ["BY"],
+        },
+        {
+          typed: "trades PIVOT (sum(price) FOR symbol IN ('BTC') GROUP BY ",
+          expects: ["CASE", "CAST", "NOT", "symbol", "price"],
+        },
+      ])
+    })
+
+    it("suggests ORDER/LIMIT/AS after closing PIVOT ))", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades PIVOT (sum(price) FOR symbol IN ('BTC')) ",
+          expects: ["ORDER", "LIMIT", "AS"],
+        },
+      ])
+    })
+  })
+
+  describe("pivot with WHERE clause before PIVOT", () => {
+    it("suggests PIVOT after WHERE predicate", () => {
+      const labels = getLabelsAt(provider, "trades WHERE price > 100 ")
+      expect(labels).toContain("PIVOT")
+    })
+
+    it("suggests ( after WHERE ... PIVOT", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "trades WHERE price > 100 PIVOT ",
+          expects: ["("],
+        },
+      ])
+    })
+  })
+
+  describe("pivot over a parenthesized subquery", () => {
+    it("suggests PIVOT (and WHERE) after (SELECT ...)", () => {
+      assertSuggestionsWalkthrough(provider, [
+        {
+          typed: "(SELECT * FROM trades) ",
+          expects: ["PIVOT", "WHERE"],
+        },
+      ])
+    })
   })
 })
 
@@ -3087,15 +3465,22 @@ describe("CTE autocomplete", () => {
       expect(tables).toHaveLength(0)
     })
 
-    it("INSERT VALUES: no columns", () => {
-      const suggestions = provider.getSuggestions(
-        "INSERT INTO trades VALUES (",
-        27,
+    it("INSERT VALUES: scalar functions allowed (now/rnd_*); no aggregates", () => {
+      // VALUES rows are predicate-expression positions: scalar functions are
+      // useful (now(), rnd_symbol(), …) but aggregates aren't (you can't
+      // collapse rows here). Columns of the target table are technically
+      // valid syntax (treated as bare references) so we don't reject them.
+      const sugs = provider.getSuggestions(
+        "INSERT INTO trades VALUES (n",
+        "INSERT INTO trades VALUES (n".length,
       )
-      const columns = suggestions.filter(
-        (s) => s.kind === SuggestionKind.Column,
-      )
-      expect(columns).toHaveLength(0)
+      const fns = sugs
+        .filter((s) => s.kind === SuggestionKind.Function)
+        .map((s) => s.label)
+      expect(fns).toContain("now")
+      expect(fns).not.toContain("count") // aggregate
+      expect(fns).not.toContain("count_distinct")
+      expect(fns).not.toContain("materialized_views") // tableValued
     })
 
     it("VACUUM TABLE suggests tables, not columns", () => {
@@ -3446,6 +3831,416 @@ describe("condition-aware operator priority", () => {
     it("keeps expression operators at Medium", () => {
       expect(getPriority(sql, "AND")).toBe(SuggestionPriority.Medium)
       expect(getPriority(sql, "LIKE")).toBe(SuggestionPriority.Medium)
+    })
+  })
+})
+
+// =============================================================================
+// Position-typed suggestions — by statement type
+// =============================================================================
+// Walks every statement type the parser supports, asserting that the right
+// function categories (scalar / aggregate / window / tableValued) and schema
+// buckets (columns / tables) appear at each cursor position — and that the
+// wrong ones do NOT leak in. Driven by PositionKind classification in
+// content-assist.ts and category dispatch in suggestion-builder.ts.
+//
+// Each `it` title encodes:
+//   "<typed sql with | for cursor> — <position kind> — <one-line rule>"
+// =============================================================================
+
+/**
+ * Assert which suggestion categories appear / do not appear at a given cursor
+ * position. Distinguishes by SuggestionKind so we check that "max" arrives as
+ * a function (not as a matching keyword), etc.
+ */
+function assertAtPosition(
+  sql: string,
+  expects: {
+    hasFunction?: string[]
+    hasTable?: string[]
+    hasColumn?: string[]
+    hasKeyword?: string[]
+    noFunction?: string[]
+    noTable?: string[]
+    noColumn?: string[]
+  },
+) {
+  const sugs = provider.getSuggestions(sql, sql.length)
+  const byKind = (k: SuggestionKind) =>
+    new Set(sugs.filter((s) => s.kind === k).map((s) => s.label))
+  const fns = byKind(SuggestionKind.Function)
+  const tables = byKind(SuggestionKind.Table)
+  const cols = byKind(SuggestionKind.Column)
+  const kws = byKind(SuggestionKind.Keyword)
+
+  const at = `at "${sql}"`
+  for (const x of expects.hasFunction ?? [])
+    expect(fns, `${at} expected function "${x}"`).toContain(x)
+  for (const x of expects.hasTable ?? [])
+    expect(tables, `${at} expected table "${x}"`).toContain(x)
+  for (const x of expects.hasColumn ?? [])
+    expect(cols, `${at} expected column "${x}"`).toContain(x)
+  for (const x of expects.hasKeyword ?? [])
+    expect(kws, `${at} expected keyword "${x}"`).toContain(x)
+  for (const x of expects.noFunction ?? [])
+    expect(fns, `${at} function "${x}" should NOT appear`).not.toContain(x)
+  for (const x of expects.noTable ?? [])
+    expect(tables, `${at} table "${x}" should NOT appear`).not.toContain(x)
+  for (const x of expects.noColumn ?? [])
+    expect(cols, `${at} column "${x}" should NOT appear`).not.toContain(x)
+}
+
+describe("Position-typed suggestions — by statement type", () => {
+  // ---------------------------------------------------------------------------
+  // Read statements (SELECT family)
+  // ---------------------------------------------------------------------------
+
+  describe("SELECT — selectItem positions (expression)", () => {
+    it("SELECT m| — scalar + aggregate + window allowed; tableValued is NOT", () => {
+      assertAtPosition("SELECT m", {
+        hasFunction: ["max", "min", "millis"],
+        noFunction: ["materialized_views"],
+      })
+    })
+
+    it("SELECT col, m| — same expression rules after a comma", () => {
+      assertAtPosition("SELECT symbol, m", {
+        hasFunction: ["max", "min"],
+        noFunction: ["materialized_views"],
+      })
+    })
+  })
+
+  describe("SELECT — clause positions", () => {
+    it("SELECT * FROM trades WHERE c| — restrictedExpression — scalar only, no aggregates", () => {
+      assertAtPosition("SELECT * FROM trades WHERE c", {
+        hasFunction: ["coalesce", "concat", "ceil"],
+        noFunction: [
+          "count",
+          "count_distinct",
+          "covar_pop",
+          "materialized_views",
+        ],
+      })
+    })
+
+    it("SELECT * FROM trades GROUP BY c| — restrictedExpression — scalar only, no aggregates", () => {
+      assertAtPosition("SELECT * FROM trades GROUP BY c", {
+        hasFunction: ["coalesce", "ceil"],
+        noFunction: ["count", "count_distinct", "materialized_views"],
+      })
+    })
+
+    it("SELECT * FROM trades ORDER BY c| — expression — aggregates ALLOWED", () => {
+      assertAtPosition("SELECT * FROM trades ORDER BY c", {
+        hasFunction: ["coalesce", "count", "ceil"],
+        noFunction: ["materialized_views"],
+      })
+    })
+
+    it("SELECT * FROM trades LIMIT | — numeric — no function/column/table", () => {
+      assertAtPosition("SELECT * FROM trades LIMIT ", {
+        noFunction: ["max", "count", "materialized_views"],
+        noTable: ["trades"],
+        noColumn: ["price", "symbol"],
+      })
+    })
+  })
+
+  describe("SELECT — table source positions", () => {
+    it("SELECT * FROM m| — tableSource — tableValued meta fns + tables; NO scalars", () => {
+      assertAtPosition("SELECT * FROM m", {
+        hasFunction: ["materialized_views"],
+        noFunction: ["max", "min", "median"],
+      })
+    })
+  })
+
+  describe("Implicit SELECT (bare table shorthand)", () => {
+    it("empty buffer — statement-level keywords + tables (tra → TRUNCATE + trades)", () => {
+      assertAtPosition("", {
+        hasKeyword: ["SELECT", "INSERT", "CREATE", "WITH", "DROP"],
+        hasTable: ["trades", "orders", "users"],
+        noFunction: ["max", "materialized_views"],
+      })
+    })
+
+    it("tra| at empty buffer — keyword AND table both match the prefix", () => {
+      assertAtPosition("tra", {
+        hasKeyword: ["TRUNCATE"],
+        hasTable: ["trades"],
+      })
+    })
+
+    it("trades w| — clause keywords after bare table (WHERE/etc.)", () => {
+      assertAtPosition("trades w", { hasKeyword: ["WHERE"] })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Write statements (DML)
+  // ---------------------------------------------------------------------------
+
+  describe("INSERT", () => {
+    it("INSERT | — only INTO is valid here", () => {
+      assertAtPosition("INSERT ", { hasKeyword: ["INTO"] })
+    })
+
+    it("INSERT INTO m| — tableName — no functions of any kind", () => {
+      assertAtPosition("INSERT INTO m", {
+        noFunction: ["materialized_views", "max", "min"],
+      })
+    })
+
+    it("INSERT INTO trades VALUES (m| — restrictedExpression — scalar fns allowed, no aggregates", () => {
+      assertAtPosition("INSERT INTO trades VALUES (m", {
+        // Scalar functions like materialize-able timestamp/random — actually
+        // the prefix `m` matches `make_geohash`, `md5`, `micros`, `millis`, etc.
+        hasFunction: ["md5", "millis"],
+        // No aggregates (can't collapse rows in VALUES) and no tableValued
+        // meta fns (don't return scalars).
+        noFunction: ["max", "materialized_views"],
+      })
+    })
+  })
+
+  describe("UPDATE", () => {
+    it("UPDATE m| — tableName — no functions", () => {
+      assertAtPosition("UPDATE m", {
+        noFunction: ["max", "min", "materialized_views"],
+      })
+    })
+
+    it("UPDATE trades SET amount = c| — restrictedExpression — scalar only, no aggregates", () => {
+      assertAtPosition("UPDATE trades SET amount = c", {
+        hasFunction: ["coalesce", "concat", "ceil"],
+        noFunction: ["count", "count_distinct"],
+      })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // DDL statements
+  // ---------------------------------------------------------------------------
+
+  describe("CREATE TABLE / VIEW / MATERIALIZED VIEW", () => {
+    it("CREATE | — DDL keywords (TABLE/VIEW/INDEX/...)", () => {
+      assertAtPosition("CREATE ", { hasKeyword: ["TABLE"] })
+    })
+
+    it("CREATE TABLE x (id i| — data type keywords, no scalar functions", () => {
+      assertAtPosition("CREATE TABLE x (id i", {
+        hasKeyword: ["INT"],
+        noFunction: ["isOrdered"],
+      })
+    })
+
+    it("CREATE TABLE x (...) PARTITION B| — BY", () => {
+      assertAtPosition("CREATE TABLE x (id INT) PARTITION B", {
+        hasKeyword: ["BY"],
+      })
+    })
+
+    it("CREATE OR | — REPLACE", () => {
+      assertAtPosition("CREATE OR ", { hasKeyword: ["REPLACE"] })
+    })
+  })
+
+  describe("ALTER TABLE", () => {
+    it("ALTER | — TABLE / MATERIALIZED / USER / GROUP / ...", () => {
+      assertAtPosition("ALTER ", { hasKeyword: ["TABLE"] })
+    })
+
+    it("ALTER TABLE m| — tableName — no functions", () => {
+      assertAtPosition("ALTER TABLE m", {
+        noFunction: ["max", "materialized_views"],
+      })
+    })
+
+    it("ALTER TABLE trades A| — sub-action keywords (ADD/ATTACH/...)", () => {
+      assertAtPosition("ALTER TABLE trades A", { hasKeyword: ["ADD"] })
+    })
+
+    it("ALTER TABLE trades DROP COLUMN p| — columnReference — columns only, no functions", () => {
+      assertAtPosition("ALTER TABLE trades DROP COLUMN p", {
+        hasColumn: ["price"],
+        noFunction: ["max", "materialized_views"],
+      })
+    })
+  })
+
+  describe("DROP / TRUNCATE", () => {
+    it("DROP T| — TABLE", () => {
+      assertAtPosition("DROP T", { hasKeyword: ["TABLE"] })
+    })
+
+    it("DROP TABLE m| — tableName — no functions, not even tableValued meta fns", () => {
+      assertAtPosition("DROP TABLE m", {
+        noFunction: ["materialized_views", "max"],
+      })
+    })
+
+    it("TRUNCATE TABLE m| — tableName — no functions", () => {
+      assertAtPosition("TRUNCATE TABLE m", {
+        noFunction: ["materialized_views", "max"],
+      })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Compound / wrapped statements
+  // ---------------------------------------------------------------------------
+
+  describe("WITH (CTE)", () => {
+    it("WITH cte AS (S| — SELECT keyword inside CTE body", () => {
+      assertAtPosition("WITH cte AS (S", { hasKeyword: ["SELECT"] })
+    })
+
+    it("WITH cte AS (...) SELECT * FROM c| — CTE name shows up alongside tables", () => {
+      const sql = "WITH cte AS (SELECT * FROM trades) SELECT * FROM c"
+      const labels = provider
+        .getSuggestions(sql, sql.length)
+        .map((s) => s.label)
+      expect(labels).toContain("cte")
+    })
+  })
+
+  describe("PIVOT", () => {
+    it("trades PIVOT (s| — aggregation slot — aggregates allowed", () => {
+      assertAtPosition("trades PIVOT (s", { hasFunction: ["sum", "stddev"] })
+    })
+  })
+
+  describe("JOIN flavors — all classify as tableSource", () => {
+    for (const form of [
+      "JOIN",
+      "LEFT JOIN",
+      "INNER JOIN",
+      "CROSS JOIN",
+      "ASOF JOIN",
+      "LT JOIN",
+      "SPLICE JOIN",
+    ]) {
+      it(`SELECT * FROM trades ${form} m| — tables + tableValued; no scalars`, () => {
+        assertAtPosition(`SELECT * FROM trades ${form} m`, {
+          hasFunction: ["materialized_views", "memory_metrics"],
+          noFunction: ["max", "min", "mode"],
+        })
+      })
+    }
+
+    it("SELECT * FROM trades JOIN orders ON p| — expression — columns + scalars", () => {
+      assertAtPosition("SELECT * FROM trades JOIN orders ON p", {
+        hasColumn: ["price"],
+        hasFunction: ["power", "position"],
+        noFunction: ["materialized_views"],
+      })
+    })
+  })
+
+  describe("EXPLAIN", () => {
+    it("EXPLAIN S| — wrapped statement keywords", () => {
+      assertAtPosition("EXPLAIN S", { hasKeyword: ["SELECT"] })
+    })
+
+    it("EXPLAIN SELECT * FROM m| — wrapped FROM is still tableSource", () => {
+      assertAtPosition("EXPLAIN SELECT * FROM m", {
+        hasFunction: ["materialized_views"],
+        noFunction: ["max", "min"],
+      })
+    })
+  })
+
+  describe("SHOW", () => {
+    it("SHOW T| — sub-keywords (TABLES/...)", () => {
+      assertAtPosition("SHOW T", { hasKeyword: ["TABLES"] })
+    })
+
+    it("SHOW CREATE T| — TABLE/VIEW/MATERIALIZED", () => {
+      assertAtPosition("SHOW CREATE T", { hasKeyword: ["TABLE"] })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Regression scenarios — the exact bugs that motivated this plan
+  // ---------------------------------------------------------------------------
+
+  describe("Regression scenarios (bugs that motivated this plan)", () => {
+    it("trades ASOF JOIN m| — was leaking max/min/maxUncommittedRows", () => {
+      assertAtPosition("trades ASOF JOIN m", {
+        hasFunction: ["materialized_views"],
+        noFunction: ["max", "median"],
+      })
+    })
+
+    it("WHERE price = c| — was mixing aggregates (count) with scalars", () => {
+      assertAtPosition("SELECT * FROM trades WHERE price = c", {
+        hasFunction: ["coalesce"],
+        noFunction: ["count", "count_distinct", "materialized_views"],
+      })
+    })
+
+    it("LIMIT | — was suggesting every function", () => {
+      const sugs = provider.getSuggestions(
+        "SELECT * FROM trades LIMIT ",
+        "SELECT * FROM trades LIMIT ".length,
+      )
+      const fns = sugs.filter((s) => s.kind === SuggestionKind.Function)
+      expect(fns).toHaveLength(0)
+    })
+
+    it("WHERE id IN (SELECT c| — nested subquery restores aggregates", () => {
+      // Inner SELECT inside WHERE IN should NOT inherit predicate restriction;
+      // aggregates are valid for the inner aggregation.
+      assertAtPosition("SELECT * FROM trades WHERE id IN (SELECT c", {
+        hasFunction: ["count", "coalesce"],
+      })
+    })
+
+    it("UPDATE x SET y = (SELECT c| — nested subquery restores aggregates", () => {
+      assertAtPosition("UPDATE trades SET price = (SELECT c", {
+        hasFunction: ["count", "coalesce"],
+      })
+    })
+
+    it("JOIN orders ON c| — predicate context, no aggregates", () => {
+      assertAtPosition("SELECT * FROM trades JOIN orders ON c", {
+        hasFunction: ["coalesce", "concat"],
+        noFunction: ["count", "count_distinct"],
+      })
+    })
+
+    it("DECLARE @x := c| — assignment is restricted, no aggregates", () => {
+      assertAtPosition("DECLARE @x := c", {
+        hasFunction: ["coalesce"],
+        noFunction: ["count", "count_distinct"],
+      })
+    })
+
+    it("FROM gen| — generate_series suggested as table-valued", () => {
+      assertAtPosition("SELECT * FROM gen", {
+        hasFunction: ["generate_series"],
+      })
+    })
+
+    it("FROM long| — long_sequence suggested as table-valued", () => {
+      assertAtPosition("SELECT * FROM long", {
+        hasFunction: ["long_sequence"],
+      })
+    })
+
+    it("SELECT b| — bar (scalar) suggested in expression context", () => {
+      assertAtPosition("SELECT b", { hasFunction: ["bar"] })
+    })
+
+    it("SELECT s| — sparkline (aggregate) suggested in expression context", () => {
+      assertAtPosition("SELECT s", { hasFunction: ["sparkline"] })
+    })
+
+    it("SELECT * FROM trades WHERE col = s| — sparkline NOT suggested (aggregate)", () => {
+      assertAtPosition("SELECT * FROM trades WHERE price = s", {
+        noFunction: ["sparkline"],
+      })
     })
   })
 })
