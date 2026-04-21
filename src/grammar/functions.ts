@@ -156,6 +156,7 @@ export const functions: string[] = [
   "nvl",
   "or",
   "parquet_scan",
+  "payload",
   "permissions",
   "pg_advisory_unlock_all",
   "pg_attrdef",
