@@ -1,6 +1,17 @@
 # Changelog
 
 
+## 0.1.10 - 2026.04.22
+### Added
+- Named `WINDOW` clause: `SELECT ... WINDOW w AS (...)` with multiple windows, window inheritance, and inline-plus-named mixing. Matches QuestDB's Java parser (introduced in questdb/questdb#6746). [#24](https://github.com/questdb/sql-parser/pull/24)
+- Trailing comma accepted in select lists: `SELECT a, b, FROM t` now parses cleanly. [#24](https://github.com/questdb/sql-parser/pull/24)
+
+### Fixed
+- Named window reference in `OVER w` no longer loses the window name when round-tripping through the AST and `toSql`. [#24](https://github.com/questdb/sql-parser/pull/24)
+- Autocomplete no longer hangs on malformed input (unbalanced parens, unsupported clauses, stray terminators). A path-count budget in the content-assist DFS aborts pathological searches in <200ms and returns no suggestions, instead of freezing the UI. [#24](https://github.com/questdb/sql-parser/pull/24)
+- `WINDOW` keyword now shows up in autocomplete as a standalone clause keyword alongside `WINDOW JOIN` after a `FROM` clause. [#24](https://github.com/questdb/sql-parser/pull/24)
+
+
 ## 0.1.9 - 2026.04.21
 ### Added
 - `bar` and `sparkline` functions [#22](https://github.com/questdb/sql-parser/pull/22)
