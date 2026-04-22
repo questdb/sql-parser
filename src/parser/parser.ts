@@ -609,6 +609,15 @@ class QuestDBParser extends CstParser {
         this.SUBRULE(this.pivotBody)
         this.CONSUME(RParen)
       })
+      // Named window clause: WINDOW w AS (...) [, w2 AS (...)]
+      // Standard SQL places WINDOW between HAVING/GROUP BY and ORDER BY.
+      // GATE: disambiguate from WINDOW JOIN (which lives inside fromClause,
+      // and appears as the first token of a join, not here after GROUP BY).
+      this.option(10, {
+        GATE: () =>
+          this.LA(1).tokenType === Window && this.LA(2).tokenType !== Join,
+        DEF: () => this.SUBRULE(this.windowClause),
+      })
       this.OPTION6(() => this.SUBRULE(this.orderByClause))
       this.OPTION7(() => this.SUBRULE(this.limitClause))
     })
@@ -639,6 +648,10 @@ class QuestDBParser extends CstParser {
             this.CONSUME(Comma)
             this.SUBRULE1(this.selectItem)
           })
+          // QuestDB accepts a trailing comma in the select list — matches
+          // the Java parser's behaviour. Default 2-token lookahead keeps
+          // MANY from entering on a trailing "," followed by a keyword.
+          this.OPTION(() => this.CONSUME2(Comma))
         },
       },
       {
@@ -648,6 +661,7 @@ class QuestDBParser extends CstParser {
             this.CONSUME1(Comma)
             this.SUBRULE2(this.selectItem)
           })
+          this.OPTION1(() => this.CONSUME3(Comma))
         },
       },
     ])
@@ -694,17 +708,30 @@ class QuestDBParser extends CstParser {
 
   private fromClause = this.RULE("fromClause", () => {
     this.SUBRULE(this.fromSource)
-    this.MANY(() => {
-      this.OR([
-        { ALT: () => this.SUBRULE(this.joinClause) },
-        {
-          ALT: () => {
-            this.CONSUME(Comma)
-            this.OPTION(() => this.CONSUME(Lateral))
-            this.SUBRULE1(this.fromSource)
+    this.MANY({
+      // WINDOW/PREVAILING can be either the start of a WINDOW/PREVAILING JOIN
+      // or the start of the top-level WINDOW clause that follows fromClause
+      // (SELECT ... FROM t WINDOW w AS (...)). Only iterate when the next
+      // two tokens form a JOIN so the top-level WINDOW clause keeps its tokens.
+      GATE: () => {
+        const la1 = this.LA(1).tokenType
+        if (la1 === Window || la1 === Prevailing) {
+          return this.LA(2).tokenType === Join
+        }
+        return true
+      },
+      DEF: () => {
+        this.OR([
+          { ALT: () => this.SUBRULE(this.joinClause) },
+          {
+            ALT: () => {
+              this.CONSUME(Comma)
+              this.OPTION(() => this.CONSUME(Lateral))
+              this.SUBRULE1(this.fromSource)
+            },
           },
-        },
-      ])
+        ])
+      },
     })
   })
 
@@ -4076,6 +4103,61 @@ class QuestDBParser extends CstParser {
       // Named window reference: OVER w
       { ALT: () => this.SUBRULE(this.identifier) },
     ])
+  })
+
+  // ==========================================================================
+  // Named window clause (SELECT ... WINDOW w AS (...)).
+  // Introduced in QuestDB PR #6746 (Feb 2026).
+  // Syntax: WINDOW name AS ( [base_name] [PARTITION BY ...] [ORDER BY ...]
+  //                          [frame] [exclude] ) [, name AS (...)]
+  // ==========================================================================
+  private windowClause = this.RULE("windowClause", () => {
+    this.CONSUME(Window)
+    this.SUBRULE(this.namedWindow)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.namedWindow)
+    })
+  })
+
+  private namedWindow = this.RULE("namedWindow", () => {
+    this.SUBRULE(this.identifier)
+    this.CONSUME(As)
+    this.CONSUME(LParen)
+    this.SUBRULE(this.windowSpec)
+    this.CONSUME(RParen)
+  })
+
+  private windowSpec = this.RULE("windowSpec", () => {
+    // Optional base window name (window inheritance). Matches the Java
+    // parser's logic: a bare non-keyword identifier followed by ')' or a
+    // window-spec keyword signals inheritance (e.g. WINDOW w2 AS (w1) or
+    // (w1 ORDER BY x)). If the first token is already a spec keyword,
+    // there is no base window.
+    this.OPTION({
+      GATE: () => {
+        const la1Tok = this.LA(1)
+        const isIdentifierLike =
+          la1Tok.tokenType === Identifier ||
+          la1Tok.tokenType === QuotedIdentifier ||
+          tokenMatcher(la1Tok, IdentifierKeyword)
+        if (!isIdentifierLike) return false
+        const la2 = this.LA(2).tokenType
+        return (
+          la2 === RParen ||
+          la2 === Partition ||
+          la2 === Order ||
+          la2 === Rows ||
+          la2 === Range ||
+          la2 === Cumulative ||
+          la2 === Groups
+        )
+      },
+      DEF: () => this.SUBRULE(this.identifier),
+    })
+    this.OPTION1(() => this.SUBRULE(this.windowPartitionByClause))
+    this.OPTION2(() => this.SUBRULE(this.orderByClause))
+    this.OPTION3(() => this.SUBRULE(this.windowFrameClause))
   })
 
   private windowPartitionByClause = this.RULE("windowPartitionByClause", () => {

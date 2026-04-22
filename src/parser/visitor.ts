@@ -171,11 +171,14 @@ import type {
   ValuesClauseCstChildren,
   ValuesListCstChildren,
   WhereClauseCstChildren,
+  WindowClauseCstChildren,
   WindowFrameBoundCstChildren,
   WindowFrameClauseCstChildren,
   WindowJoinBoundCstChildren,
   WindowJoinCstChildren,
   WindowPartitionByClauseCstChildren,
+  WindowSpecCstChildren,
+  NamedWindowCstChildren,
   WithClauseCstChildren,
   WithStatementCstChildren,
 } from "./cst-types"
@@ -444,6 +447,10 @@ class QuestDBVisitor extends BaseVisitor {
         pivots: body.pivots,
         groupBy: body.groupBy,
       }
+    }
+
+    if (ctx.windowClause) {
+      result.namedWindows = this.visit(ctx.windowClause) as AST.NamedWindow[]
     }
 
     if (ctx.orderByClause) {
@@ -3754,8 +3761,59 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   overClause(ctx: OverClauseCstChildren): AST.WindowSpecification {
+    // Named window reference: `OVER w` — the grammar's other branch.
+    if (ctx.identifier && ctx.identifier.length > 0) {
+      return {
+        type: "windowSpec",
+        windowName: this.extractIdentifierName(ctx.identifier[0].children),
+      }
+    }
+
     const result: AST.WindowSpecification = {
       type: "windowSpec",
+    }
+
+    if (ctx.windowPartitionByClause) {
+      result.partitionBy = this.visit(
+        ctx.windowPartitionByClause,
+      ) as AST.Expression[]
+    }
+
+    if (ctx.orderByClause) {
+      result.orderBy = this.visit(ctx.orderByClause) as AST.OrderByItem[]
+    }
+
+    if (ctx.windowFrameClause) {
+      result.frame = this.visit(ctx.windowFrameClause) as AST.WindowFrame
+    }
+
+    return result
+  }
+
+  windowClause(ctx: WindowClauseCstChildren): AST.NamedWindow[] {
+    return ctx.namedWindow.map((n) => this.visit(n) as AST.NamedWindow)
+  }
+
+  namedWindow(ctx: NamedWindowCstChildren): AST.NamedWindow {
+    const spec = this.visit(ctx.windowSpec) as Omit<
+      AST.NamedWindow,
+      "type" | "name"
+    >
+    return {
+      type: "namedWindow",
+      name: this.extractIdentifierName(ctx.identifier[0].children),
+      ...spec,
+    }
+  }
+
+  windowSpec(
+    ctx: WindowSpecCstChildren,
+  ): Omit<AST.NamedWindow, "type" | "name"> {
+    const result: Omit<AST.NamedWindow, "type" | "name"> = {}
+
+    // Optional base window name (inheritance)
+    if (ctx.identifier && ctx.identifier.length > 0) {
+      result.baseWindow = this.extractIdentifierName(ctx.identifier[0].children)
     }
 
     if (ctx.windowPartitionByClause) {

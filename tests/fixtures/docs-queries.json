@@ -5278,5 +5278,29 @@
   },
   {
     "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS avg_markout_bps,\n    avg((m.best_ask - m.best_bid)\n        / ((m.best_bid + m.best_ask) / 2) * 10000) / 2 AS avg_half_spread_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 5m STEP 1s AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, t.passive, horizon_sec\nORDER BY t.symbol, t.ecn, t.passive, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w AS avg_price,\n    min(price) OVER w AS min_price,\n    max(price) OVER w AS max_price\nFROM trades\nWHERE symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER short_window AS avg_10,\n    avg(price) OVER long_window AS avg_50\nFROM trades\nWHERE symbol = 'BTC-USDT'\nWINDOW\n    short_window AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW),\n    long_window AS (ORDER BY timestamp ROWS BETWEEN 49 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w AS moving_avg,\n    row_number() OVER (PARTITION BY symbol ORDER BY timestamp) AS seq\nFROM trades\nWHERE symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "WITH price_stats AS (\n    SELECT\n        timestamp,\n        symbol,\n        price,\n        avg(price) OVER w AS moving_avg,\n        price - avg(price) OVER w AS deviation\n    FROM trades\n    WHERE symbol = 'BTC-USDT'\n    WINDOW w AS (ORDER BY timestamp ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)\n)\nSELECT * FROM price_stats\nWHERE deviation > 10\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w1 AS symbol_avg,\n    avg(price) OVER w2 AS moving_avg\nFROM trades\nWHERE symbol = 'BTC-USDT'\nWINDOW\n    w1 AS (ORDER BY timestamp),\n    w2 AS (w1 ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "SELECT x, y, row_number() OVER w AS row_num FROM t WINDOW w AS ()"
+  },
+  {
+    "query": "SELECT avg(x) OVER w FROM t WINDOW w AS (ORDER BY ts CUMULATIVE)"
+  },
+  {
+    "query": "WITH ohlc AS (\n  SELECT\n    timestamp,\n    first(open) AS open,\n    max(high) AS high,\n    min(low) AS low,\n    last(close) AS close,\n    sum(total_volume) AS total_volume\n  FROM fx_trades_ohlc_1m\n  WHERE symbol = 'EURUSD'\n    AND timestamp > dateadd('d', -2, now())\n  SAMPLE BY 15m\n), changes AS (\n  SELECT\n    timestamp,\n    close,\n    close - lag(close) OVER (ORDER BY timestamp) AS change\n  FROM ohlc\n), gains_losses AS (\n  SELECT\n    timestamp,\n    close,\n    CASE WHEN change > 0 THEN change ELSE 0 END AS gain,\n    CASE WHEN change < 0 THEN -change ELSE 0 END AS loss\n  FROM changes\n), smoothed AS (\n  SELECT\n    timestamp,\n    close,\n    100 --avg(gain, 'period', 14) OVER w \n    AS avg_gain,\n    100 -- avg(loss, 'period', 14) OVER w \n    AS avg_loss\n  FROM gains_losses\n  WINDOW w AS (ORDER BY timestamp)\n)\nSELECT\n  timestamp,\n  close,\n  CASE\n    WHEN avg_loss = 0 THEN 100\n    ELSE 100 - (100 / (1 + avg_gain / avg_loss))\n  END AS rsi,\n  70.0 AS overbought,\n  30.0 AS oversold\nFROM smoothed\nORDER BY timestamp;"
   }
 ]

@@ -127,6 +127,7 @@ export type SimpleSelectCstChildren = {
   LParen?: IToken[];
   pivotBody?: PivotBodyCstNode[];
   RParen?: IToken[];
+  windowClause?: WindowClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
 };
@@ -2369,6 +2370,42 @@ export type OverClauseCstChildren = {
   identifier?: IdentifierCstNode[];
 };
 
+export interface WindowClauseCstNode extends CstNode {
+  name: "windowClause";
+  children: WindowClauseCstChildren;
+}
+
+export type WindowClauseCstChildren = {
+  Window: IToken[];
+  namedWindow: (NamedWindowCstNode)[];
+  Comma?: IToken[];
+};
+
+export interface NamedWindowCstNode extends CstNode {
+  name: "namedWindow";
+  children: NamedWindowCstChildren;
+}
+
+export type NamedWindowCstChildren = {
+  identifier: IdentifierCstNode[];
+  As: IToken[];
+  LParen: IToken[];
+  windowSpec: WindowSpecCstNode[];
+  RParen: IToken[];
+};
+
+export interface WindowSpecCstNode extends CstNode {
+  name: "windowSpec";
+  children: WindowSpecCstChildren;
+}
+
+export type WindowSpecCstChildren = {
+  identifier?: IdentifierCstNode[];
+  windowPartitionByClause?: WindowPartitionByClauseCstNode[];
+  orderByClause?: OrderByClauseCstNode[];
+  windowFrameClause?: WindowFrameClauseCstNode[];
+};
+
 export interface WindowPartitionByClauseCstNode extends CstNode {
   name: "windowPartitionByClause";
   children: WindowPartitionByClauseCstChildren;
@@ -2691,6 +2728,9 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   functionCall(children: FunctionCallCstChildren, param?: IN): OUT;
   identifierExpression(children: IdentifierExpressionCstChildren, param?: IN): OUT;
   overClause(children: OverClauseCstChildren, param?: IN): OUT;
+  windowClause(children: WindowClauseCstChildren, param?: IN): OUT;
+  namedWindow(children: NamedWindowCstChildren, param?: IN): OUT;
+  windowSpec(children: WindowSpecCstChildren, param?: IN): OUT;
   windowPartitionByClause(children: WindowPartitionByClauseCstChildren, param?: IN): OUT;
   windowFrameClause(children: WindowFrameClauseCstChildren, param?: IN): OUT;
   windowFrameBound(children: WindowFrameBoundCstChildren, param?: IN): OUT;

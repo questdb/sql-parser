@@ -243,6 +243,12 @@ function selectToSql(stmt: AST.SelectStatement): string {
     parts.push(pivotClauseToSql(stmt.pivot))
   }
 
+  // WINDOW w AS (...) [, w2 AS (...)]
+  if (stmt.namedWindows && stmt.namedWindows.length > 0) {
+    parts.push("WINDOW")
+    parts.push(stmt.namedWindows.map(namedWindowToSql).join(", "))
+  }
+
   // ORDER BY
   if (stmt.orderBy && stmt.orderBy.length > 0) {
     parts.push("ORDER BY")
@@ -1690,7 +1696,12 @@ function functionToSql(fn: AST.FunctionCall): string {
   }
 
   if (fn.over) {
-    sql += ` OVER (${windowSpecToSql(fn.over)})`
+    // Named window reference: `OVER w` (no parens).
+    if (fn.over.windowName) {
+      sql += ` OVER ${fn.over.windowName}`
+    } else {
+      sql += ` OVER (${windowSpecToSql(fn.over)})`
+    }
   }
 
   return sql
@@ -1714,6 +1725,21 @@ function windowSpecToSql(spec: AST.WindowSpecification): string {
   }
 
   return parts.join(" ")
+}
+
+function namedWindowToSql(w: AST.NamedWindow): string {
+  const inner: string[] = []
+  if (w.baseWindow) inner.push(w.baseWindow)
+  if (w.partitionBy && w.partitionBy.length > 0) {
+    inner.push(`PARTITION BY ${w.partitionBy.map(expressionToSql).join(", ")}`)
+  }
+  if (w.orderBy && w.orderBy.length > 0) {
+    inner.push(`ORDER BY ${w.orderBy.map(orderByItemToSql).join(", ")}`)
+  }
+  if (w.frame) {
+    inner.push(windowFrameToSql(w.frame))
+  }
+  return `${w.name} AS (${inner.join(" ")})`
 }
 
 function windowFrameToSql(frame: AST.WindowFrame): string {

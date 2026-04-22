@@ -12,6 +12,24 @@ describe("QuestDB Parser", () => {
       expect(result.ast[0].type).toBe("select")
     })
 
+    it("should accept a trailing comma in the select list", () => {
+      const result = parseToAst(
+        "SELECT avg(price) avg1, avg(price) avg2, FROM trades",
+      )
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast).toHaveLength(1)
+      expect(result.ast[0].type).toBe("select")
+      if (result.ast[0].type === "select") {
+        expect(result.ast[0].columns).toHaveLength(2)
+      }
+    })
+
+    it("should accept a trailing comma after `SELECT *, ...`", () => {
+      const result = parseToAst("SELECT *, rank() OVER () r, FROM trades")
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast).toHaveLength(1)
+    })
+
     it("should parse SELECT with WHERE clause", () => {
       const result = parseToAst(
         "SELECT symbol, price FROM trades WHERE price > 100",
@@ -6913,6 +6931,164 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       const result = parseToAst(sql)
       expect(result.errors).toHaveLength(0)
       expect(toSql(result.ast[0])).toBe(sql)
+    })
+  })
+
+  describe("WINDOW clause (named windows)", () => {
+    it("parses the basic named-window example from the docs", () => {
+      const sql =
+        "SELECT timestamp, symbol, price, avg(price) OVER w AS avg_price, min(price) OVER w AS min_price, max(price) OVER w AS max_price FROM trades WHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT' WINDOW w AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) LIMIT 100"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast).toHaveLength(1)
+      const stmt = result.ast[0]
+      expect(stmt.type).toBe("select")
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows).toHaveLength(1)
+        const w = stmt.namedWindows![0]
+        expect(w.name).toBe("w")
+        expect(w.orderBy).toHaveLength(1)
+        expect(w.frame?.mode).toBe("rows")
+      }
+    })
+
+    it("parses an empty window spec (WindowFunctionTest.testNamedWindowBasic)", () => {
+      const sql =
+        "SELECT x, y, row_number() OVER w as row_num FROM t WINDOW w AS ()"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows).toHaveLength(1)
+        const w = stmt.namedWindows![0]
+        expect(w.name).toBe("w")
+        expect(w.baseWindow).toBeUndefined()
+        expect(w.partitionBy).toBeUndefined()
+        expect(w.orderBy).toBeUndefined()
+        expect(w.frame).toBeUndefined()
+      }
+    })
+
+    it("parses multiple named windows separated by commas", () => {
+      const sql =
+        "SELECT timestamp, symbol, price, avg(price) OVER short_window AS avg_10, avg(price) OVER long_window AS avg_50 FROM trades WHERE symbol = 'BTC-USDT' WINDOW short_window AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), long_window AS (ORDER BY timestamp ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) LIMIT 100"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows).toHaveLength(2)
+        expect(stmt.namedWindows![0].name).toBe("short_window")
+        expect(stmt.namedWindows![1].name).toBe("long_window")
+      }
+    })
+
+    it("parses mixed inline OVER and named window references", () => {
+      const sql =
+        "SELECT timestamp, symbol, price, avg(price) OVER w AS moving_avg, row_number() OVER (PARTITION BY symbol ORDER BY timestamp) AS seq FROM trades WINDOW w AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("parses window inheritance (WINDOW w2 AS (w1 ...))", () => {
+      const sql =
+        "SELECT avg(price) OVER w1 AS symbol_avg, avg(price) OVER w2 AS moving_avg FROM trades WHERE symbol = 'BTC-USDT' WINDOW w1 AS (ORDER BY timestamp), w2 AS (w1 ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) LIMIT 100"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows).toHaveLength(2)
+        expect(stmt.namedWindows![0].name).toBe("w1")
+        expect(stmt.namedWindows![0].baseWindow).toBeUndefined()
+        expect(stmt.namedWindows![1].name).toBe("w2")
+        expect(stmt.namedWindows![1].baseWindow).toBe("w1")
+        expect(stmt.namedWindows![1].frame?.mode).toBe("rows")
+      }
+    })
+
+    it("parses a named window inside a CTE (docs example)", () => {
+      const sql =
+        "WITH price_stats AS (SELECT timestamp, symbol, price, avg(price) OVER w AS moving_avg, price - avg(price) OVER w AS deviation FROM trades WHERE symbol = 'BTC-USDT' WINDOW w AS (ORDER BY timestamp ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)) SELECT * FROM price_stats WHERE deviation > 10 LIMIT 100"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("supports PARTITION BY in the window spec", () => {
+      const sql =
+        "SELECT avg(price) OVER w FROM trades WINDOW w AS (PARTITION BY symbol ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        const w = stmt.namedWindows![0]
+        expect(w.partitionBy).toHaveLength(1)
+        expect(w.orderBy).toHaveLength(1)
+        expect(w.frame?.mode).toBe("rows")
+      }
+    })
+
+    it("supports CUMULATIVE frame mode", () => {
+      const sql =
+        "SELECT avg(price) OVER w FROM trades WINDOW w AS (ORDER BY ts CUMULATIVE)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows![0].frame?.mode).toBe("cumulative")
+      }
+    })
+
+    it("supports EXCLUDE CURRENT ROW in the frame", () => {
+      const sql =
+        "SELECT avg(price) OVER w FROM trades WINDOW w AS (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows![0].frame?.exclude).toBe("currentRow")
+      }
+    })
+
+    it("allows WINDOW clause before ORDER BY and LIMIT", () => {
+      const sql =
+        "SELECT avg(price) OVER w FROM trades WHERE symbol = 'BTC-USDT' WINDOW w AS (ORDER BY ts) ORDER BY symbol LIMIT 100"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0]
+      if (stmt.type === "select") {
+        expect(stmt.namedWindows).toHaveLength(1)
+        expect(stmt.orderBy).toBeDefined()
+        expect(stmt.limit).toBeDefined()
+      }
+    })
+
+    it("does not conflict with WINDOW JOIN (FROM clause)", () => {
+      const sql =
+        "SELECT t.price + 1, sum(q.price) + 10 FROM trades t WINDOW JOIN quotes q ON tag RANGE BETWEEN 1 SECOND PRECEDING AND CURRENT ROW EXCLUDE PREVAILING"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it("round-trips a simple WINDOW clause through toSql", () => {
+      const sql =
+        "SELECT avg(price) OVER w FROM trades WINDOW w AS (ORDER BY ts ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      // The AST shape should be preserved across the round trip.
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
+    })
+
+    it("round-trips window inheritance through toSql", () => {
+      const sql =
+        "SELECT avg(price) OVER w2 FROM trades WINDOW w1 AS (ORDER BY ts), w2 AS (w1 ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)"
+      const result = parseToAst(sql)
+      expect(result.errors).toHaveLength(0)
+      const regenerated = toSql(result.ast[0])
+      const reparsed = parseToAst(regenerated)
+      expect(reparsed.errors).toHaveLength(0)
+      expect(reparsed.ast[0]).toEqual(result.ast[0])
     })
   })
 })

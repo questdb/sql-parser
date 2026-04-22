@@ -165,15 +165,30 @@ export function buildSuggestions(
     // (e.g., "Left" → "LEFT JOIN") instead of suggesting bare "LEFT".
     if (isJoinContext && JOIN_COMPOUND_MAP.has(name)) {
       const compound = JOIN_COMPOUND_MAP.get(name)!
-      if (seenKeywords.has(compound)) continue
-      seenKeywords.add(compound)
-      suggestions.push({
-        label: compound,
-        kind: SuggestionKind.Keyword,
-        insertText: compound,
-        filterText: compound.toLowerCase(),
-        priority: SuggestionPriority.Medium,
-      })
+      if (!seenKeywords.has(compound)) {
+        seenKeywords.add(compound)
+        suggestions.push({
+          label: compound,
+          kind: SuggestionKind.Keyword,
+          insertText: compound,
+          filterText: compound.toLowerCase(),
+          priority: SuggestionPriority.Medium,
+        })
+      }
+      // `Window` is special: the token is also the start of the standalone
+      // named-window clause (SELECT ... FROM t WINDOW w AS (...)), which is
+      // a valid continuation after fromClause alongside WINDOW JOIN. Emit
+      // the bare "WINDOW" keyword so users can discover and type it.
+      if (name === "Window" && !seenKeywords.has("WINDOW")) {
+        seenKeywords.add("WINDOW")
+        suggestions.push({
+          label: "WINDOW",
+          kind: SuggestionKind.Keyword,
+          insertText: "WINDOW",
+          filterText: "window",
+          priority: SuggestionPriority.Medium,
+        })
+      }
       continue
     }
 

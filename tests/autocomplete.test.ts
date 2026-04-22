@@ -4243,4 +4243,326 @@ describe("Position-typed suggestions — by statement type", () => {
       })
     })
   })
+
+  // ===========================================================================
+  // Comprehensive walkthrough — RSI finance cookbook query (QuestDB docs).
+  // A 4-CTE pipeline that exercises nearly every autocomplete code path:
+  // CTE column scoping across a chain, SAMPLE BY, inline OVER window,
+  // WINDOW clause with named window, CASE expressions, line comments, and
+  // the final outer SELECT that only sees the last CTE's columns.
+  // ===========================================================================
+  describe("RSI query — comprehensive cursor walkthrough", () => {
+    const rsiSchema = {
+      tables: [{ name: "fx_trades_ohlc_1m", designatedTimestamp: "timestamp" }],
+      columns: {
+        fx_trades_ohlc_1m: [
+          { name: "timestamp", type: "TIMESTAMP" },
+          { name: "symbol", type: "STRING" },
+          { name: "open", type: "DOUBLE" },
+          { name: "high", type: "DOUBLE" },
+          { name: "low", type: "DOUBLE" },
+          { name: "close", type: "DOUBLE" },
+          { name: "total_volume", type: "DOUBLE" },
+        ],
+      },
+    }
+    const rsiProvider = createAutocompleteProvider(rsiSchema)
+
+    // Exact byte-for-byte copy of the user-reported RSI query from the
+    // QuestDB finance cookbook. Preserves:
+    //  - trailing space after `OVER w` inside the two line comments
+    //  - trailing semicolon after `ORDER BY timestamp`
+    // Do not reformat — prettier's trailing-whitespace stripping would
+    // silently change the fixture away from the real input.
+    const rsi =
+      "WITH ohlc AS (\n" +
+      "  SELECT\n" +
+      "    timestamp,\n" +
+      "    first(open) AS open,\n" +
+      "    max(high) AS high,\n" +
+      "    min(low) AS low,\n" +
+      "    last(close) AS close,\n" +
+      "    sum(total_volume) AS total_volume\n" +
+      "  FROM fx_trades_ohlc_1m\n" +
+      "  WHERE symbol = 'EURUSD'\n" +
+      "    AND timestamp > dateadd('d', -2, now())\n" +
+      "  SAMPLE BY 15m\n" +
+      "), changes AS (\n" +
+      "  SELECT\n" +
+      "    timestamp,\n" +
+      "    close,\n" +
+      "    close - lag(close) OVER (ORDER BY timestamp) AS change\n" +
+      "  FROM ohlc\n" +
+      "), gains_losses AS (\n" +
+      "  SELECT\n" +
+      "    timestamp,\n" +
+      "    close,\n" +
+      "    CASE WHEN change > 0 THEN change ELSE 0 END AS gain,\n" +
+      "    CASE WHEN change < 0 THEN -change ELSE 0 END AS loss\n" +
+      "  FROM changes\n" +
+      "), smoothed AS (\n" +
+      "  SELECT\n" +
+      "    timestamp,\n" +
+      "    close,\n" +
+      "    100 --avg(gain, 'period', 14) OVER w \n" +
+      "    AS avg_gain,\n" +
+      "    100 -- avg(loss, 'period', 14) OVER w \n" +
+      "    AS avg_loss\n" +
+      "  FROM gains_losses\n" +
+      "  WINDOW w AS (ORDER BY timestamp)\n" +
+      ")\n" +
+      "SELECT\n" +
+      "  timestamp,\n" +
+      "  close,\n" +
+      "  CASE\n" +
+      "    WHEN avg_loss = 0 THEN 100\n" +
+      "    ELSE 100 - (100 / (1 + avg_gain / avg_loss))\n" +
+      "  END AS rsi,\n" +
+      "  70.0 AS overbought,\n" +
+      "  30.0 AS oversold\n" +
+      "FROM smoothed\n" +
+      "ORDER BY timestamp;"
+
+    /**
+     * Position the cursor immediately after the first occurrence of `anchor`
+     * in the query. Fails the test if the anchor is not found so a drifting
+     * fixture doesn't silently pass.
+     */
+    const cursorAfter = (anchor: string): number => {
+      const idx = rsi.indexOf(anchor)
+      if (idx < 0) throw new Error(`anchor not found in fixture: ${anchor}`)
+      return idx + anchor.length
+    }
+
+    const getLabelsAt = (cursor: number): string[] =>
+      rsiProvider.getSuggestions(rsi, cursor).map((s) => s.label)
+
+    const getKindAt = (cursor: number, kind: SuggestionKind): string[] =>
+      rsiProvider
+        .getSuggestions(rsi, cursor)
+        .filter((s) => s.kind === kind)
+        .map((s) => s.label)
+
+    it("outer SELECT sees `smoothed`'s projected columns (last CTE)", () => {
+      // Inside the outer SELECT after `close,` the cursor should see the
+      // columns that the `smoothed` CTE exposes — not fx_trades_ohlc_1m's.
+      const cursor = cursorAfter("\n  close,\n  CASE")
+      // Cursor right before `CASE`: expression position, CTE columns available.
+      const labels = getLabelsAt(cursor - "CASE".length)
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("close")
+      expect(labels).toContain("avg_gain")
+      expect(labels).toContain("avg_loss")
+    })
+
+    it("outer FROM suggests every CTE name", () => {
+      const cursor = cursorAfter(
+        "END AS rsi,\n  70.0 AS overbought,\n  30.0 AS oversold\nFROM ",
+      )
+      const tables = getKindAt(cursor, SuggestionKind.Table)
+      // All four CTEs should be offered as table sources.
+      expect(tables).toEqual(
+        expect.arrayContaining(["ohlc", "changes", "gains_losses", "smoothed"]),
+      )
+    })
+
+    it("outer ORDER BY offers the selected CTE's columns", () => {
+      const cursor = cursorAfter("FROM smoothed\nORDER BY ")
+      const labels = getLabelsAt(cursor)
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("close")
+    })
+
+    it("inside ohlc CTE after FROM suggests the base table", () => {
+      const cursor = cursorAfter("sum(total_volume) AS total_volume\n  FROM ")
+      const tables = getKindAt(cursor, SuggestionKind.Table)
+      expect(tables).toContain("fx_trades_ohlc_1m")
+    })
+
+    it("inside ohlc CTE WHERE clause suggests its base-table columns", () => {
+      const cursor = cursorAfter("WHERE ")
+      const labels = getLabelsAt(cursor)
+      expect(labels).toContain("symbol")
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("open")
+      expect(labels).toContain("close")
+    })
+
+    it("inside ohlc CTE after `AND ` suggests columns", () => {
+      const cursor = cursorAfter("    AND ")
+      const labels = getLabelsAt(cursor)
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("symbol")
+    })
+
+    it("inside changes CTE FROM suggests the preceding CTE `ohlc`", () => {
+      const cursor = cursorAfter(
+        "close - lag(close) OVER (ORDER BY timestamp) AS change\n  FROM ",
+      )
+      const tables = getKindAt(cursor, SuggestionKind.Table)
+      // `ohlc` is available as a table source inside `changes`.
+      expect(tables).toContain("ohlc")
+    })
+
+    it("inside gains_losses FROM suggests the preceding CTE `changes`", () => {
+      const cursor = cursorAfter(
+        "CASE WHEN change < 0 THEN -change ELSE 0 END AS loss\n  FROM ",
+      )
+      const tables = getKindAt(cursor, SuggestionKind.Table)
+      expect(tables).toContain("changes")
+    })
+
+    it("inside gains_losses CASE expressions see `changes`'s columns", () => {
+      // CASE WHEN change > 0 THEN change ELSE 0 END — position right after WHEN.
+      const cursor = cursorAfter("CASE WHEN ")
+      const labels = getLabelsAt(cursor)
+      // `change` is the column alias produced by `changes`'s select list.
+      expect(labels).toContain("change")
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("close")
+    })
+
+    it("inside smoothed FROM suggests `gains_losses`", () => {
+      // Note the trailing space after `OVER w ` inside the comment —
+      // preserved to match the real-world query byte-for-byte.
+      const cursor = cursorAfter(
+        "100 -- avg(loss, 'period', 14) OVER w \n    AS avg_loss\n  FROM ",
+      )
+      const tables = getKindAt(cursor, SuggestionKind.Table)
+      expect(tables).toContain("gains_losses")
+    })
+
+    it("WINDOW clause spec opens for PARTITION/ORDER keywords", () => {
+      // Cursor immediately after `WINDOW w AS (` — the start of windowSpec.
+      const cursor = cursorAfter("WINDOW w AS (")
+      const labels = getLabelsAt(cursor)
+      // windowSpec can start with PARTITION, ORDER, ROWS, RANGE, CUMULATIVE,
+      // or a base window name. At minimum, ORDER and PARTITION keywords must
+      // surface.
+      expect(labels).toContain("ORDER")
+      expect(labels).toContain("PARTITION")
+    })
+
+    it("ORDER BY inside WINDOW clause suggests gains_losses columns", () => {
+      // Cursor after the final `ORDER BY ` inside WINDOW w AS (ORDER BY ...
+      const cursor = cursorAfter("WINDOW w AS (ORDER BY ")
+      const labels = getLabelsAt(cursor)
+      // `gains_losses` is the scope inside this CTE; its columns must appear.
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("close")
+      expect(labels).toContain("gain")
+      expect(labels).toContain("loss")
+    })
+
+    it("CASE expression in outer SELECT offers CTE columns inside THEN/ELSE", () => {
+      // Cursor inside the outer SELECT's CASE expression — between WHEN and THEN.
+      const cursor = cursorAfter("    WHEN avg_loss = 0 THEN ")
+      const labels = getLabelsAt(cursor)
+      // `smoothed` columns are visible in expression position.
+      expect(labels).toContain("avg_gain")
+      expect(labels).toContain("avg_loss")
+      expect(labels).toContain("close")
+    })
+
+    it("query completes autocomplete at cursor end in under 500ms", () => {
+      // End-to-end sanity: the entire RSI pipeline must be responsive
+      // (pruning active, budget not hit) at the final ORDER BY position.
+      const start = performance.now()
+      rsiProvider.getSuggestions(rsi, rsi.length)
+      const elapsed = performance.now() - start
+      expect(elapsed).toBeLessThan(500)
+    })
+
+    it("every single character position in the full query returns quickly and doesn't throw", () => {
+      // Exhaustive resilience: park the cursor at every offset from 0 to the
+      // end of the query. At every position, autocomplete must return an
+      // array in bounded time — no crashes, no hangs. This is what a user
+      // clicking/arrow-keying anywhere in Monaco will exercise.
+      const slow: { cursor: number; ms: number }[] = []
+      for (let cursor = 0; cursor <= rsi.length; cursor++) {
+        const start = performance.now()
+        let suggestions: Suggestion[]
+        try {
+          suggestions = rsiProvider.getSuggestions(rsi, cursor)
+        } catch (e) {
+          ;(e as Error).message = `[cursor=${cursor}] ${(e as Error).message}`
+          throw e
+        }
+        const elapsed = performance.now() - start
+        expect(Array.isArray(suggestions), `cursor=${cursor}`).toBe(true)
+        if (elapsed > 100) slow.push({ cursor, ms: elapsed })
+      }
+      expect(
+        slow,
+        `positions slower than 100ms: ${JSON.stringify(slow)}`,
+      ).toEqual([])
+    })
+
+    it("simulates the user typing the query from scratch — every prefix length", () => {
+      // For each progressive prefix (what the user has typed so far), with
+      // the cursor at the end of the prefix, autocomplete must return
+      // quickly and cleanly. This exercises a different mix of parser
+      // states than moving the cursor through the full text.
+      const slow: { len: number; ms: number }[] = []
+      for (let len = 0; len <= rsi.length; len++) {
+        const prefix = rsi.slice(0, len)
+        const start = performance.now()
+        let suggestions: Suggestion[]
+        try {
+          suggestions = rsiProvider.getSuggestions(prefix, len)
+        } catch (e) {
+          ;(e as Error).message =
+            `[prefix length=${len}] ${(e as Error).message}`
+          throw e
+        }
+        const elapsed = performance.now() - start
+        expect(Array.isArray(suggestions), `prefix length=${len}`).toBe(true)
+        if (elapsed > 100) slow.push({ len, ms: elapsed })
+      }
+      expect(
+        slow,
+        `prefix lengths slower than 100ms: ${JSON.stringify(slow)}`,
+      ).toEqual([])
+    })
+
+    it("meaningful word boundaries in the query produce non-empty suggestions most of the time", () => {
+      // 'Word boundary' = position right after whitespace or punctuation —
+      // where a user would realistically ask for autocomplete. We don't
+      // require every boundary to be non-empty (inside line comments and
+      // at a few structurally ambiguous positions the parser may have no
+      // valid continuation), but the great majority must be useful.
+      const boundaries: number[] = []
+      for (let i = 1; i <= rsi.length; i++) {
+        if (/[\s,()]/.test(rsi[i - 1])) boundaries.push(i)
+      }
+      let nonEmpty = 0
+      for (const cursor of boundaries) {
+        if (rsiProvider.getSuggestions(rsi, cursor).length > 0) nonEmpty++
+      }
+      // Over ~300 boundaries in this ~1000-char query; >85% should offer
+      // something useful. Catches regressions where a grammar change breaks
+      // suggestions at entire classes of positions.
+      const rate = nonEmpty / boundaries.length
+      expect(rate).toBeGreaterThan(0.85)
+    })
+
+    it("outer SELECT after `70.0 AS overbought,` offers CTE columns (mid-select-list)", () => {
+      // Cursor between two aliased literals in the outer SELECT. Must still
+      // recognise the select-list context and offer the CTE's columns.
+      const cursor = cursorAfter("  70.0 AS overbought,\n  ")
+      const labels = getLabelsAt(cursor)
+      expect(labels).toContain("timestamp")
+      expect(labels).toContain("close")
+      expect(labels).toContain("avg_gain")
+    })
+
+    it("WINDOW w keyword is suggested as a valid clause after FROM in a CTE body", () => {
+      // After the CTE's FROM clause, WINDOW is one of the valid continuations
+      // (between WHERE/GROUP BY and ORDER BY). Checks that the grammar change
+      // that added the WINDOW clause is visible to content-assist.
+      const cursor = cursorAfter("  FROM gains_losses\n  ")
+      const labels = getLabelsAt(cursor)
+      expect(labels).toContain("WINDOW")
+    })
+  })
 })
