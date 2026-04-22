@@ -1,5 +1,5 @@
 import { type ILexingError, IToken, TokenType } from "chevrotain"
-import { parser, parse as parseRaw } from "../parser/parser"
+import { parse as parseRaw } from "../parser/parser"
 import { visitor } from "../parser/visitor"
 import { QuestDBLexer } from "../parser/lexer"
 import type { Statement } from "../parser/ast"
@@ -7,6 +7,7 @@ import {
   IDENTIFIER_KEYWORD_TOKENS,
   EXPRESSION_OPERATORS,
 } from "./token-classification"
+import { computeContentAssistBudgeted } from "./budgeted-content-assist"
 
 // =============================================================================
 // Constants
@@ -850,7 +851,9 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   const ruleName = tokens.some((t) => t.tokenType.name === "Semicolon")
     ? "statements"
     : "statement"
-  const suggestions = parser.computeContentAssist(ruleName, tokens)
+  // Budgeted: aborts after a fixed number of path-exploration steps.
+  // The budget keeps autocomplete responsive and falls back to empty suggestions when hit.
+  const { suggestions } = computeContentAssistBudgeted(ruleName, tokens)
   const result = suggestions.map((s) => s.nextTokenType)
 
   // Walk every IdentifierKeyword path and union the category flags valid at
@@ -875,7 +878,10 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
     const collapsed = collapseTrailingQualifiedRef(tokens)
     if (collapsed) {
       try {
-        const extra = parser.computeContentAssist(ruleName, collapsed)
+        const extra = computeContentAssistBudgeted(
+          ruleName,
+          collapsed,
+        ).suggestions
         const seen = new Set(result.map((t) => t.name))
         for (const s of extra) {
           if (!seen.has(s.nextTokenType.name)) {

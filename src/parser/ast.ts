@@ -72,9 +72,27 @@ export interface SelectStatement extends AstNode {
   latestOn?: LatestOnClause
   groupBy?: Expression[]
   pivot?: PivotClause
+  /** Named window definitions: SELECT ... WINDOW w AS (...) [, w2 AS (...)] */
+  namedWindows?: NamedWindow[]
   orderBy?: OrderByItem[]
   limit?: LimitClause
   setOperations?: SetOperation[]
+}
+
+/**
+ * A named window definition as used in the WINDOW clause:
+ *   WINDOW w AS ([base_window] [PARTITION BY ...] [ORDER BY ...] [frame])
+ * Referenced from window-function OVER clauses by name: `avg(x) OVER w`.
+ * Introduced in QuestDB as of Feb 2026.
+ */
+export interface NamedWindow extends AstNode {
+  type: "namedWindow"
+  name: string
+  /** Inherited base window (e.g. WINDOW w2 AS (w1 ORDER BY x)). */
+  baseWindow?: string
+  partitionBy?: Expression[]
+  orderBy?: OrderByItem[]
+  frame?: WindowFrame
 }
 
 export interface CTE extends AstNode {
@@ -1022,6 +1040,12 @@ export interface FunctionCall extends AstNode {
 
 export interface WindowSpecification extends AstNode {
   type: "windowSpec"
+  /**
+   * Named window reference (e.g. `avg(x) OVER w`). When set, the other
+   * fields are not used — the function references a named window defined
+   * in the SELECT's `namedWindows` list.
+   */
+  windowName?: string
   partitionBy?: Expression[]
   orderBy?: OrderByItem[]
   frame?: WindowFrame
