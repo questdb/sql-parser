@@ -1,6 +1,7 @@
 export const constants: string[] = [
   "asc",
   "brotli",
+  "cadence",
   "century",
   "complete",
   "datestyle",
@@ -71,6 +72,7 @@ export const constants: string[] = [
   "transaction_isolation",
   "true",
   "uncompressed",
+  "uniform",
   "week",
   "weeks",
   "year",
