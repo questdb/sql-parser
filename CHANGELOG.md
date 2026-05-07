@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.1.11 - 2026.05.07
+### Changed
+- Autocomplete hides `pg_*` functions (and the `pg_catalog.*` namespace) until the user has typed a `pg` prefix, so `p` no longer floods completions with PostgreSQL-compat names. [58a911a](https://github.com/questdb/sql-parser/commit/58a911a)
+
+
 ## 0.1.10 - 2026.04.22
 ### Added
 - Named `WINDOW` clause: `SELECT ... WINDOW w AS (...)` with multiple windows, window inheritance, and inline-plus-named mixing. Matches QuestDB's Java parser (introduced in questdb/questdb#6746). [#24](https://github.com/questdb/sql-parser/pull/24)
