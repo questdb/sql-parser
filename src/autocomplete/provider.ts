@@ -242,6 +242,11 @@ export function createAutocompleteProvider(
         }
       }
 
+      const partialPrefix =
+        isMidWord && tokensBefore.length > 0
+          ? tokensBefore[tokensBefore.length - 1].image.toLowerCase()
+          : ""
+
       // If parser returned valid next tokens, use grammar-based classification
       if (nextTokenTypes.length > 0) {
         const suggestions = buildSuggestions(
@@ -256,6 +261,7 @@ export function createAutocompleteProvider(
             includeWindowFunctions: suggestWindowFunctions,
             includeTableValuedFunctions: suggestTableValuedFunctions,
             isMidWord,
+            partialPrefix,
           },
         )
         if (suggestTables) {

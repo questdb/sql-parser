@@ -5,11 +5,16 @@
 // and verified against source code in questdb/ and questdb-enterprise/.
 //
 // Categories used for context-aware autocomplete:
-// - scalarFunctions     — single-row functions (FROM functions() type=STANDARD)
-// - aggregateFunctions  — collapse rows (type=GROUP_BY); also valid as windows
-// - windowFunctions     — pure ranking/offset (type=WINDOW, no GROUP_BY overload)
+// - scalarFunctions      — single-row functions (FROM functions() type=STANDARD)
+// - aggregateFunctions   — collapse rows (type=GROUP_BY); also valid as windows
+// - windowFunctions      — pure ranking/offset (type=WINDOW, no GROUP_BY overload)
 // - tableValuedFunctions — return rows (type=CURSOR, or STANDARD that succeeds
-//   in `SELECT * FROM <name>()` — meta pseudo-tables like `materialized_views`)
+//   in `SELECT * FROM <name>()` — meta pseudo-tables like `materialized_views`,
+//   plus PostgreSQL-compat catalog entries like `pg_class` and `pg_catalog.*`.
+//   The pg_-prefixed entries are gated at emission time by the suggestion-
+//   builder: they only surface when the user has typed a "pg" prefix, so the
+//   letter "p" alone doesn't bury real schema results in JOIN positions.
+//   `information_schema.*` is NOT gated — those names are SQL-standard.
 //
 // Removed from earlier flat list: 17 entries absent from QuestDB runtime AND
 // docs (e.g. `array_agg`, `lcase`, `len`, `nvl`, `headers`, `show`,
@@ -181,7 +186,6 @@ export const scalarFunctions: string[] = [
   "sysdate",
   "systimestamp",
   "systimestamp_ns",
-  "table_columns",
   "tan",
   "timestamp_ceil",
   "timestamp_floor",
@@ -210,7 +214,6 @@ export const scalarFunctions: string[] = [
   "typeOf",
   "upper",
   "version",
-  "wal_transactions",
   "week_of_year",
   "within",
   "within_box",
@@ -332,11 +335,13 @@ export const tableValuedFunctions: string[] = [
   "pg_proc",
   "query_activity",
   "reader_pool",
+  "table_columns",
   "table_storage",
   "table_writer_metrics",
   "tables",
   "views",
   "wal_tables",
+  "wal_transactions",
   "writer_pool",
 ]
 
