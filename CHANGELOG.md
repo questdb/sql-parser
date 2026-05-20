@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.1.12 - 2026.05.20
+### Fixed
+- add strict position tracking, prevent equals operator in DECLARE assignments [49b4f58](https://github.com/questdb/sql-parser/commit/49b4f58)
+
+
 ## 0.1.11 - 2026.05.07
 ### Changed
 - Autocomplete hides `pg_*` functions (and the `pg_catalog.*` namespace) until the user has typed a `pg` prefix, so `p` no longer floods completions with PostgreSQL-compat names. [58a911a](https://github.com/questdb/sql-parser/commit/58a911a)
