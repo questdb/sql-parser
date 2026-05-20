@@ -4720,16 +4720,11 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
 
     // --- Fix 8-10: DECLARE, PARTITION BY WEEK ---
 
-    it("should parse DECLARE with variable assignment using equals", () => {
+    it("should REJECT DECLARE assignments using `=` (server requires `:=`)", () => {
       const result = parseToAst(
         "DECLARE @cutoff = '2024-01-01' SELECT * FROM t WHERE ts < @cutoff",
       )
-      expect(result.errors).toHaveLength(0)
-      const stmt = result.ast[0] as AST.SelectStatement
-      expect(stmt.type).toBe("select")
-      expect(stmt.declare).toBeDefined()
-      expect(stmt.declare?.assignments).toHaveLength(1)
-      expect(stmt.declare?.assignments[0].name).toBe("cutoff")
+      expect(result.errors.length).toBeGreaterThan(0)
     })
 
     it("should parse CREATE MATERIALIZED VIEW with PARTITION BY WEEK", () => {

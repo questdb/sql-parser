@@ -869,7 +869,7 @@ export const allTokens: TokenType[] = [
 // Lexer Instance
 // =============================================================================
 
-export const QuestDBLexer = new Lexer(allTokens)
+export const QuestDBLexer = new Lexer(allTokens, { positionTracking: "full" })
 
 export function tokenize(input: string) {
   const result = QuestDBLexer.tokenize(input)

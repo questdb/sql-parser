@@ -1403,10 +1403,7 @@ class QuestDBParser extends CstParser {
   private declareAssignment = this.RULE("declareAssignment", () => {
     this.OPTION(() => this.CONSUME(Overridable))
     this.CONSUME(VariableReference)
-    this.OR([
-      { ALT: () => this.CONSUME(ColonEquals) },
-      { ALT: () => this.CONSUME(Equals) },
-    ])
+    this.CONSUME(ColonEquals)
     this.SUBRULE(this.expression)
   })
 
