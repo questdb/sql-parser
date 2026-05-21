@@ -1,6 +1,6 @@
 {
   "name": "@questdb/sql-parser",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "SQL parser for QuestDB syntax using Chevrotain",
   "type": "module",
   "main": "dist/index.cjs",

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.13 - 2026.05.21
+### Added
+- support storage policy [1ccfa5f](https://github.com/questdb/sql-parser/commit/1ccfa5f)
 
 ## 0.1.12 - 2026.05.20
 ### Fixed
