@@ -167,6 +167,7 @@ export interface CreateTableStatement extends AstNode {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   }
+  storagePolicy?: StoragePolicy
   withParams?: TableParam[]
   volume?: string
   ownedBy?: string
@@ -224,14 +225,36 @@ export interface CreateMaterializedViewStatement extends AstNode {
   period?: MaterializedViewPeriod
   query: SelectStatement
   asParens?: boolean
+  indexes?: IndexDefinition[]
   timestamp?: QualifiedName
   partitionBy?: "YEAR" | "MONTH" | "WEEK" | "DAY" | "HOUR"
   ttl?: {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   }
+  storagePolicy?: StoragePolicy
   volume?: string
   ownedBy?: string
+}
+
+export interface StoragePolicy extends AstNode {
+  type: "storagePolicy"
+  toParquet?: {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  }
+  dropNative?: {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  }
+  dropLocal?: {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  }
+  dropRemote?: {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  }
 }
 
 export interface MaterializedViewRefresh extends AstNode {
@@ -300,6 +323,10 @@ export type AlterMaterializedViewAction =
   | AlterMaterializedViewSetRefresh
   | AlterMaterializedViewResumeWal
   | AlterMaterializedViewSuspendWal
+  | AlterMaterializedViewSetStoragePolicy
+  | AlterMaterializedViewDropStoragePolicy
+  | AlterMaterializedViewEnableStoragePolicy
+  | AlterMaterializedViewDisableStoragePolicy
 
 export interface AlterMaterializedViewAddIndex {
   actionType: "addIndex"
@@ -347,6 +374,23 @@ export interface AlterMaterializedViewResumeWal {
 
 export interface AlterMaterializedViewSuspendWal {
   actionType: "suspendWal"
+}
+
+export interface AlterMaterializedViewSetStoragePolicy {
+  actionType: "setStoragePolicy"
+  policy: StoragePolicy
+}
+
+export interface AlterMaterializedViewDropStoragePolicy {
+  actionType: "dropStoragePolicy"
+}
+
+export interface AlterMaterializedViewEnableStoragePolicy {
+  actionType: "enableStoragePolicy"
+}
+
+export interface AlterMaterializedViewDisableStoragePolicy {
+  actionType: "disableStoragePolicy"
 }
 
 export interface AlterUserStatement extends AstNode {
@@ -415,6 +459,10 @@ export type AlterTableAction =
   | SuspendWalAction
   | ResumeWalAction
   | ConvertPartitionAction
+  | SetStoragePolicyAction
+  | DropStoragePolicyAction
+  | EnableStoragePolicyAction
+  | DisableStoragePolicyAction
 
 export interface AddColumnAction {
   actionType: "addColumn"
@@ -483,6 +531,23 @@ export interface SetTtlAction {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   }
+}
+
+export interface SetStoragePolicyAction {
+  actionType: "setStoragePolicy"
+  policy: StoragePolicy
+}
+
+export interface DropStoragePolicyAction {
+  actionType: "dropStoragePolicy"
+}
+
+export interface EnableStoragePolicyAction {
+  actionType: "enableStoragePolicy"
+}
+
+export interface DisableStoragePolicyAction {
+  actionType: "disableStoragePolicy"
 }
 
 export interface DedupDisableAction {

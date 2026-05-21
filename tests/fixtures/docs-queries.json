@@ -5302,5 +5302,62 @@
   },
   {
     "query": "WITH ohlc AS (\n  SELECT\n    timestamp,\n    first(open) AS open,\n    max(high) AS high,\n    min(low) AS low,\n    last(close) AS close,\n    sum(total_volume) AS total_volume\n  FROM fx_trades_ohlc_1m\n  WHERE symbol = 'EURUSD'\n    AND timestamp > dateadd('d', -2, now())\n  SAMPLE BY 15m\n), changes AS (\n  SELECT\n    timestamp,\n    close,\n    close - lag(close) OVER (ORDER BY timestamp) AS change\n  FROM ohlc\n), gains_losses AS (\n  SELECT\n    timestamp,\n    close,\n    CASE WHEN change > 0 THEN change ELSE 0 END AS gain,\n    CASE WHEN change < 0 THEN -change ELSE 0 END AS loss\n  FROM changes\n), smoothed AS (\n  SELECT\n    timestamp,\n    close,\n    100 --avg(gain, 'period', 14) OVER w \n    AS avg_gain,\n    100 -- avg(loss, 'period', 14) OVER w \n    AS avg_loss\n  FROM gains_losses\n  WINDOW w AS (ORDER BY timestamp)\n)\nSELECT\n  timestamp,\n  close,\n  CASE\n    WHEN avg_loss = 0 THEN 100\n    ELSE 100 - (100 / (1 + avg_gain / avg_loss))\n  END AS rsi,\n  70.0 AS overbought,\n  30.0 AS oversold\nFROM smoothed\nORDER BY timestamp;"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1d)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTH)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1 HOUR, DROP NATIVE 1 YEAR)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(DROP NATIVE 1d)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(DROP LOCAL 7d)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(DROP REMOTE 1d)"
+  },
+  {
+    "query": "ALTER TABLE trades ENABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE trades DISABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE trades DROP STORAGE POLICY;"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW trades_hourly SET STORAGE POLICY(TO PARQUET 7 DAYS, DROP NATIVE 14 DAYS, DROP LOCAL 1 MONTH)"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW trades_hourly DISABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW trades_hourly DROP STORAGE POLICY"
+  },
+  {
+    "query": "CREATE TABLE trades (ts TIMESTAMP, symbol SYMBOL, price DOUBLE) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, DROP NATIVE 10d, DROP LOCAL 1M) WAL"
+  },
+  {
+    "query": "CREATE TABLE IF NOT EXISTS trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 1d) WAL"
+  },
+  {
+    "query": "CREATE TABLE trades (ts TIMESTAMP, k SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) WAL OWNED BY 'group1'"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW hourly_trades AS (SELECT ts, symbol, sum(price) total FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW test WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) IN VOLUME vol1"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(x) FROM t SAMPLE BY 1h) PARTITION BY DAY TTL 10d"
+  },
+  {
+    "query": "CREATE TABLE t (x LONG, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 12h"
   }
 ]

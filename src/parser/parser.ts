@@ -336,6 +336,12 @@ import {
   DeltaBinaryPacked,
   DeltaLengthByteArray,
   Default,
+  // Storage policy tokens
+  Storage,
+  Policy,
+  Native,
+  Local,
+  Remote,
   IdentifierKeyword,
 } from "./lexer"
 
@@ -1568,6 +1574,8 @@ class QuestDBParser extends CstParser {
       ])
     })
 
+    this.SUBRULE(this.optionalStoragePolicy)
+
     // Optional WAL / BYPASS WAL
     this.OPTION5(() => {
       this.OR3([
@@ -1783,6 +1791,11 @@ class QuestDBParser extends CstParser {
       this.OPTION4(() => this.CONSUME(LParen))
       this.SUBRULE(this.selectStatement)
       this.OPTION5(() => this.CONSUME(RParen))
+      // Optional `, INDEX(col [CAPACITY n])` clauses (mat-view symbol indexes)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE(this.indexDefinition)
+      })
       this.OPTION6(() => {
         this.CONSUME(Timestamp)
         this.CONSUME1(LParen)
@@ -1792,6 +1805,7 @@ class QuestDBParser extends CstParser {
       this.OPTION7(() => {
         this.SUBRULE(this.materializedViewPartition)
       })
+      this.SUBRULE(this.optionalStoragePolicy)
       this.OPTION8(() => {
         this.CONSUME(In)
         this.CONSUME(Volume)
@@ -1876,13 +1890,25 @@ class QuestDBParser extends CstParser {
       this.SUBRULE(this.partitionPeriod)
       this.OPTION(() => {
         this.CONSUME(Ttl)
-        this.CONSUME(NumberLiteral)
         this.OR1([
-          { ALT: () => this.CONSUME(Hours) },
-          { ALT: () => this.CONSUME(Days) },
-          { ALT: () => this.CONSUME(Weeks) },
-          { ALT: () => this.CONSUME(Months) },
-          { ALT: () => this.CONSUME(Years) },
+          { ALT: () => this.CONSUME(DurationLiteral) },
+          {
+            ALT: () => {
+              this.CONSUME(NumberLiteral)
+              this.OR2([
+                { ALT: () => this.CONSUME(Hours) },
+                { ALT: () => this.CONSUME(Days) },
+                { ALT: () => this.CONSUME(Weeks) },
+                { ALT: () => this.CONSUME(Months) },
+                { ALT: () => this.CONSUME(Years) },
+                { ALT: () => this.CONSUME(Hour) },
+                { ALT: () => this.CONSUME(Day) },
+                { ALT: () => this.CONSUME(Week) },
+                { ALT: () => this.CONSUME(Month) },
+                { ALT: () => this.CONSUME(Year) },
+              ])
+            },
+          },
         ])
       })
     },
@@ -1978,6 +2004,81 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Brotli) },
       { ALT: () => this.CONSUME(Zstd) },
       { ALT: () => this.CONSUME(Lz4Raw) },
+    ])
+  })
+
+  // Wrapper that makes STORAGE POLICY optional. Used by host rules that have
+  // already exhausted OPTION1..OPTION9 occurrence numbers (chevrotain limit).
+  private optionalStoragePolicy = this.RULE("optionalStoragePolicy", () => {
+    this.OPTION(() => this.SUBRULE(this.storagePolicy))
+  })
+
+  // STORAGE POLICY(TO PARQUET <ttl>, DROP NATIVE <ttl>, DROP LOCAL <ttl>, DROP REMOTE <ttl>)
+  private storagePolicy = this.RULE("storagePolicy", () => {
+    this.CONSUME(Storage)
+    this.CONSUME(Policy)
+    this.CONSUME(LParen)
+    this.OPTION(() => {
+      this.SUBRULE(this.storagePolicyClause)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE1(this.storagePolicyClause)
+      })
+    })
+    this.CONSUME(RParen)
+  })
+
+  private storagePolicyClause = this.RULE("storagePolicyClause", () => {
+    this.OR([
+      {
+        ALT: () => {
+          this.CONSUME(To)
+          this.CONSUME(Parquet)
+          this.SUBRULE(this.storagePolicyTtl)
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(Drop)
+          this.OR1([
+            { ALT: () => this.CONSUME(Native) },
+            { ALT: () => this.CONSUME(Local) },
+            { ALT: () => this.CONSUME(Remote) },
+          ])
+          this.SUBRULE1(this.storagePolicyTtl)
+        },
+      },
+    ])
+  })
+
+  private storagePolicyTtl = this.RULE("storagePolicyTtl", () => {
+    this.OR([
+      // Short form: combined number + unit suffix, e.g. 2Y, 12h, 30d
+      { ALT: () => this.CONSUME(DurationLiteral) },
+      // Long form: separate number and unit, e.g. 7 DAYS, 1 MONTH.
+      // The unit is REQUIRED — QuestDB rejects a bare `<number>` with
+      // "invalid unit, expected 'HOUR(S)', 'DAY(S)', ...".
+      {
+        ALT: () => {
+          this.CONSUME(NumberLiteral)
+          this.SUBRULE(this.storagePolicyTimeUnit)
+        },
+      },
+    ])
+  })
+
+  private storagePolicyTimeUnit = this.RULE("storagePolicyTimeUnit", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Hours) },
+      { ALT: () => this.CONSUME(Days) },
+      { ALT: () => this.CONSUME(Weeks) },
+      { ALT: () => this.CONSUME(Months) },
+      { ALT: () => this.CONSUME(Years) },
+      { ALT: () => this.CONSUME(Hour) },
+      { ALT: () => this.CONSUME(Day) },
+      { ALT: () => this.CONSUME(Week) },
+      { ALT: () => this.CONSUME(Month) },
+      { ALT: () => this.CONSUME(Year) },
     ])
   })
 
@@ -2230,7 +2331,7 @@ class QuestDBParser extends CstParser {
           })
         },
       },
-      // DROP (COLUMN ... | PARTITION ...)
+      // DROP (COLUMN ... | PARTITION ... | STORAGE POLICY)
       {
         ALT: () => {
           this.CONSUME(Drop)
@@ -2268,6 +2369,13 @@ class QuestDBParser extends CstParser {
                     },
                   },
                 ])
+              },
+            },
+            // DROP STORAGE POLICY
+            {
+              ALT: () => {
+                this.CONSUME(Storage)
+                this.CONSUME(Policy)
               },
             },
           ])
@@ -2380,7 +2488,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Partitions)
         },
       },
-      // SET (PARAM ... | TTL ... | TYPE WAL ...)
+      // SET (PARAM ... | TTL ... | TYPE WAL ... | STORAGE POLICY ...)
       {
         ALT: () => {
           this.CONSUME(Set)
@@ -2421,6 +2529,8 @@ class QuestDBParser extends CstParser {
                 this.CONSUME3(Wal)
               },
             },
+            // SET STORAGE POLICY(...)
+            { ALT: () => this.SUBRULE(this.storagePolicy) },
           ])
         },
       },
@@ -2484,6 +2594,22 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Convert)
           this.CONSUME3(Partition)
           this.SUBRULE7(this.convertPartitionTarget)
+        },
+      },
+      // ENABLE STORAGE POLICY
+      {
+        ALT: () => {
+          this.CONSUME(Enable)
+          this.CONSUME1(Storage)
+          this.CONSUME1(Policy)
+        },
+      },
+      // DISABLE STORAGE POLICY
+      {
+        ALT: () => {
+          this.CONSUME(Disable)
+          this.CONSUME2(Storage)
+          this.CONSUME2(Policy)
         },
       },
     ])
@@ -2561,7 +2687,7 @@ class QuestDBParser extends CstParser {
             ])
           },
         },
-        // SET (TTL ... | REFRESH LIMIT ... | REFRESH ...)
+        // SET (TTL ... | REFRESH LIMIT ... | REFRESH ... | STORAGE POLICY ...)
         {
           ALT: () => {
             this.CONSUME(Set)
@@ -2615,6 +2741,8 @@ class QuestDBParser extends CstParser {
                   ])
                 },
               },
+              // SET STORAGE POLICY(...)
+              { ALT: () => this.SUBRULE(this.storagePolicy) },
             ])
           },
         },
@@ -2638,6 +2766,30 @@ class QuestDBParser extends CstParser {
           ALT: () => {
             this.CONSUME(Suspend)
             this.CONSUME1(Wal)
+          },
+        },
+        // DROP STORAGE POLICY
+        {
+          ALT: () => {
+            this.CONSUME(Drop)
+            this.CONSUME1(Storage)
+            this.CONSUME1(Policy)
+          },
+        },
+        // ENABLE STORAGE POLICY
+        {
+          ALT: () => {
+            this.CONSUME(Enable)
+            this.CONSUME2(Storage)
+            this.CONSUME2(Policy)
+          },
+        },
+        // DISABLE STORAGE POLICY
+        {
+          ALT: () => {
+            this.CONSUME(Disable)
+            this.CONSUME3(Storage)
+            this.CONSUME3(Policy)
           },
         },
       ])

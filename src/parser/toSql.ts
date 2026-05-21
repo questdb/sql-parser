@@ -585,6 +585,23 @@ function parquetConfigToSql(config: AST.ParquetConfig): string {
   return `PARQUET(${parts.join(", ")})`
 }
 
+function storagePolicyToSql(sp: AST.StoragePolicy): string {
+  const clauses: string[] = []
+  if (sp.toParquet) {
+    clauses.push(`TO PARQUET ${sp.toParquet.value} ${sp.toParquet.unit}`)
+  }
+  if (sp.dropNative) {
+    clauses.push(`DROP NATIVE ${sp.dropNative.value} ${sp.dropNative.unit}`)
+  }
+  if (sp.dropLocal) {
+    clauses.push(`DROP LOCAL ${sp.dropLocal.value} ${sp.dropLocal.unit}`)
+  }
+  if (sp.dropRemote) {
+    clauses.push(`DROP REMOTE ${sp.dropRemote.value} ${sp.dropRemote.unit}`)
+  }
+  return `STORAGE POLICY(${clauses.join(", ")})`
+}
+
 function createTableToSql(stmt: AST.CreateTableStatement): string {
   const parts: string[] = ["CREATE"]
 
@@ -648,6 +665,10 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
 
   if (stmt.ttl) {
     parts.push(`TTL ${stmt.ttl.value} ${stmt.ttl.unit}`)
+  }
+
+  if (stmt.storagePolicy) {
+    parts.push(storagePolicyToSql(stmt.storagePolicy))
   }
 
   if (stmt.bypassWal) {
@@ -883,6 +904,19 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       }
       break
     }
+    case "setStoragePolicy":
+      parts.push("SET")
+      parts.push(storagePolicyToSql(action.policy))
+      break
+    case "dropStoragePolicy":
+      parts.push("DROP STORAGE POLICY")
+      break
+    case "enableStoragePolicy":
+      parts.push("ENABLE STORAGE POLICY")
+      break
+    case "disableStoragePolicy":
+      parts.push("DISABLE STORAGE POLICY")
+      break
   }
 
   return parts.join(" ")
@@ -1063,15 +1097,22 @@ function createMaterializedViewToSql(
     parts.push(`WITH BASE ${qualifiedNameToSql(stmt.baseTable)}`)
   if (stmt.refresh) parts.push(materializedViewRefreshToSql(stmt.refresh))
   if (stmt.period) parts.push(materializedViewPeriodToSql(stmt.period))
-  if (stmt.asParens) {
-    parts.push(`AS (${selectToSql(stmt.query)})`)
-  } else {
-    parts.push(`AS ${selectToSql(stmt.query)}`)
+  let asSql = stmt.asParens
+    ? `AS (${selectToSql(stmt.query)})`
+    : `AS ${selectToSql(stmt.query)}`
+  if (stmt.indexes && stmt.indexes.length > 0) {
+    for (const idx of stmt.indexes) {
+      asSql += `, INDEX(${qualifiedNameToSql(idx.column)}`
+      if (idx.capacity != null) asSql += ` CAPACITY ${idx.capacity}`
+      asSql += ")"
+    }
   }
+  parts.push(asSql)
   if (stmt.timestamp)
     parts.push(`TIMESTAMP(${qualifiedNameToSql(stmt.timestamp)})`)
   if (stmt.partitionBy) parts.push(`PARTITION BY ${stmt.partitionBy}`)
   if (stmt.ttl) parts.push(`TTL ${stmt.ttl.value} ${stmt.ttl.unit}`)
+  if (stmt.storagePolicy) parts.push(storagePolicyToSql(stmt.storagePolicy))
   if (stmt.volume) parts.push(`IN VOLUME ${escapeIdentifier(stmt.volume)}`)
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
@@ -1124,6 +1165,19 @@ function alterMaterializedViewToSql(
     }
     case "suspendWal":
       parts.push("SUSPEND WAL")
+      break
+    case "setStoragePolicy":
+      parts.push("SET")
+      parts.push(storagePolicyToSql(action.policy))
+      break
+    case "dropStoragePolicy":
+      parts.push("DROP STORAGE POLICY")
+      break
+    case "enableStoragePolicy":
+      parts.push("ENABLE STORAGE POLICY")
+      break
+    case "disableStoragePolicy":
+      parts.push("DISABLE STORAGE POLICY")
       break
   }
   return parts.join(" ")

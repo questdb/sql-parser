@@ -109,6 +109,7 @@ import type {
   OrderByClauseCstChildren,
   OrderByItemCstChildren,
   OverClauseCstChildren,
+  OptionalStoragePolicyCstChildren,
   ParquetCompressionCstChildren,
   ParquetConfigCstChildren,
   ParquetEncodingCstChildren,
@@ -144,6 +145,10 @@ import type {
   SimpleSelectCstChildren,
   SnapshotStatementCstChildren,
   SpliceJoinCstChildren,
+  StoragePolicyClauseCstChildren,
+  StoragePolicyCstChildren,
+  StoragePolicyTimeUnitCstChildren,
+  StoragePolicyTtlCstChildren,
   HorizonJoinCstChildren,
   HorizonOffsetCstChildren,
   StandardJoinCstChildren,
@@ -194,6 +199,13 @@ type PivotBodyResult = {
   aggregations: AST.PivotAggregation[]
   pivots: AST.PivotForClause[]
   groupBy?: AST.Expression[]
+}
+
+// QuestDB allows `_` as a digit separator in numeric literals (e.g. `1_000_000`).
+// JavaScript's parseInt stops at the first `_`, so `parseInt("1_000", 10)` is 1.
+// Strip separators before parsing whenever the input is a token image.
+function tokenInt(image: string): number {
+  return parseInt(image.replace(/_/g, ""), 10)
 }
 
 // Get the base visitor class from the parser
@@ -1097,7 +1109,7 @@ class QuestDBVisitor extends BaseVisitor {
         ? ctx.StringLiteral[0].image.slice(1, -1)
         : undefined)
     return {
-      size: parseInt(ctx.NumberLiteral[0].image, 10),
+      size: tokenInt(ctx.NumberLiteral[0].image),
       o3MaxLag,
     }
   }
@@ -1273,6 +1285,17 @@ class QuestDBVisitor extends BaseVisitor {
       result.ttl = this.extractTtl(ctx)
     }
 
+    if (ctx.optionalStoragePolicy) {
+      const sp = this.visit(ctx.optionalStoragePolicy) as
+        | AST.StoragePolicy
+        | undefined
+      if (sp) result.storagePolicy = sp
+    }
+
+    if (result.ttl && result.storagePolicy) {
+      throw new Error("Cannot set storage policy, please, remove TTL settings")
+    }
+
     if (ctx.tableParam) {
       result.withParams = ctx.tableParam.map(
         (p: CstNode) => this.visit(p) as AST.TableParam,
@@ -1322,15 +1345,15 @@ class QuestDBVisitor extends BaseVisitor {
           const capOffset = capacityTokens[i].startOffset
           if (capOffset < indexOffset) {
             // Symbol CAPACITY (before INDEX)
-            result.symbolCapacity = parseInt(numberTokens[i].image, 10)
+            result.symbolCapacity = tokenInt(numberTokens[i].image)
           } else {
             // INDEX CAPACITY (after INDEX)
-            result.indexCapacity = parseInt(numberTokens[i].image, 10)
+            result.indexCapacity = tokenInt(numberTokens[i].image)
           }
         }
       } else {
         // No INDEX, so this is symbol CAPACITY
-        result.symbolCapacity = parseInt(numberTokens[0].image, 10)
+        result.symbolCapacity = tokenInt(numberTokens[0].image)
       }
     }
 
@@ -1367,7 +1390,7 @@ class QuestDBVisitor extends BaseVisitor {
       ).toUpperCase()
     }
     if (ctx.NumberLiteral) {
-      result.compressionLevel = parseInt(ctx.NumberLiteral[0].image)
+      result.compressionLevel = tokenInt(ctx.NumberLiteral[0].image)
     }
     if (ctx.BloomFilter) {
       result.bloomFilter = true
@@ -1381,6 +1404,78 @@ class QuestDBVisitor extends BaseVisitor {
 
   parquetCompression(ctx: ParquetCompressionCstChildren): string {
     return this.firstTokenImage(ctx)?.toUpperCase() ?? ""
+  }
+
+  optionalStoragePolicy(
+    ctx: OptionalStoragePolicyCstChildren,
+  ): AST.StoragePolicy | undefined {
+    if (!ctx.storagePolicy) return undefined
+    return this.visit(ctx.storagePolicy) as AST.StoragePolicy
+  }
+
+  storagePolicy(ctx: StoragePolicyCstChildren): AST.StoragePolicy {
+    if (!ctx.storagePolicyClause || ctx.storagePolicyClause.length === 0) {
+      throw new Error("at least one storage policy clause is required")
+    }
+    const KIND_DISPLAY: Record<
+      "toParquet" | "dropNative" | "dropLocal" | "dropRemote",
+      string
+    > = {
+      toParquet: "TO PARQUET",
+      dropNative: "DROP NATIVE",
+      dropLocal: "DROP LOCAL",
+      dropRemote: "DROP REMOTE",
+    }
+    const result: AST.StoragePolicy = { type: "storagePolicy" }
+    for (const clauseNode of ctx.storagePolicyClause) {
+      const clause = this.visit(clauseNode) as {
+        kind: "toParquet" | "dropNative" | "dropLocal" | "dropRemote"
+        ttl: {
+          value: number
+          unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+        }
+      }
+      if (result[clause.kind] !== undefined) {
+        throw new Error(
+          `duplicate '${KIND_DISPLAY[clause.kind]}' in storage policy`,
+        )
+      }
+      result[clause.kind] = clause.ttl
+    }
+    return result
+  }
+
+  storagePolicyClause(ctx: StoragePolicyClauseCstChildren): {
+    kind: "toParquet" | "dropNative" | "dropLocal" | "dropRemote"
+    ttl: {
+      value: number
+      unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+    }
+  } {
+    let kind: "toParquet" | "dropNative" | "dropLocal" | "dropRemote"
+    if (ctx.To && ctx.Parquet) {
+      kind = "toParquet"
+    } else if (ctx.Drop && ctx.Native) {
+      kind = "dropNative"
+    } else if (ctx.Drop && ctx.Local) {
+      kind = "dropLocal"
+    } else if (ctx.Drop && ctx.Remote) {
+      kind = "dropRemote"
+    } else {
+      throw new Error("Unknown storage policy clause")
+    }
+    const ttl = this.visit(ctx.storagePolicyTtl!) as {
+      value: number
+      unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+    }
+    return { kind, ttl }
+  }
+
+  storagePolicyTtl(ctx: StoragePolicyTtlCstChildren): {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  } {
+    return this.extractTtl(ctx)
   }
 
   castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
@@ -1399,7 +1494,7 @@ class QuestDBVisitor extends BaseVisitor {
       column: colRef.name ?? colRef,
     }
     if (ctx.Capacity && ctx.NumberLiteral) {
-      result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.capacity = tokenInt(ctx.NumberLiteral[0].image)
     }
     return result
   }
@@ -1524,6 +1619,11 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.If) {
       result.ifNotExists = true
     }
+    if (ctx.indexDefinition) {
+      result.indexes = ctx.indexDefinition.map(
+        (i) => this.visit(i) as AST.IndexDefinition,
+      )
+    }
     if (ctx.Base && ctx.stringOrQualifiedName?.length > 1) {
       result.baseTable = this.visit(
         ctx.stringOrQualifiedName[1],
@@ -1552,6 +1652,15 @@ class QuestDBVisitor extends BaseVisitor {
       }
       if (partition.partitionBy) result.partitionBy = partition.partitionBy
       if (partition.ttl) result.ttl = partition.ttl
+    }
+    if (ctx.optionalStoragePolicy) {
+      const sp = this.visit(ctx.optionalStoragePolicy) as
+        | AST.StoragePolicy
+        | undefined
+      if (sp) result.storagePolicy = sp
+    }
+    if (result.ttl && result.storagePolicy) {
+      throw new Error("Cannot set storage policy, please, remove TTL settings")
     }
     if (ctx.Volume) {
       const volumeOffset = ctx.Volume[0].startOffset
@@ -1630,7 +1739,7 @@ class QuestDBVisitor extends BaseVisitor {
         | "DAY"
         | "HOUR"
     }
-    if (ctx.Ttl && ctx.NumberLiteral) {
+    if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
       result.ttl = this.extractTtl(ctx)
     }
     return result
@@ -1669,6 +1778,17 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Microseconds) return "MICROSECONDS"
     if (ctx.Nanosecond) return "NANOSECOND"
     if (ctx.Nanoseconds) return "NANOSECONDS"
+    return "DAYS"
+  }
+
+  storagePolicyTimeUnit(
+    ctx: StoragePolicyTimeUnitCstChildren,
+  ): "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" {
+    if (ctx.Hours || ctx.Hour) return "HOURS"
+    if (ctx.Days || ctx.Day) return "DAYS"
+    if (ctx.Weeks || ctx.Week) return "WEEKS"
+    if (ctx.Months || ctx.Month) return "MONTHS"
+    if (ctx.Years || ctx.Year) return "YEARS"
     return "DAYS"
   }
 
@@ -1764,6 +1884,26 @@ class QuestDBVisitor extends BaseVisitor {
   alterMaterializedViewAction(
     ctx: AlterMaterializedViewActionCstChildren,
   ): AST.AlterMaterializedViewAction {
+    // SET STORAGE POLICY(...) — must come before generic SET branches below
+    if (ctx.Set && ctx.storagePolicy) {
+      return {
+        actionType: "setStoragePolicy",
+        policy: this.visit(ctx.storagePolicy) as AST.StoragePolicy,
+      }
+    }
+    // DROP STORAGE POLICY
+    if (ctx.Drop && ctx.Storage && ctx.Policy && !ctx.Alter) {
+      return { actionType: "dropStoragePolicy" }
+    }
+    // ENABLE STORAGE POLICY
+    if (ctx.Enable && ctx.Storage && ctx.Policy) {
+      return { actionType: "enableStoragePolicy" }
+    }
+    // DISABLE STORAGE POLICY
+    if (ctx.Disable && ctx.Storage && ctx.Policy) {
+      return { actionType: "disableStoragePolicy" }
+    }
+
     if (ctx.Add && ctx.Index) {
       const colRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       const result: AST.AlterMaterializedViewAddIndex = {
@@ -1771,7 +1911,7 @@ class QuestDBVisitor extends BaseVisitor {
         column: colRef.name.parts[colRef.name.parts.length - 1],
       }
       if (ctx.Capacity && ctx.NumberLiteral) {
-        result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+        result.capacity = tokenInt(ctx.NumberLiteral[0].image)
       }
       return result
     }
@@ -1781,7 +1921,7 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         actionType: "symbolCapacity",
         column: colRef.name.parts[colRef.name.parts.length - 1],
-        capacity: parseInt(ctx.NumberLiteral![0].image, 10),
+        capacity: tokenInt(ctx.NumberLiteral![0].image),
       }
     }
 
@@ -1812,7 +1952,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Resume) {
       const result: AST.ResumeWalAction = { actionType: "resumeWal" }
       if (ctx.NumberLiteral) {
-        result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10)
+        result.fromTxn = tokenInt(ctx.NumberLiteral[0].image)
       }
       return result
     }
@@ -1903,6 +2043,26 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   alterTableAction(ctx: AlterTableActionCstChildren): AST.AlterTableAction {
+    // SET STORAGE POLICY(...) — must come before generic SET branches below
+    if (ctx.Set && ctx.storagePolicy) {
+      return {
+        actionType: "setStoragePolicy",
+        policy: this.visit(ctx.storagePolicy) as AST.StoragePolicy,
+      }
+    }
+    // DROP STORAGE POLICY — must come before generic DROP branches below
+    if (ctx.Drop && ctx.Storage && ctx.Policy) {
+      return { actionType: "dropStoragePolicy" }
+    }
+    // ENABLE STORAGE POLICY
+    if (ctx.Enable && ctx.Storage && ctx.Policy) {
+      return { actionType: "enableStoragePolicy" }
+    }
+    // DISABLE STORAGE POLICY
+    if (ctx.Disable && ctx.Storage && ctx.Policy) {
+      return { actionType: "disableStoragePolicy" }
+    }
+
     // ADD COLUMN
     if (ctx.Add && ctx.columnDefinition) {
       const result: AST.AddColumnAction = {
@@ -1968,7 +2128,7 @@ class QuestDBVisitor extends BaseVisitor {
         alterType = "type"
         newType = this.visit(ctx.dataType!) as string
         if (ctx.Capacity && ctx.NumberLiteral) {
-          capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+          capacity = tokenInt(ctx.NumberLiteral[0].image)
         }
       } else if (ctx.Add && ctx.Index) {
         alterType = "addIndex"
@@ -1976,7 +2136,7 @@ class QuestDBVisitor extends BaseVisitor {
         alterType = "dropIndex"
       } else if (ctx.Symbol && ctx.Capacity) {
         alterType = "symbolCapacity"
-        capacity = parseInt(ctx.NumberLiteral![0].image, 10)
+        capacity = tokenInt(ctx.NumberLiteral![0].image)
       } else if (ctx.Cache) {
         alterType = "cache"
       } else if (ctx.Nocache) {
@@ -2085,7 +2245,7 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.With) {
         // Code can be a NumberLiteral or StringLiteral
         if (ctx.NumberLiteral) {
-          result.code = parseInt(ctx.NumberLiteral[0].image, 10)
+          result.code = tokenInt(ctx.NumberLiteral[0].image)
         } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
           result.code = ctx.StringLiteral[0].image.slice(1, -1)
         }
@@ -2102,7 +2262,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Resume) {
       const result: AST.ResumeWalAction = { actionType: "resumeWal" }
       if (ctx.NumberLiteral) {
-        const num = parseInt(ctx.NumberLiteral[0].image, 10)
+        const num = tokenInt(ctx.NumberLiteral[0].image)
         if (ctx.Txn) {
           result.fromTxn = num
         } else if (ctx.Transaction) {
@@ -2584,7 +2744,7 @@ class QuestDBVisitor extends BaseVisitor {
       result.value = this.visit(ctx.booleanLiteral) as boolean
     } else if (ctx.NumberLiteral) {
       // PARQUET_VERSION with bare number literal (e.g., PARQUET_VERSION 2)
-      result.value = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.value = tokenInt(ctx.NumberLiteral[0].image)
     } else if (ctx.stringOrIdentifier) {
       result.value = this.extractMaybeString(ctx.stringOrIdentifier[0])
       // Mark as quoted when the stringOrIdentifier resolved to a string literal
@@ -2863,10 +3023,10 @@ class QuestDBVisitor extends BaseVisitor {
       type: "resumeWal",
     }
     if (ctx.Transaction && ctx.NumberLiteral) {
-      result.fromTransaction = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.fromTransaction = tokenInt(ctx.NumberLiteral[0].image)
     }
     if (ctx.Txn && ctx.NumberLiteral) {
-      result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.fromTxn = tokenInt(ctx.NumberLiteral[0].image)
     }
     return result
   }
@@ -4089,41 +4249,54 @@ class QuestDBVisitor extends BaseVisitor {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   } {
-    // Handle DurationLiteral (e.g., "2w", "12h", "30d")
+    // Handle DurationLiteral (e.g., "2w", "12h", "30d", "1_000d", "1.5d")
     if (ctx.DurationLiteral) {
       const img = (ctx.DurationLiteral[0] as IToken).image
-      const match = img.match(/^(\d+)(.+)$/)
+      // Digit run + optional decimal part, both with `_` digit separators
+      // — matches the lexer DurationLiteral pattern. Without the decimal
+      // alternative, `1.5d` would split as ("1", ".5d") and surface a
+      // misleading "Invalid TTL duration unit '.5d'".
+      const match = img.match(/^([\d_]+(?:\.[\d_]+)?)(.+)$/)
       if (match) {
+        // Unit suffixes match QuestDB's case-insensitive ttlUnitToIndexMap in
+        // PartitionBy.java: both `m` and `M` mean MONTHS (not minutes).
         const DURATION_UNIT_MAP: Record<
           string,
           "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
         > = {
           h: "HOURS",
+          H: "HOURS",
           d: "DAYS",
+          D: "DAYS",
           w: "WEEKS",
+          W: "WEEKS",
+          m: "MONTHS",
           M: "MONTHS",
           y: "YEARS",
+          Y: "YEARS",
         }
         const unit = DURATION_UNIT_MAP[match[2]]
         if (!unit) {
           throw new Error(
-            `Invalid TTL duration unit '${match[2]}' in '${img}'. Valid units: h (HOURS), d (DAYS), w (WEEKS), M (MONTHS), y (YEARS)`,
+            `Invalid TTL duration unit '${match[2]}' in '${img}'. Valid units: h/H (HOURS), d/D (DAYS), w/W (WEEKS), m/M (MONTHS), y/Y (YEARS)`,
           )
         }
+        // parseFloat handles both integer ("30") and decimal ("1.5") prefixes.
         return {
-          value: parseInt(match[1], 10),
+          value: parseFloat(match[1].replace(/_/g, "")),
           unit,
         }
       }
     }
-    // Handle NumberLiteral + optional timeUnit (e.g., "2 WEEKS")
-    const value = parseInt(
+    // Handle NumberLiteral + optional timeUnit (e.g., "2 WEEKS", "1_000 DAYS")
+    const value = tokenInt(
       (ctx.NumberLiteral?.[0] as IToken | undefined)?.image ?? "0",
-      10,
     )
     let unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" = "DAYS"
     if (ctx.timeUnit) {
       unit = this.visit(ctx.timeUnit as CstNode[]) as typeof unit
+    } else if (ctx.storagePolicyTimeUnit) {
+      unit = this.visit(ctx.storagePolicyTimeUnit as CstNode[]) as typeof unit
       // Check plural forms first (TTL units) before singular (which may be PARTITION BY units)
     } else if (ctx.Hours) unit = "HOURS"
     else if (ctx.Days) unit = "DAYS"

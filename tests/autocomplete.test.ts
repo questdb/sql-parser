@@ -1105,6 +1105,130 @@ describe("CREATE TABLE autocomplete", () => {
     })
   })
 
+  describe("STORAGE POLICY autocomplete", () => {
+    describe("ALTER TABLE walkthrough — SET STORAGE POLICY clauses", () => {
+      it("should provide correct suggestions at each word boundary", () => {
+        assertSuggestionsWalkthrough(provider, [
+          {
+            typed: "ALTER TABLE trades ",
+            expects: ["SET", "DROP", "ENABLE", "DISABLE"],
+          },
+          {
+            typed: "ALTER TABLE trades SET ",
+            expects: ["STORAGE", "TTL"],
+          },
+          {
+            typed: "ALTER TABLE trades SET STORAGE ",
+            expects: ["POLICY"],
+          },
+          {
+            typed: "ALTER TABLE trades SET STORAGE POLICY(",
+            expects: ["TO", "DROP"],
+          },
+          {
+            typed: "ALTER TABLE trades SET STORAGE POLICY(TO ",
+            expects: ["PARQUET"],
+          },
+          {
+            typed: "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1 ",
+            expects: ["HOUR", "DAY", "WEEK", "MONTH", "YEAR", "DAYS"],
+            rejects: ["SECOND", "MINUTE", "NANOSECOND", "MILLISECOND"],
+          },
+          {
+            typed: "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1d, ",
+            expects: ["TO", "DROP"],
+          },
+          {
+            typed: "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1d, DROP ",
+            expects: ["NATIVE", "LOCAL", "REMOTE"],
+          },
+        ])
+      })
+    })
+
+    describe("ALTER TABLE walkthrough — DROP STORAGE POLICY", () => {
+      it("should provide correct suggestions at each word boundary", () => {
+        assertSuggestionsWalkthrough(provider, [
+          {
+            typed: "ALTER TABLE trades DROP ",
+            expects: ["STORAGE", "COLUMN", "PARTITION"],
+          },
+          {
+            typed: "ALTER TABLE trades DROP STORAGE ",
+            expects: ["POLICY"],
+          },
+        ])
+      })
+    })
+
+    describe("ALTER MATERIALIZED VIEW walkthrough", () => {
+      it("should provide correct suggestions at each word boundary", () => {
+        assertSuggestionsWalkthrough(provider, [
+          {
+            typed: "ALTER MATERIALIZED VIEW v ",
+            expects: ["SET", "DROP", "ENABLE", "DISABLE"],
+          },
+          {
+            typed: "ALTER MATERIALIZED VIEW v SET ",
+            expects: ["STORAGE", "TTL", "REFRESH"],
+          },
+          {
+            typed: "ALTER MATERIALIZED VIEW v SET STORAGE ",
+            expects: ["POLICY"],
+          },
+          {
+            typed: "ALTER MATERIALIZED VIEW v DROP ",
+            expects: ["STORAGE"],
+          },
+        ])
+      })
+    })
+
+    describe("CREATE TABLE walkthrough — inline STORAGE POLICY", () => {
+      it("should provide correct suggestions at each word boundary", () => {
+        assertSuggestionsWalkthrough(provider, [
+          {
+            typed:
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY ",
+            expects: ["TTL", "STORAGE", "WAL"],
+          },
+          {
+            typed:
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE ",
+            expects: ["POLICY"],
+          },
+          {
+            typed:
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(",
+            expects: ["TO", "DROP"],
+          },
+          {
+            typed:
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP ",
+            expects: ["NATIVE", "LOCAL", "REMOTE"],
+          },
+        ])
+      })
+    })
+
+    describe("CREATE MATERIALIZED VIEW walkthrough — inline STORAGE POLICY", () => {
+      it("should provide correct suggestions at each word boundary", () => {
+        assertSuggestionsWalkthrough(provider, [
+          {
+            typed:
+              "CREATE MATERIALIZED VIEW v AS (SELECT ts FROM trades) PARTITION BY DAY ",
+            expects: ["TTL", "STORAGE"],
+          },
+          {
+            typed:
+              "CREATE MATERIALIZED VIEW v AS (SELECT ts FROM trades) PARTITION BY DAY STORAGE POLICY(",
+            expects: ["TO", "DROP"],
+          },
+        ])
+      })
+    })
+  })
+
   describe("CREATE TABLE walkthrough", () => {
     it("should provide correct suggestions at each word boundary", () => {
       assertSuggestionsWalkthrough(provider, [

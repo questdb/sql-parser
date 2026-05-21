@@ -2241,6 +2241,740 @@ describe("QuestDB Parser", () => {
         expect(sql).toBe("ALTER TABLE trades RENAME COLUMN old_col TO new_col")
       })
     })
+
+    describe("STORAGE POLICY", () => {
+      describe("CREATE TABLE", () => {
+        it("parses CREATE TABLE with a single TO PARQUET clause", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 3,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.dropNative).toBeUndefined()
+          }
+        })
+
+        it("parses all four clauses in canonical order", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, DROP NATIVE 10d, DROP LOCAL 1M, DROP REMOTE 30d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            const sp = result.ast[0].storagePolicy
+            expect(sp?.toParquet).toEqual({ value: 3, unit: "DAYS" })
+            expect(sp?.dropNative).toEqual({ value: 10, unit: "DAYS" })
+            expect(sp?.dropLocal).toEqual({ value: 1, unit: "MONTHS" })
+            expect(sp?.dropRemote).toEqual({ value: 30, unit: "DAYS" })
+          }
+        })
+
+        it("accepts clauses in arbitrary order and toSql normalizes", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1M, TO PARQUET 3d, DROP NATIVE 10d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          const sql = toSql(result.ast[0])
+          expect(sql).toContain(
+            "STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTHS)",
+          )
+        })
+
+        it("rejects an empty STORAGE POLICY() — at least one clause required", () => {
+          // QuestDB enforces this at parse time (EntSqlCompilerImpl):
+          //   "at least one storage policy clause is required"
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY()",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+          expect(result.errors[0].message).toContain(
+            "at least one storage policy clause is required",
+          )
+        })
+
+        it("rejects duplicate clauses (matches server: 'duplicate ... in storage policy')", () => {
+          const cases: Array<[string, string]> = [
+            [
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 1d, TO PARQUET 2d)",
+              "duplicate 'TO PARQUET' in storage policy",
+            ],
+            [
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP NATIVE 1d, DROP NATIVE 2d)",
+              "duplicate 'DROP NATIVE' in storage policy",
+            ],
+            [
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1d, DROP LOCAL 2d)",
+              "duplicate 'DROP LOCAL' in storage policy",
+            ],
+            [
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP REMOTE 1d, DROP REMOTE 2d)",
+              "duplicate 'DROP REMOTE' in storage policy",
+            ],
+          ]
+          for (const [sql, expectedMessage] of cases) {
+            const result = parseToAst(sql)
+            expect(result.errors.length).toBeGreaterThan(0)
+            expect(result.errors[0].message).toContain(expectedMessage)
+          }
+        })
+
+        it("rejects STORAGE POLICY without parentheses", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects TTL + STORAGE POLICY together (mutually exclusive in QuestDB)", () => {
+          // QuestDB rejects this with
+          //   "Cannot set storage policy, please, remove TTL settings"
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 7 DAYS STORAGE POLICY(TO PARQUET 3d) WAL",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+          expect(result.errors[0].message).toContain(
+            "Cannot set storage policy, please, remove TTL settings",
+          )
+        })
+
+        it("rejects CREATE MATERIALIZED VIEW with TTL + STORAGE POLICY", () => {
+          const result = parseToAst(
+            "CREATE MATERIALIZED VIEW mv AS (SELECT ts FROM t SAMPLE BY 1h) PARTITION BY DAY TTL 10d STORAGE POLICY(TO PARQUET 3d)",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+          expect(result.errors[0].message).toContain(
+            "Cannot set storage policy, please, remove TTL settings",
+          )
+        })
+
+        it("accepts TTL value of 0 (syntax-only; server-side rejection)", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 0d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 0,
+              unit: "DAYS",
+            })
+          }
+        })
+
+        it("accepts NumberLiteral + unit form for clause TTLs", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 2 WEEKS)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 3,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.dropNative).toEqual({
+              value: 2,
+              unit: "WEEKS",
+            })
+          }
+        })
+
+        it("accepts DROP REMOTE (parser is syntax-only; server rejects)", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP REMOTE 30d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.dropRemote).toEqual({
+              value: 30,
+              unit: "DAYS",
+            })
+          }
+        })
+      })
+
+      describe("CREATE MATERIALIZED VIEW", () => {
+        it("parses CREATE MATERIALIZED VIEW with STORAGE POLICY", () => {
+          const result = parseToAst(
+            "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(price) FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createMaterializedView") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 7,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.dropNative).toEqual({
+              value: 14,
+              unit: "DAYS",
+            })
+          }
+        })
+      })
+
+      describe("ALTER TABLE", () => {
+        it("parses SET STORAGE POLICY with three clauses (1M = MONTHS)", () => {
+          const result = parseToAst(
+            "ALTER TABLE abc SET STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d, DROP LOCAL 1M)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            const action = result.ast[0].action
+            expect(action.actionType).toBe("setStoragePolicy")
+            if (action.actionType === "setStoragePolicy") {
+              expect(action.policy.toParquet).toEqual({
+                value: 7,
+                unit: "DAYS",
+              })
+              expect(action.policy.dropNative).toEqual({
+                value: 14,
+                unit: "DAYS",
+              })
+              expect(action.policy.dropLocal).toEqual({
+                value: 1,
+                unit: "MONTHS",
+              })
+            }
+          }
+        })
+
+        it("treats lowercase 1m the same as 1M (MONTHS) per QuestDB semantics", () => {
+          const result = parseToAst(
+            "ALTER TABLE abc SET STORAGE POLICY(DROP LOCAL 1m)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            const action = result.ast[0].action
+            if (action.actionType === "setStoragePolicy") {
+              expect(action.policy.dropLocal).toEqual({
+                value: 1,
+                unit: "MONTHS",
+              })
+            }
+          }
+        })
+
+        it("rejects SET STORAGE POLICY() — at least one clause required", () => {
+          const result = parseToAst("ALTER TABLE abc SET STORAGE POLICY()")
+          expect(result.errors.length).toBeGreaterThan(0)
+          expect(result.errors[0].message).toContain(
+            "at least one storage policy clause is required",
+          )
+        })
+
+        it("parses DROP STORAGE POLICY", () => {
+          const result = parseToAst("ALTER TABLE abc DROP STORAGE POLICY")
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            expect(result.ast[0].action.actionType).toBe("dropStoragePolicy")
+          }
+        })
+
+        it("parses ENABLE STORAGE POLICY", () => {
+          const result = parseToAst("ALTER TABLE abc ENABLE STORAGE POLICY")
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            expect(result.ast[0].action.actionType).toBe("enableStoragePolicy")
+          }
+        })
+
+        it("parses DISABLE STORAGE POLICY", () => {
+          const result = parseToAst("ALTER TABLE abc DISABLE STORAGE POLICY")
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            expect(result.ast[0].action.actionType).toBe("disableStoragePolicy")
+          }
+        })
+
+        it("does not regress ALTER TABLE DROP COLUMN", () => {
+          const result = parseToAst("ALTER TABLE trades DROP COLUMN volume")
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            expect(result.ast[0].action.actionType).toBe("dropColumn")
+          }
+        })
+
+        it("does not regress ALTER TABLE DROP PARTITION LIST", () => {
+          const result = parseToAst(
+            "ALTER TABLE trades DROP PARTITION LIST '2024-01-01'",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            expect(result.ast[0].action.actionType).toBe("dropPartition")
+          }
+        })
+      })
+
+      describe("ALTER MATERIALIZED VIEW", () => {
+        it("parses ALTER MATERIALIZED VIEW SET STORAGE POLICY", () => {
+          const result = parseToAst(
+            "ALTER MATERIALIZED VIEW mv SET STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterMaterializedView") {
+            const action = result.ast[0].action
+            expect(action.actionType).toBe("setStoragePolicy")
+          }
+        })
+
+        it("parses ALTER MATERIALIZED VIEW DROP STORAGE POLICY", () => {
+          const result = parseToAst(
+            "ALTER MATERIALIZED VIEW mv DROP STORAGE POLICY",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterMaterializedView") {
+            expect(result.ast[0].action.actionType).toBe("dropStoragePolicy")
+          }
+        })
+
+        it("parses ALTER MATERIALIZED VIEW ENABLE/DISABLE STORAGE POLICY", () => {
+          const r1 = parseToAst(
+            "ALTER MATERIALIZED VIEW mv ENABLE STORAGE POLICY",
+          )
+          expect(r1.errors).toHaveLength(0)
+          if (r1.ast[0].type === "alterMaterializedView") {
+            expect(r1.ast[0].action.actionType).toBe("enableStoragePolicy")
+          }
+          const r2 = parseToAst(
+            "ALTER MATERIALIZED VIEW mv DISABLE STORAGE POLICY",
+          )
+          expect(r2.errors).toHaveLength(0)
+          if (r2.ast[0].type === "alterMaterializedView") {
+            expect(r2.ast[0].action.actionType).toBe("disableStoragePolicy")
+          }
+        })
+      })
+
+      describe("Error cases", () => {
+        it("rejects SET STORAGE POLICY without parentheses", () => {
+          const result = parseToAst("ALTER TABLE abc SET STORAGE POLICY")
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects clause with TO but missing PARQUET", () => {
+          const result = parseToAst("ALTER TABLE abc SET STORAGE POLICY(TO 3d)")
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects unknown clause keyword (not TO/DROP)", () => {
+          const result = parseToAst(
+            "ALTER TABLE t SET STORAGE POLICY(invalid 1d)",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects DROP with unknown target (not NATIVE/LOCAL/REMOTE)", () => {
+          const result = parseToAst(
+            "ALTER TABLE t SET STORAGE POLICY(DROP invalid 1d)",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects unbalanced STORAGE POLICY parens", () => {
+          const result = parseToAst(
+            "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1d",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects SET STORAGE POLICY with no parens at all", () => {
+          const result = parseToAst(
+            "ALTER TABLE t SET STORAGE POLICY TO PARQUET 1d",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects CREATE TABLE STORAGE POLICY missing opening paren", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (x LONG, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY WAL",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+      })
+
+      describe("TTL shortform in mat-view DDL", () => {
+        it("parses CREATE MATERIALIZED VIEW with TTL DurationLiteral", () => {
+          const result = parseToAst(
+            "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(x) FROM t SAMPLE BY 1h) PARTITION BY DAY TTL 10d",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createMaterializedView") {
+            expect(result.ast[0].ttl).toEqual({ value: 10, unit: "DAYS" })
+          }
+        })
+
+        it("parses CREATE MATERIALIZED VIEW with TTL <number> <singular-unit>", () => {
+          const result = parseToAst(
+            "CREATE MATERIALIZED VIEW mv AS (SELECT ts FROM t SAMPLE BY 1h) PARTITION BY DAY TTL 1 YEAR",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createMaterializedView") {
+            expect(result.ast[0].ttl).toEqual({ value: 1, unit: "YEARS" })
+          }
+        })
+      })
+
+      describe("CREATE MATERIALIZED VIEW — full feature set", () => {
+        it("parses WITH BASE, post-AS INDEX, STORAGE POLICY, IN VOLUME", () => {
+          const result = parseToAst(
+            "CREATE MATERIALIZED VIEW v WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) IN VOLUME vol1",
+          )
+          expect(result.errors).toHaveLength(0)
+          const stmt = result.ast[0]
+          if (stmt.type === "createMaterializedView") {
+            expect(stmt.baseTable?.parts).toEqual(["trades"])
+            const indexes = stmt.indexes ?? []
+            expect(indexes).toHaveLength(1)
+            expect(indexes[0].column.parts).toEqual(["k"])
+            expect(indexes[0].capacity).toBe(1024)
+            expect(stmt.partitionBy).toBe("DAY")
+            expect(stmt.storagePolicy?.toParquet).toEqual({
+              value: 10,
+              unit: "DAYS",
+            })
+            expect(stmt.storagePolicy?.dropNative).toEqual({
+              value: 1,
+              unit: "MONTHS",
+            })
+            expect(stmt.storagePolicy?.dropLocal).toEqual({
+              value: 3,
+              unit: "MONTHS",
+            })
+            expect(stmt.volume).toBe("vol1")
+          }
+        })
+
+        it("parses multiple post-AS INDEX clauses", () => {
+          const result = parseToAst(
+            "CREATE MATERIALIZED VIEW v AS (SELECT ts, a, b FROM t SAMPLE BY 1h), INDEX (a), INDEX (b CAPACITY 512) PARTITION BY DAY",
+          )
+          expect(result.errors).toHaveLength(0)
+          const stmt = result.ast[0]
+          if (stmt.type === "createMaterializedView") {
+            const indexes = stmt.indexes ?? []
+            expect(indexes).toHaveLength(2)
+            expect(indexes[0].column.parts).toEqual(["a"])
+            expect(indexes[0].capacity).toBeUndefined()
+            expect(indexes[1].column.parts).toEqual(["b"])
+            expect(indexes[1].capacity).toBe(512)
+          }
+        })
+      })
+
+      describe("STORAGE POLICY TTL units (narrow grammar)", () => {
+        it("accepts HOUR/DAY/WEEK/MONTH/YEAR long-form units and normalizes to plural", () => {
+          // Singular forms must normalize to plural so the AST satisfies
+          // the declared `"HOURS" | "DAYS" | ...` union.
+          const cases: Array<
+            [string, "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"]
+          > = [
+            ["HOUR", "HOURS"],
+            ["DAY", "DAYS"],
+            ["WEEK", "WEEKS"],
+            ["MONTH", "MONTHS"],
+            ["YEAR", "YEARS"],
+          ]
+          for (const [input, expected] of cases) {
+            const r = parseToAst(
+              `ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1 ${input})`,
+            )
+            expect(r.errors).toHaveLength(0)
+            if (r.ast[0].type === "alterTable") {
+              const action = r.ast[0].action
+              if (action.actionType === "setStoragePolicy") {
+                expect(action.policy.toParquet).toEqual({
+                  value: 1,
+                  unit: expected,
+                })
+              }
+            }
+          }
+        })
+
+        it("accepts HOURS/DAYS/WEEKS/MONTHS/YEARS plurals", () => {
+          for (const unit of [
+            "HOURS",
+            "DAYS",
+            "WEEKS",
+            "MONTHS",
+            "YEARS",
+          ] as const) {
+            const r = parseToAst(
+              `ALTER TABLE t SET STORAGE POLICY(TO PARQUET 3 ${unit})`,
+            )
+            expect(r.errors).toHaveLength(0)
+            if (r.ast[0].type === "alterTable") {
+              const action = r.ast[0].action
+              if (action.actionType === "setStoragePolicy") {
+                expect(action.policy.toParquet).toEqual({
+                  value: 3,
+                  unit,
+                })
+              }
+            }
+          }
+        })
+
+        it("preserves underscores in non-TTL numeric positions (capacity, fromTxn, …)", () => {
+          // tokenInt() helper strips `_` digit separators across the visitor.
+          // Spot-check a few non-TTL paths where users might write `1_024`.
+          const symbolCap = parseToAst(
+            "CREATE TABLE t (s SYMBOL CAPACITY 1_024)",
+          )
+          expect(symbolCap.errors).toHaveLength(0)
+          if (symbolCap.ast[0].type === "createTable") {
+            expect(symbolCap.ast[0].columns?.[0]?.symbolCapacity).toBe(1024)
+          }
+
+          const alterCap = parseToAst(
+            "ALTER TABLE t ALTER COLUMN s SYMBOL CAPACITY 4_096",
+          )
+          expect(alterCap.errors).toHaveLength(0)
+          if (alterCap.ast[0].type === "alterTable") {
+            const action = alterCap.ast[0].action
+            if (
+              action.actionType === "alterColumn" &&
+              action.alterType === "symbolCapacity"
+            ) {
+              expect(action.capacity).toBe(4096)
+            }
+          }
+
+          const resume = parseToAst("ALTER TABLE t RESUME WAL FROM TXN 12_345")
+          expect(resume.errors).toHaveLength(0)
+          if (resume.ast[0].type === "alterTable") {
+            const action = resume.ast[0].action
+            if (action.actionType === "resumeWal") {
+              expect(action.fromTxn).toBe(12345)
+            }
+          }
+        })
+
+        it("preserves underscored numeric values through parse and toSql", () => {
+          // QuestDB allows underscores as digit separators in numeric literals.
+          // parseInt("1_000", 10) returns 1 — we strip underscores first.
+          const cases: Array<[string, number, string]> = [
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1_000 DAYS)",
+              1000,
+              "DAYS",
+            ],
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 2_000 HOURS)",
+              2000,
+              "HOURS",
+            ],
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1_000d)",
+              1000,
+              "DAYS",
+            ],
+          ]
+          for (const [sql, value, unit] of cases) {
+            const r = parseToAst(sql)
+            expect(r.errors).toHaveLength(0)
+            if (r.ast[0].type === "alterTable") {
+              const action = r.ast[0].action
+              if (action.actionType === "setStoragePolicy") {
+                expect(action.policy.toParquet).toEqual({ value, unit })
+              }
+            }
+          }
+        })
+
+        it("rejects bare NumberLiteral without a unit", () => {
+          // Per QuestDB: TTL must be either "<N> <unit>" or "<N><suffix>".
+          // A bare number is rejected with "invalid unit, expected ...".
+          const r = parseToAst("ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1)")
+          expect(r.errors.length).toBeGreaterThan(0)
+        })
+
+        it("rejects sub-day units (SECOND/MINUTE/MILLI/MICRO/NANO)", () => {
+          for (const unit of [
+            "SECOND",
+            "MINUTE",
+            "MILLISECOND",
+            "MICROSECOND",
+            "NANOSECOND",
+          ]) {
+            const r = parseToAst(
+              `ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1 ${unit})`,
+            )
+            expect(r.errors.length).toBeGreaterThan(0)
+          }
+        })
+      })
+
+      describe("STORAGE POLICY short-form duration units", () => {
+        it("accepts canonical uppercase short forms 2Y / 2W / 2D / 1M / 12H", () => {
+          const cases: Array<[string, { value: number; unit: string }]> = [
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 2Y)",
+              { value: 2, unit: "YEARS" },
+            ],
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 2W)",
+              { value: 2, unit: "WEEKS" },
+            ],
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 2D)",
+              { value: 2, unit: "DAYS" },
+            ],
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1M)",
+              { value: 1, unit: "MONTHS" },
+            ],
+            [
+              "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 12H)",
+              { value: 12, unit: "HOURS" },
+            ],
+          ]
+          for (const [sql, expected] of cases) {
+            const r = parseToAst(sql)
+            expect(r.errors).toHaveLength(0)
+            if (r.ast[0].type === "alterTable") {
+              const action = r.ast[0].action
+              if (action.actionType === "setStoragePolicy") {
+                expect(action.policy.toParquet).toEqual(expected)
+              }
+            }
+          }
+        })
+
+        it("accepts lowercase short forms 2y / 2w / 2d (case-insensitive)", () => {
+          for (const tok of ["2y", "2w", "2d", "1m", "12h"]) {
+            const r = parseToAst(
+              `ALTER TABLE t SET STORAGE POLICY(TO PARQUET ${tok})`,
+            )
+            expect(r.errors).toHaveLength(0)
+          }
+        })
+      })
+
+      describe("CREATE TABLE — full storage policy variants", () => {
+        it("parses IF NOT EXISTS + STORAGE POLICY + WAL", () => {
+          const result = parseToAst(
+            "CREATE TABLE IF NOT EXISTS trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 1d) WAL",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].ifNotExists).toBe(true)
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 1,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].wal).toBe(true)
+          }
+        })
+
+        it("parses STORAGE POLICY followed by OWNED BY", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 1d) WAL OWNED BY 'group1'",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 1,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].ownedBy).toBe("group1")
+          }
+        })
+      })
+
+      describe("Identifier compatibility", () => {
+        it("permits local/remote/native as bare column names", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (local INT, remote INT, native INT)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].columns?.map((c) => c.name)).toEqual([
+              "local",
+              "remote",
+              "native",
+            ])
+          }
+        })
+
+        it("permits local/remote/native in SELECT projections", () => {
+          const result = parseToAst("SELECT local, remote, native FROM t")
+          expect(result.errors).toHaveLength(0)
+        })
+
+        it("permits storage/policy as bare column names", () => {
+          const result = parseToAst("CREATE TABLE t (storage INT, policy INT)")
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].columns?.map((c) => c.name)).toEqual([
+              "storage",
+              "policy",
+            ])
+          }
+        })
+
+        it("permits storage/policy in SELECT projections and WHERE", () => {
+          const r1 = parseToAst("SELECT storage, policy FROM t")
+          expect(r1.errors).toHaveLength(0)
+          const r2 = parseToAst("SELECT * FROM t WHERE policy = 'a'")
+          expect(r2.errors).toHaveLength(0)
+          const r3 = parseToAst("SELECT t.storage, t.policy FROM t")
+          expect(r3.errors).toHaveLength(0)
+        })
+      })
+
+      describe("Decimal DurationLiteral in TTL contexts", () => {
+        it("parses fractional durations (e.g. 1.5d) without misleading error", () => {
+          const result = parseToAst(
+            "ALTER TABLE t SET STORAGE POLICY(TO PARQUET 1.5d)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            const action = result.ast[0].action
+            if (action.actionType === "setStoragePolicy") {
+              expect(action.policy.toParquet).toEqual({
+                value: 1.5,
+                unit: "DAYS",
+              })
+            }
+          }
+        })
+
+        it("parses 0.5h (CREATE TABLE TTL) as fractional HOURS", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 0.5h",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].ttl).toEqual({ value: 0.5, unit: "HOURS" })
+          }
+        })
+      })
+
+      describe("Lowercase duration unit 'm' (MONTHS)", () => {
+        it("parses CREATE TABLE TTL 1m as MONTHS", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1m",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].ttl).toEqual({ value: 1, unit: "MONTHS" })
+          }
+        })
+
+        it("parses ALTER TABLE SET TTL 3m as MONTHS", () => {
+          const result = parseToAst("ALTER TABLE t SET TTL 3m")
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "alterTable") {
+            const action = result.ast[0].action
+            if (action.actionType === "setTtl") {
+              expect(action.ttl).toEqual({ value: 3, unit: "MONTHS" })
+            }
+          }
+        })
+      })
+    })
   })
 
   describe("DDL round-trip parsing", () => {
@@ -3746,7 +4480,7 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
 
     it("TTL duration with invalid unit produces error", () => {
-      for (const dur of ["30m", "10s", "500T"]) {
+      for (const dur of ["10s", "500T"]) {
         const result = parseToAst(
           `CREATE TABLE t (x INT) TIMESTAMP(x) PARTITION BY HOUR TTL ${dur}`,
         )
@@ -3828,9 +4562,20 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
 
     it("SET TTL with invalid duration unit produces error", () => {
-      const result = parseToAst("ALTER MATERIALIZED VIEW mv SET TTL 60m")
+      const result = parseToAst("ALTER MATERIALIZED VIEW mv SET TTL 60s")
       expect(result.errors.length).toBeGreaterThan(0)
       expect(result.errors[0].message).toContain("Invalid TTL duration unit")
+    })
+
+    it("SET TTL 60m parses as MONTHS (QuestDB case-insensitive)", () => {
+      const result = parseToAst("ALTER MATERIALIZED VIEW mv SET TTL 60m")
+      expect(result.errors).toHaveLength(0)
+      const stmt = result.ast[0] as AST.AlterMaterializedViewStatement
+      expect(stmt.action.actionType).toBe("setTtl")
+      expect((stmt.action as AST.AlterMaterializedViewSetTtl).ttl).toEqual({
+        value: 60,
+        unit: "MONTHS",
+      })
     })
 
     it("should parse SET REFRESH LIMIT", () => {

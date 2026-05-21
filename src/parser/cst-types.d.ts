@@ -681,8 +681,7 @@ export interface DeclareAssignmentCstNode extends CstNode {
 export type DeclareAssignmentCstChildren = {
   Overridable?: IToken[];
   VariableReference: IToken[];
-  ColonEquals?: IToken[];
-  Equals?: IToken[];
+  ColonEquals: IToken[];
   expression: ExpressionCstNode[];
 };
 
@@ -765,6 +764,7 @@ export type CreateTableBodyCstChildren = {
   Week?: IToken[];
   Month?: IToken[];
   Year?: IToken[];
+  optionalStoragePolicy: OptionalStoragePolicyCstNode[];
   Bypass?: IToken[];
   Wal?: (IToken)[];
   With?: IToken[];
@@ -884,9 +884,12 @@ export type CreateMaterializedViewBodyCstChildren = {
   LParen?: (IToken)[];
   selectStatement: SelectStatementCstNode[];
   RParen?: (IToken)[];
+  Comma?: IToken[];
+  indexDefinition?: IndexDefinitionCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   materializedViewPartition?: MaterializedViewPartitionCstNode[];
+  optionalStoragePolicy: OptionalStoragePolicyCstNode[];
   In?: IToken[];
   Volume?: IToken[];
   StringLiteral?: IToken[];
@@ -944,12 +947,18 @@ export type MaterializedViewPartitionCstChildren = {
   By: IToken[];
   partitionPeriod: PartitionPeriodCstNode[];
   Ttl?: IToken[];
+  DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
   Hours?: IToken[];
   Days?: IToken[];
   Weeks?: IToken[];
   Months?: IToken[];
   Years?: IToken[];
+  Hour?: IToken[];
+  Day?: IToken[];
+  Week?: IToken[];
+  Month?: IToken[];
+  Year?: IToken[];
 };
 
 export interface ColumnDefinitionCstNode extends CstNode {
@@ -1009,6 +1018,73 @@ export type ParquetCompressionCstChildren = {
   Brotli?: IToken[];
   Zstd?: IToken[];
   Lz4Raw?: IToken[];
+};
+
+export interface OptionalStoragePolicyCstNode extends CstNode {
+  name: "optionalStoragePolicy";
+  children: OptionalStoragePolicyCstChildren;
+}
+
+export type OptionalStoragePolicyCstChildren = {
+  storagePolicy?: StoragePolicyCstNode[];
+};
+
+export interface StoragePolicyCstNode extends CstNode {
+  name: "storagePolicy";
+  children: StoragePolicyCstChildren;
+}
+
+export type StoragePolicyCstChildren = {
+  Storage: IToken[];
+  Policy: IToken[];
+  LParen: IToken[];
+  storagePolicyClause?: (StoragePolicyClauseCstNode)[];
+  Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface StoragePolicyClauseCstNode extends CstNode {
+  name: "storagePolicyClause";
+  children: StoragePolicyClauseCstChildren;
+}
+
+export type StoragePolicyClauseCstChildren = {
+  To?: IToken[];
+  Parquet?: IToken[];
+  storagePolicyTtl?: (StoragePolicyTtlCstNode)[];
+  Drop?: IToken[];
+  Native?: IToken[];
+  Local?: IToken[];
+  Remote?: IToken[];
+};
+
+export interface StoragePolicyTtlCstNode extends CstNode {
+  name: "storagePolicyTtl";
+  children: StoragePolicyTtlCstChildren;
+}
+
+export type StoragePolicyTtlCstChildren = {
+  DurationLiteral?: IToken[];
+  NumberLiteral?: IToken[];
+  storagePolicyTimeUnit?: StoragePolicyTimeUnitCstNode[];
+};
+
+export interface StoragePolicyTimeUnitCstNode extends CstNode {
+  name: "storagePolicyTimeUnit";
+  children: StoragePolicyTimeUnitCstChildren;
+}
+
+export type StoragePolicyTimeUnitCstChildren = {
+  Hours?: IToken[];
+  Days?: IToken[];
+  Weeks?: IToken[];
+  Months?: IToken[];
+  Years?: IToken[];
+  Hour?: IToken[];
+  Day?: IToken[];
+  Week?: IToken[];
+  Month?: IToken[];
+  Year?: IToken[];
 };
 
 export interface CastDefinitionCstNode extends CstNode {
@@ -1226,6 +1302,8 @@ export type AlterTableActionCstChildren = {
   StringLiteral?: (IToken)[];
   Where?: (IToken)[];
   expression?: (ExpressionCstNode)[];
+  Storage?: (IToken)[];
+  Policy?: (IToken)[];
   Rename?: IToken[];
   To?: IToken[];
   identifier?: (IdentifierCstNode)[];
@@ -1251,9 +1329,10 @@ export type AlterTableActionCstChildren = {
   timeUnit?: TimeUnitCstNode[];
   Bypass?: IToken[];
   Wal?: (IToken)[];
+  storagePolicy?: StoragePolicyCstNode[];
   Dedup?: IToken[];
-  Disable?: IToken[];
-  Enable?: IToken[];
+  Disable?: (IToken)[];
+  Enable?: (IToken)[];
   Upsert?: IToken[];
   Keys?: IToken[];
   LParen?: IToken[];
@@ -1309,7 +1388,7 @@ export type AlterMaterializedViewActionCstChildren = {
   Index?: (IToken)[];
   Capacity?: (IToken)[];
   NumberLiteral?: (IToken)[];
-  Drop?: IToken[];
+  Drop?: (IToken)[];
   Symbol?: IToken[];
   Set?: IToken[];
   Ttl?: IToken[];
@@ -1319,12 +1398,17 @@ export type AlterMaterializedViewActionCstChildren = {
   Limit?: IToken[];
   materializedViewRefresh?: MaterializedViewRefreshCstNode[];
   materializedViewPeriod?: MaterializedViewPeriodCstNode[];
+  storagePolicy?: StoragePolicyCstNode[];
   Resume?: IToken[];
   Wal?: (IToken)[];
   From?: IToken[];
   Transaction?: IToken[];
   Txn?: IToken[];
   Suspend?: IToken[];
+  Storage?: (IToken)[];
+  Policy?: (IToken)[];
+  Enable?: IToken[];
+  Disable?: IToken[];
 };
 
 export interface DropStatementCstNode extends CstNode {
@@ -2640,6 +2724,11 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   parquetConfig(children: ParquetConfigCstChildren, param?: IN): OUT;
   parquetEncoding(children: ParquetEncodingCstChildren, param?: IN): OUT;
   parquetCompression(children: ParquetCompressionCstChildren, param?: IN): OUT;
+  optionalStoragePolicy(children: OptionalStoragePolicyCstChildren, param?: IN): OUT;
+  storagePolicy(children: StoragePolicyCstChildren, param?: IN): OUT;
+  storagePolicyClause(children: StoragePolicyClauseCstChildren, param?: IN): OUT;
+  storagePolicyTtl(children: StoragePolicyTtlCstChildren, param?: IN): OUT;
+  storagePolicyTimeUnit(children: StoragePolicyTimeUnitCstChildren, param?: IN): OUT;
   castDefinition(children: CastDefinitionCstChildren, param?: IN): OUT;
   indexDefinition(children: IndexDefinitionCstChildren, param?: IN): OUT;
   tableParamName(children: TableParamNameCstChildren, param?: IN): OUT;

@@ -340,7 +340,11 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   // New constants that can be used as identifiers
   "Ilp",
   "Native",
+  "Local",
+  "Remote",
   "Pgwire",
+  "Storage",
+  "Policy",
   // Window frame keywords
   "Row",
   "Rows",
@@ -647,6 +651,13 @@ export const Zstd = getToken("Zstd")
 export const Lz4Raw = getToken("Lz4Raw")
 export const Brotli = getToken("Brotli")
 export const Lzo = getToken("Lzo")
+
+// Storage policy keywords / constants
+export const Storage = getToken("Storage")
+export const Policy = getToken("Policy")
+export const Native = getToken("Native")
+export const Local = getToken("Local")
+export const Remote = getToken("Remote")
 
 // Data types (from grammar/dataTypes.ts)
 export const Binary = getToken("Binary")
