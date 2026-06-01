@@ -23,6 +23,10 @@ const RESERVED_KEYWORDS = new Set(
     .map((k) => k.toLowerCase()),
 )
 
+function formatTimeUnit(value: number, unit: string): string {
+  return `${value} ${value === 1 ? unit.replace(/S$/, "") : unit}`
+}
+
 export function toSql(node: AST.Statement | AST.Statement[]): string {
   if (Array.isArray(node)) {
     return node.map((s) => statementToSql(s)).join(";\n")
@@ -588,16 +592,24 @@ function parquetConfigToSql(config: AST.ParquetConfig): string {
 function storagePolicyToSql(sp: AST.StoragePolicy): string {
   const clauses: string[] = []
   if (sp.toParquet) {
-    clauses.push(`TO PARQUET ${sp.toParquet.value} ${sp.toParquet.unit}`)
+    clauses.push(
+      `TO PARQUET ${formatTimeUnit(sp.toParquet.value, sp.toParquet.unit)}`,
+    )
   }
   if (sp.dropNative) {
-    clauses.push(`DROP NATIVE ${sp.dropNative.value} ${sp.dropNative.unit}`)
+    clauses.push(
+      `DROP NATIVE ${formatTimeUnit(sp.dropNative.value, sp.dropNative.unit)}`,
+    )
   }
   if (sp.dropLocal) {
-    clauses.push(`DROP LOCAL ${sp.dropLocal.value} ${sp.dropLocal.unit}`)
+    clauses.push(
+      `DROP LOCAL ${formatTimeUnit(sp.dropLocal.value, sp.dropLocal.unit)}`,
+    )
   }
   if (sp.dropRemote) {
-    clauses.push(`DROP REMOTE ${sp.dropRemote.value} ${sp.dropRemote.unit}`)
+    clauses.push(
+      `DROP REMOTE ${formatTimeUnit(sp.dropRemote.value, sp.dropRemote.unit)}`,
+    )
   }
   return `STORAGE POLICY(${clauses.join(", ")})`
 }
@@ -664,7 +676,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
   }
 
   if (stmt.ttl) {
-    parts.push(`TTL ${stmt.ttl.value} ${stmt.ttl.unit}`)
+    parts.push(`TTL ${formatTimeUnit(stmt.ttl.value, stmt.ttl.unit)}`)
   }
 
   if (stmt.storagePolicy) {
@@ -849,7 +861,7 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       break
     case "setTtl":
       parts.push("SET TTL")
-      parts.push(`${action.ttl.value} ${action.ttl.unit}`)
+      parts.push(formatTimeUnit(action.ttl.value, action.ttl.unit))
       break
     case "dedupDisable":
       parts.push("DEDUP DISABLE")
@@ -1111,7 +1123,8 @@ function createMaterializedViewToSql(
   if (stmt.timestamp)
     parts.push(`TIMESTAMP(${qualifiedNameToSql(stmt.timestamp)})`)
   if (stmt.partitionBy) parts.push(`PARTITION BY ${stmt.partitionBy}`)
-  if (stmt.ttl) parts.push(`TTL ${stmt.ttl.value} ${stmt.ttl.unit}`)
+  if (stmt.ttl)
+    parts.push(`TTL ${formatTimeUnit(stmt.ttl.value, stmt.ttl.unit)}`)
   if (stmt.storagePolicy) parts.push(storagePolicyToSql(stmt.storagePolicy))
   if (stmt.volume) parts.push(`IN VOLUME ${escapeIdentifier(stmt.volume)}`)
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
@@ -1138,10 +1151,12 @@ function alterMaterializedViewToSql(
       )
       break
     case "setTtl":
-      parts.push(`SET TTL ${action.ttl.value} ${action.ttl.unit}`)
+      parts.push(`SET TTL ${formatTimeUnit(action.ttl.value, action.ttl.unit)}`)
       break
     case "setRefreshLimit":
-      parts.push(`SET REFRESH LIMIT ${action.limit.value} ${action.limit.unit}`)
+      parts.push(
+        `SET REFRESH LIMIT ${formatTimeUnit(action.limit.value, action.limit.unit)}`,
+      )
       break
     case "setRefresh": {
       const refreshParts: string[] = ["SET"]

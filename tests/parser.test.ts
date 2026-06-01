@@ -2279,8 +2279,25 @@ describe("QuestDB Parser", () => {
           expect(result.errors).toHaveLength(0)
           const sql = toSql(result.ast[0])
           expect(sql).toContain(
-            "STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTHS)",
+            "STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTH)",
           )
+        })
+
+        it("emits singular units for value 1, plural otherwise (matches SHOW CREATE)", () => {
+          const singular = toSql(
+            parseToAst(
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 1 MONTH",
+            ).ast[0],
+          )
+          expect(singular).toContain("TTL 1 MONTH")
+          expect(singular).not.toContain("TTL 1 MONTHS")
+
+          const plural = toSql(
+            parseToAst(
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 3 MONTHS",
+            ).ast[0],
+          )
+          expect(plural).toContain("TTL 3 MONTHS")
         })
 
         it("rejects an empty STORAGE POLICY() — at least one clause required", () => {
