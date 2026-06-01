@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.14 - 2026.06.02
+### Fixed
+- emit singular time units from toSql [35982c8](https://github.com/questdb/sql-parser/commit/35982c8)
+
 ## 0.1.13 - 2026.05.21
 ### Added
 - support storage policy [1ccfa5f](https://github.com/questdb/sql-parser/commit/1ccfa5f)
