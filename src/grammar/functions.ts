@@ -335,6 +335,7 @@ export const tableValuedFunctions: string[] = [
   "pg_proc",
   "query_activity",
   "reader_pool",
+  "storage_policies",
   "table_columns",
   "table_storage",
   "table_writer_metrics",

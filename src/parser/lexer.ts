@@ -300,7 +300,6 @@ import {
   Lzo,
   Storage,
   Policy,
-  Native,
   Local,
   Remote,
 } from "./tokens"
@@ -603,7 +602,6 @@ export {
   Lzo,
   Storage,
   Policy,
-  Native,
   Local,
   Remote,
 }

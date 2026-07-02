@@ -208,6 +208,14 @@ function tokenInt(image: string): number {
   return parseInt(image.replace(/_/g, ""), 10)
 }
 
+// parseFloat keeps fractional and exponent literals faithful — parseInt would
+// silently read "1e9" as 1 and ".5" as NaN. The server validates the value.
+function tokenFloat(image: string): number {
+  return parseFloat(image.replace(/_/g, ""))
+}
+
+type StoragePolicyKind = "toParquet" | "toRemote" | "dropLocal" | "dropRemote"
+
 // Get the base visitor class from the parser
 const BaseVisitor = parser.getBaseCstVisitorConstructor()
 
@@ -1417,19 +1425,16 @@ class QuestDBVisitor extends BaseVisitor {
     if (!ctx.storagePolicyClause || ctx.storagePolicyClause.length === 0) {
       throw new Error("at least one storage policy clause is required")
     }
-    const KIND_DISPLAY: Record<
-      "toParquet" | "dropNative" | "dropLocal" | "dropRemote",
-      string
-    > = {
+    const KIND_DISPLAY: Record<StoragePolicyKind, string> = {
       toParquet: "TO PARQUET",
-      dropNative: "DROP NATIVE",
+      toRemote: "TO REMOTE",
       dropLocal: "DROP LOCAL",
       dropRemote: "DROP REMOTE",
     }
     const result: AST.StoragePolicy = { type: "storagePolicy" }
     for (const clauseNode of ctx.storagePolicyClause) {
       const clause = this.visit(clauseNode) as {
-        kind: "toParquet" | "dropNative" | "dropLocal" | "dropRemote"
+        kind: StoragePolicyKind
         ttl: {
           value: number
           unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
@@ -1446,17 +1451,17 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   storagePolicyClause(ctx: StoragePolicyClauseCstChildren): {
-    kind: "toParquet" | "dropNative" | "dropLocal" | "dropRemote"
+    kind: StoragePolicyKind
     ttl: {
       value: number
       unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
     }
   } {
-    let kind: "toParquet" | "dropNative" | "dropLocal" | "dropRemote"
+    let kind: StoragePolicyKind
     if (ctx.To && ctx.Parquet) {
       kind = "toParquet"
-    } else if (ctx.Drop && ctx.Native) {
-      kind = "dropNative"
+    } else if (ctx.To && ctx.Remote) {
+      kind = "toRemote"
     } else if (ctx.Drop && ctx.Local) {
       kind = "dropLocal"
     } else if (ctx.Drop && ctx.Remote) {
@@ -4289,7 +4294,7 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
     // Handle NumberLiteral + optional timeUnit (e.g., "2 WEEKS", "1_000 DAYS")
-    const value = tokenInt(
+    const value = tokenFloat(
       (ctx.NumberLiteral?.[0] as IToken | undefined)?.image ?? "0",
     )
     let unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" = "DAYS"

@@ -243,7 +243,7 @@ export interface StoragePolicy extends AstNode {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   }
-  dropNative?: {
+  toRemote?: {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   }

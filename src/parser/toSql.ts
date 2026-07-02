@@ -596,9 +596,9 @@ function storagePolicyToSql(sp: AST.StoragePolicy): string {
       `TO PARQUET ${formatTimeUnit(sp.toParquet.value, sp.toParquet.unit)}`,
     )
   }
-  if (sp.dropNative) {
+  if (sp.toRemote) {
     clauses.push(
-      `DROP NATIVE ${formatTimeUnit(sp.dropNative.value, sp.dropNative.unit)}`,
+      `TO REMOTE ${formatTimeUnit(sp.toRemote.value, sp.toRemote.unit)}`,
     )
   }
   if (sp.dropLocal) {

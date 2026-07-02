@@ -1051,11 +1051,10 @@ export interface StoragePolicyClauseCstNode extends CstNode {
 export type StoragePolicyClauseCstChildren = {
   To?: IToken[];
   Parquet?: IToken[];
+  Remote?: (IToken)[];
   storagePolicyTtl?: (StoragePolicyTtlCstNode)[];
   Drop?: IToken[];
-  Native?: IToken[];
   Local?: IToken[];
-  Remote?: IToken[];
 };
 
 export interface StoragePolicyTtlCstNode extends CstNode {

@@ -2254,32 +2254,53 @@ describe("QuestDB Parser", () => {
               value: 3,
               unit: "DAYS",
             })
-            expect(result.ast[0].storagePolicy?.dropNative).toBeUndefined()
+            expect(result.ast[0].storagePolicy?.toRemote).toBeUndefined()
+          }
+        })
+
+        it("parses a single TO REMOTE clause", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO REMOTE 30 DAYS)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
+              value: 30,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.toParquet).toBeUndefined()
           }
         })
 
         it("parses all four clauses in canonical order", () => {
           const result = parseToAst(
-            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, DROP NATIVE 10d, DROP LOCAL 1M, DROP REMOTE 30d)",
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, TO REMOTE 10d, DROP LOCAL 1M, DROP REMOTE 30d)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createTable") {
             const sp = result.ast[0].storagePolicy
             expect(sp?.toParquet).toEqual({ value: 3, unit: "DAYS" })
-            expect(sp?.dropNative).toEqual({ value: 10, unit: "DAYS" })
+            expect(sp?.toRemote).toEqual({ value: 10, unit: "DAYS" })
             expect(sp?.dropLocal).toEqual({ value: 1, unit: "MONTHS" })
             expect(sp?.dropRemote).toEqual({ value: 30, unit: "DAYS" })
           }
         })
 
+        it("rejects the removed DROP NATIVE clause", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP NATIVE 3 DAYS)",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
         it("accepts clauses in arbitrary order and toSql normalizes", () => {
           const result = parseToAst(
-            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1M, TO PARQUET 3d, DROP NATIVE 10d)",
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1M, TO PARQUET 3d, TO REMOTE 10d)",
           )
           expect(result.errors).toHaveLength(0)
           const sql = toSql(result.ast[0])
           expect(sql).toContain(
-            "STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTH)",
+            "STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 10 DAYS, DROP LOCAL 1 MONTH)",
           )
         })
 
@@ -2319,8 +2340,8 @@ describe("QuestDB Parser", () => {
               "duplicate 'TO PARQUET' in storage policy",
             ],
             [
-              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP NATIVE 1d, DROP NATIVE 2d)",
-              "duplicate 'DROP NATIVE' in storage policy",
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO REMOTE 1d, TO REMOTE 2d)",
+              "duplicate 'TO REMOTE' in storage policy",
             ],
             [
               "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1d, DROP LOCAL 2d)",
@@ -2382,7 +2403,7 @@ describe("QuestDB Parser", () => {
 
         it("accepts NumberLiteral + unit form for clause TTLs", () => {
           const result = parseToAst(
-            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 2 WEEKS)",
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 2 WEEKS)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createTable") {
@@ -2390,7 +2411,7 @@ describe("QuestDB Parser", () => {
               value: 3,
               unit: "DAYS",
             })
-            expect(result.ast[0].storagePolicy?.dropNative).toEqual({
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
               value: 2,
               unit: "WEEKS",
             })
@@ -2414,7 +2435,7 @@ describe("QuestDB Parser", () => {
       describe("CREATE MATERIALIZED VIEW", () => {
         it("parses CREATE MATERIALIZED VIEW with STORAGE POLICY", () => {
           const result = parseToAst(
-            "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(price) FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)",
+            "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(price) FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createMaterializedView") {
@@ -2422,7 +2443,7 @@ describe("QuestDB Parser", () => {
               value: 7,
               unit: "DAYS",
             })
-            expect(result.ast[0].storagePolicy?.dropNative).toEqual({
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
               value: 14,
               unit: "DAYS",
             })
@@ -2433,7 +2454,7 @@ describe("QuestDB Parser", () => {
       describe("ALTER TABLE", () => {
         it("parses SET STORAGE POLICY with three clauses (1M = MONTHS)", () => {
           const result = parseToAst(
-            "ALTER TABLE abc SET STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d, DROP LOCAL 1M)",
+            "ALTER TABLE abc SET STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d, DROP LOCAL 1M)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "alterTable") {
@@ -2444,7 +2465,7 @@ describe("QuestDB Parser", () => {
                 value: 7,
                 unit: "DAYS",
               })
-              expect(action.policy.dropNative).toEqual({
+              expect(action.policy.toRemote).toEqual({
                 value: 14,
                 unit: "DAYS",
               })
@@ -2526,7 +2547,7 @@ describe("QuestDB Parser", () => {
       describe("ALTER MATERIALIZED VIEW", () => {
         it("parses ALTER MATERIALIZED VIEW SET STORAGE POLICY", () => {
           const result = parseToAst(
-            "ALTER MATERIALIZED VIEW mv SET STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)",
+            "ALTER MATERIALIZED VIEW mv SET STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "alterMaterializedView") {
@@ -2635,7 +2656,7 @@ describe("QuestDB Parser", () => {
       describe("CREATE MATERIALIZED VIEW — full feature set", () => {
         it("parses WITH BASE, post-AS INDEX, STORAGE POLICY, IN VOLUME", () => {
           const result = parseToAst(
-            "CREATE MATERIALIZED VIEW v WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) IN VOLUME vol1",
+            "CREATE MATERIALIZED VIEW v WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) IN VOLUME vol1",
           )
           expect(result.errors).toHaveLength(0)
           const stmt = result.ast[0]
@@ -2650,7 +2671,7 @@ describe("QuestDB Parser", () => {
               value: 10,
               unit: "DAYS",
             })
-            expect(stmt.storagePolicy?.dropNative).toEqual({
+            expect(stmt.storagePolicy?.toRemote).toEqual({
               value: 1,
               unit: "MONTHS",
             })
@@ -2898,6 +2919,32 @@ describe("QuestDB Parser", () => {
             expect(result.ast[0].ownedBy).toBe("group1")
           }
         })
+
+        it("parses TO PARQUET + TO REMOTE followed by OWNED BY (reported repro)", () => {
+          const result = parseToAst(
+            "CREATE TABLE 'corporate_bonds' (ts TIMESTAMP, isin SYMBOL, price DOUBLE) timestamp(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 30 DAYS) OWNED BY 'admin'",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 3,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
+              value: 30,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].ownedBy).toBe("admin")
+          }
+        })
+      })
+
+      describe("storage_policies() meta function", () => {
+        it("parses SELECT * FROM storage_policies()", () => {
+          const result = parseToAst("SELECT * FROM storage_policies()")
+          expect(result.errors).toHaveLength(0)
+          expect(result.ast[0].type).toBe("select")
+        })
       })
 
       describe("Identifier compatibility", () => {
@@ -2965,6 +3012,40 @@ describe("QuestDB Parser", () => {
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createTable") {
             expect(result.ast[0].ttl).toEqual({ value: 0.5, unit: "HOURS" })
+          }
+        })
+
+        it("keeps exponent and fractional long-form values faithful", () => {
+          // parseInt would silently read 1e9 as 1 and .5 as NaN
+          const r1 = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO REMOTE 1e9 DAYS)",
+          )
+          expect(r1.errors).toHaveLength(0)
+          if (r1.ast[0].type === "createTable") {
+            expect(r1.ast[0].storagePolicy?.toRemote).toEqual({
+              value: 1_000_000_000,
+              unit: "DAYS",
+            })
+          }
+          const r2 = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET .5 DAYS)",
+          )
+          expect(r2.errors).toHaveLength(0)
+          if (r2.ast[0].type === "createTable") {
+            expect(r2.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 0.5,
+              unit: "DAYS",
+            })
+          }
+        })
+
+        it("keeps underscore digit separators faithful in long-form values", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 1_000 DAYS",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].ttl).toEqual({ value: 1000, unit: "DAYS" })
           }
         })
       })

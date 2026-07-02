@@ -1127,7 +1127,7 @@ describe("CREATE TABLE autocomplete", () => {
           },
           {
             typed: "ALTER TABLE trades SET STORAGE POLICY(TO ",
-            expects: ["PARQUET"],
+            expects: ["PARQUET", "REMOTE"],
           },
           {
             typed: "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1 ",
@@ -1140,7 +1140,8 @@ describe("CREATE TABLE autocomplete", () => {
           },
           {
             typed: "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1d, DROP ",
-            expects: ["NATIVE", "LOCAL", "REMOTE"],
+            expects: ["LOCAL", "REMOTE"],
+            rejects: ["NATIVE"],
           },
         ])
       })
@@ -1205,7 +1206,8 @@ describe("CREATE TABLE autocomplete", () => {
           {
             typed:
               "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP ",
-            expects: ["NATIVE", "LOCAL", "REMOTE"],
+            expects: ["LOCAL", "REMOTE"],
+            rejects: ["NATIVE"],
           },
         ])
       })

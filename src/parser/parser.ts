@@ -339,7 +339,6 @@ import {
   // Storage policy tokens
   Storage,
   Policy,
-  Native,
   Local,
   Remote,
   IdentifierKeyword,
@@ -2013,7 +2012,7 @@ class QuestDBParser extends CstParser {
     this.OPTION(() => this.SUBRULE(this.storagePolicy))
   })
 
-  // STORAGE POLICY(TO PARQUET <ttl>, DROP NATIVE <ttl>, DROP LOCAL <ttl>, DROP REMOTE <ttl>)
+  // STORAGE POLICY(TO PARQUET <ttl>, TO REMOTE <ttl>, DROP LOCAL <ttl>, DROP REMOTE <ttl>)
   private storagePolicy = this.RULE("storagePolicy", () => {
     this.CONSUME(Storage)
     this.CONSUME(Policy)
@@ -2033,17 +2032,19 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(To)
-          this.CONSUME(Parquet)
+          this.OR1([
+            { ALT: () => this.CONSUME(Parquet) },
+            { ALT: () => this.CONSUME(Remote) },
+          ])
           this.SUBRULE(this.storagePolicyTtl)
         },
       },
       {
         ALT: () => {
           this.CONSUME(Drop)
-          this.OR1([
-            { ALT: () => this.CONSUME(Native) },
+          this.OR2([
             { ALT: () => this.CONSUME(Local) },
-            { ALT: () => this.CONSUME(Remote) },
+            { ALT: () => this.CONSUME1(Remote) },
           ])
           this.SUBRULE1(this.storagePolicyTtl)
         },

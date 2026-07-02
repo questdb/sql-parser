@@ -655,7 +655,6 @@ export const Lzo = getToken("Lzo")
 // Storage policy keywords / constants
 export const Storage = getToken("Storage")
 export const Policy = getToken("Policy")
-export const Native = getToken("Native")
 export const Local = getToken("Local")
 export const Remote = getToken("Remote")
 
