@@ -110,6 +110,7 @@ export const keywords: string[] = [
   "maps",
   "materialized",
   "maxUncommittedRows",
+  "memory",
   "no",
   "nocache",
   "not",

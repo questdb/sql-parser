@@ -68,6 +68,7 @@ export const constants: string[] = [
   "transaction_isolation",
   "true",
   "uncompressed",
+  "unlimited",
   "week",
   "weeks",
   "year",
