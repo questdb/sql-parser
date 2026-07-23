@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.16 - 2026.07.23
+### Added
+- expand parser with live views, row expiry, posting indexes [#28](https://github.com/questdb/sql-parser/pull/28)
+
 ## 0.1.15 - 2026.07.02
 ### Changed
 - Storage policy now matches the current QuestDB spec: the four stages are `TO PARQUET`, `TO REMOTE`, `DROP LOCAL`, `DROP REMOTE`. Added `TO REMOTE` (grammar, `StoragePolicy.toRemote` AST field, `toSql`, autocomplete). Removed the unsupported `DROP NATIVE` stage and the `StoragePolicy.dropNative` field — `DROP NATIVE` is now a parse error. [08688b6](https://github.com/questdb/sql-parser/commit/08688b6)
