@@ -46,14 +46,20 @@ function statementToSql(stmt: AST.Statement): string {
       return createTableToSql(stmt)
     case "createView":
       return createViewToSql(stmt)
+    case "createLiveView":
+      return createLiveViewToSql(stmt)
     case "alterTable":
       return alterTableToSql(stmt)
     case "alterView":
       return alterViewToSql(stmt)
+    case "alterLiveView":
+      return alterLiveViewToSql(stmt)
     case "dropTable":
       return dropTableToSql(stmt)
     case "dropView":
       return dropViewToSql(stmt)
+    case "dropLiveView":
+      return dropLiveViewToSql(stmt)
     case "truncateTable":
       return truncateTableToSql(stmt)
     case "renameTable":
@@ -123,12 +129,16 @@ function statementToSql(stmt: AST.Statement): string {
       return reindexTableToSql(stmt)
     case "copyCancel":
       return `COPY ${escapeString(stmt.id)} CANCEL`
+    case "copyPermissions":
+      return `COPY PERMISSIONS FROM ${qualifiedNameToSql(stmt.from)} TO ${qualifiedNameToSql(stmt.to)}`
     case "copyFrom":
       return copyFromToSql(stmt)
     case "copyTo":
       return copyToToSql(stmt)
     case "backup":
       return backupToSql(stmt)
+    case "switch":
+      return switchToSql(stmt)
     case "alterGroup":
       return alterGroupToSql(stmt)
     case "compileView":
@@ -443,7 +453,12 @@ function windowJoinBoundToSql(bound: AST.WindowJoinBound): string {
     }
     return "CURRENT ROW"
   }
-  return `${bound.duration} ${bound.direction!.toUpperCase()}`
+  const dir = bound.direction!.toUpperCase()
+  if (bound.boundExpr) {
+    const e = expressionToSql(bound.boundExpr)
+    return bound.unit ? `${e} ${bound.unit} ${dir}` : `${e} ${dir}`
+  }
+  return `${bound.duration} ${dir}`
 }
 
 function orderByItemToSql(item: AST.OrderByItem): string {
@@ -549,6 +564,42 @@ function updateToSql(stmt: AST.UpdateStatement): string {
 // CREATE TABLE
 // =============================================================================
 
+function indexTypeToSql(
+  t: NonNullable<AST.ColumnDefinition["indexType"]>,
+): string {
+  switch (t) {
+    case "posting":
+      return "POSTING"
+    case "posting_delta":
+      return "POSTING DELTA"
+    case "posting_ef":
+      return "POSTING EF"
+    case "bitmap":
+      return "BITMAP"
+    case "none":
+      return "NONE"
+  }
+}
+
+// [TYPE (POSTING [DELTA|EF] | BITMAP | NONE)] [INCLUDE(cols)] [CAPACITY n]
+function indexOptionsToSql(
+  indexType: AST.ColumnDefinition["indexType"],
+  include: string[] | undefined,
+  capacity: number | undefined,
+): string {
+  let s = ""
+  if (indexType) s += ` TYPE ${indexTypeToSql(indexType)}`
+  if (include && include.length > 0) {
+    s += ` INCLUDE(${include.map(escapeIdentifier).join(", ")})`
+  }
+  if (capacity != null) s += ` CAPACITY ${capacity}`
+  return s
+}
+
+function indexDefToSql(idx: AST.IndexDefinition): string {
+  return `INDEX(${qualifiedNameToSql(idx.column)}${indexOptionsToSql(idx.indexType, idx.include, idx.capacity)})`
+}
+
 function columnDefToSql(c: AST.ColumnDefinition): string {
   let sql = `${escapeIdentifier(c.name)} ${c.dataType}`
   if (c.symbolCapacity != null) {
@@ -561,9 +612,7 @@ function columnDefToSql(c: AST.ColumnDefinition): string {
   }
   if (c.indexed) {
     sql += " INDEX"
-    if (c.indexCapacity != null) {
-      sql += ` CAPACITY ${c.indexCapacity}`
-    }
+    sql += indexOptionsToSql(c.indexType, c.indexInclude, c.indexCapacity)
   }
   if (c.parquetConfig) {
     sql += " " + parquetConfigToSql(c.parquetConfig)
@@ -645,11 +694,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     }
     if (stmt.indexes && stmt.indexes.length > 0) {
       for (const idx of stmt.indexes) {
-        asSql += `, INDEX(${qualifiedNameToSql(idx.column)}`
-        if (idx.capacity != null) {
-          asSql += ` CAPACITY ${idx.capacity}`
-        }
-        asSql += ")"
+        asSql += ", " + indexDefToSql(idx)
       }
     }
     parts.push(asSql)
@@ -657,11 +702,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     let colSql = `(${stmt.columns.map(columnDefToSql).join(", ")})`
     if (stmt.indexes && stmt.indexes.length > 0) {
       for (const idx of stmt.indexes) {
-        colSql += `, INDEX(${qualifiedNameToSql(idx.column)}`
-        if (idx.capacity != null) {
-          colSql += ` CAPACITY ${idx.capacity}`
-        }
-        colSql += ")"
+        colSql += ", " + indexDefToSql(idx)
       }
     }
     parts.push(colSql)
@@ -681,6 +722,10 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
 
   if (stmt.storagePolicy) {
     parts.push(storagePolicyToSql(stmt.storagePolicy))
+  }
+
+  if (stmt.tableFormat) {
+    parts.push(`FORMAT ${stmt.tableFormat.toUpperCase()}`)
   }
 
   if (stmt.bypassWal) {
@@ -752,6 +797,56 @@ function dropViewToSql(stmt: AST.DropViewStatement): string {
   return parts.join(" ")
 }
 
+function createLiveViewToSql(stmt: AST.CreateLiveViewStatement): string {
+  const parts: string[] = ["CREATE LIVE VIEW"]
+  if (stmt.ifNotExists) parts.push("IF NOT EXISTS")
+  parts.push(qualifiedNameToSql(stmt.view))
+  parts.push(`FLUSH EVERY ${stmt.flushEvery}`)
+  if (stmt.inMemory) parts.push(`IN MEMORY ${stmt.inMemory}`)
+  if (stmt.partitionBy) parts.push(`PARTITION BY ${stmt.partitionBy}`)
+  if (stmt.startFrom) {
+    if (stmt.startFrom.kind === "now") parts.push("START FROM NOW")
+    else if (stmt.startFrom.kind === "beginning")
+      parts.push("START FROM BEGINNING")
+    else parts.push(`START FROM ${escapeString(stmt.startFrom.value!)}`)
+  }
+  parts.push(`AS (${selectToSql(stmt.query)})`)
+  return parts.join(" ")
+}
+
+function dropLiveViewToSql(stmt: AST.DropLiveViewStatement): string {
+  const parts: string[] = ["DROP LIVE VIEW"]
+  if (stmt.ifExists) parts.push("IF EXISTS")
+  parts.push(qualifiedNameToSql(stmt.view))
+  return parts.join(" ")
+}
+
+function alterLiveViewToSql(stmt: AST.AlterLiveViewStatement): string {
+  const parts = [`ALTER LIVE VIEW ${qualifiedNameToSql(stmt.view)}`]
+  if (stmt.action === "suspendWal") {
+    parts.push("SUSPEND WAL")
+    if (stmt.code != null || stmt.message) {
+      const w: string[] = []
+      if (stmt.code != null) {
+        w.push(
+          typeof stmt.code === "number"
+            ? String(stmt.code)
+            : escapeString(stmt.code),
+        )
+      }
+      if (stmt.message) w.push(escapeString(stmt.message))
+      parts.push(`WITH ${w.join(", ")}`)
+    }
+  } else {
+    parts.push("RESUME WAL")
+    if (stmt.fromTxn !== undefined) parts.push(`FROM TXN ${stmt.fromTxn}`)
+    else if (stmt.fromTransaction !== undefined) {
+      parts.push(`FROM TRANSACTION ${stmt.fromTransaction}`)
+    }
+  }
+  return parts.join(" ")
+}
+
 // =============================================================================
 // ALTER TABLE
 // =============================================================================
@@ -795,7 +890,14 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
           parts.push("NOCACHE")
         }
       } else if (action.alterType === "addIndex") {
-        parts.push("ADD INDEX")
+        parts.push(
+          "ADD INDEX" +
+            indexOptionsToSql(
+              action.indexType,
+              action.indexInclude,
+              action.capacity,
+            ),
+        )
       } else if (action.alterType === "dropIndex") {
         parts.push("DROP INDEX")
       } else if (
@@ -863,6 +965,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push("SET TTL")
       parts.push(formatTimeUnit(action.ttl.value, action.ttl.unit))
       break
+    case "setTableFormat":
+      parts.push(`SET FORMAT ${action.format.toUpperCase()}`)
+      break
     case "dedupDisable":
       parts.push("DEDUP DISABLE")
       break
@@ -897,6 +1002,13 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
         parts.push(`FROM TXN ${action.fromTxn}`)
       } else if (action.fromTransaction !== undefined) {
         parts.push(`FROM TRANSACTION ${action.fromTransaction}`)
+      }
+      break
+    }
+    case "rebaseWal": {
+      parts.push("REBASE WAL")
+      if (action.targetDir != null) {
+        parts.push(`INTO ${escapeString(action.targetDir)}`)
       }
       break
     }
@@ -1006,6 +1118,17 @@ function showToSql(stmt: AST.ShowStatement): string {
       return `SHOW CREATE VIEW ${qualifiedNameToSql(stmt.table!)}`
     case "createMaterializedView":
       return `SHOW CREATE MATERIALIZED VIEW ${qualifiedNameToSql(stmt.table!)}`
+    case "createLiveView":
+      return `SHOW CREATE LIVE VIEW ${qualifiedNameToSql(stmt.table!)}`
+    case "createDatabase": {
+      let s = "SHOW CREATE DATABASE"
+      const inc = stmt.databaseInclude
+      if (inc) {
+        s += inc.mode === "include" ? " INCLUDE" : " EXCLUDE"
+        s += inc.all ? " ALL" : ` (${(inc.categories ?? []).join(", ")})`
+      }
+      return s
+    }
     case "serverVersion":
       return "SHOW SERVER_VERSION"
     case "parameters":
@@ -1099,6 +1222,31 @@ function materializedViewPeriodToSql(
   return `PERIOD (${inner.join(" ")})`
 }
 
+function expireRowsClauseToSql(clause: AST.ExpireRowsClause): string {
+  const parts = ["EXPIRE ROWS"]
+  if (clause.mode === "when") {
+    parts.push("WHEN", expressionToSql(clause.predicate!))
+  } else if (clause.mode === "keepLatest") {
+    parts.push("KEEP LATEST")
+    if (clause.on) parts.push("ON", escapeIdentifier(clause.on))
+    parts.push(
+      `PARTITION BY ${(clause.partitionBy ?? []).map(escapeIdentifier).join(", ")}`,
+    )
+  } else {
+    parts.push("KEEP")
+    if (clause.keepCount !== undefined) parts.push(String(clause.keepCount))
+    parts.push(clause.extremum === "lowest" ? "LOWEST" : "HIGHEST")
+    parts.push(escapeIdentifier(clause.column!))
+    if (clause.partitionBy && clause.partitionBy.length > 0) {
+      parts.push(
+        `PARTITION BY ${clause.partitionBy.map(escapeIdentifier).join(", ")}`,
+      )
+    }
+  }
+  if (clause.cleanupEvery) parts.push("CLEANUP EVERY", clause.cleanupEvery)
+  return parts.join(" ")
+}
+
 function createMaterializedViewToSql(
   stmt: AST.CreateMaterializedViewStatement,
 ): string {
@@ -1114,9 +1262,7 @@ function createMaterializedViewToSql(
     : `AS ${selectToSql(stmt.query)}`
   if (stmt.indexes && stmt.indexes.length > 0) {
     for (const idx of stmt.indexes) {
-      asSql += `, INDEX(${qualifiedNameToSql(idx.column)}`
-      if (idx.capacity != null) asSql += ` CAPACITY ${idx.capacity}`
-      asSql += ")"
+      asSql += ", " + indexDefToSql(idx)
     }
   }
   parts.push(asSql)
@@ -1126,6 +1272,7 @@ function createMaterializedViewToSql(
   if (stmt.ttl)
     parts.push(`TTL ${formatTimeUnit(stmt.ttl.value, stmt.ttl.unit)}`)
   if (stmt.storagePolicy) parts.push(storagePolicyToSql(stmt.storagePolicy))
+  if (stmt.expireRows) parts.push(expireRowsClauseToSql(stmt.expireRows))
   if (stmt.volume) parts.push(`IN VOLUME ${escapeIdentifier(stmt.volume)}`)
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
@@ -1152,6 +1299,13 @@ function alterMaterializedViewToSql(
       break
     case "setTtl":
       parts.push(`SET TTL ${formatTimeUnit(action.ttl.value, action.ttl.unit)}`)
+      break
+    case "setExpireRows":
+      parts.push("SET")
+      parts.push(expireRowsClauseToSql(action.expireRows))
+      break
+    case "dropExpire":
+      parts.push("DROP EXPIRE ROWS")
       break
     case "setRefreshLimit":
       parts.push(
@@ -1181,6 +1335,13 @@ function alterMaterializedViewToSql(
     case "suspendWal":
       parts.push("SUSPEND WAL")
       break
+    case "rebaseWal": {
+      parts.push("REBASE WAL")
+      if (action.targetDir != null) {
+        parts.push(`INTO ${escapeString(action.targetDir)}`)
+      }
+      break
+    }
     case "setStoragePolicy":
       parts.push("SET")
       parts.push(storagePolicyToSql(action.policy))
@@ -1216,6 +1377,7 @@ function refreshMaterializedViewToSql(
   ]
   if (stmt.mode === "full") parts.push("FULL")
   else if (stmt.mode === "incremental") parts.push("INCREMENTAL")
+  else if (stmt.mode === "stats") parts.push("STATS")
   else if (stmt.mode === "range") {
     parts.push(
       `RANGE FROM ${escapeString(stmt.from!)} TO ${escapeString(stmt.to!)}`,
@@ -1273,6 +1435,13 @@ function backupToSql(stmt: AST.BackupStatement): string {
   if (stmt.action === "database") return "BACKUP DATABASE"
   if (stmt.action === "abort") return "BACKUP ABORT"
   return `BACKUP TABLE ${qualifiedNameToSql(stmt.table!)}`
+}
+
+function switchToSql(stmt: AST.SwitchStatement): string {
+  if (stmt.action === "status") return "SWITCH STATUS"
+  let s = `SWITCH ROLE TO ${stmt.role}`
+  if (stmt.timeout !== undefined) s += ` TIMEOUT ${stmt.timeout}`
+  return s
 }
 
 function createServiceAccountToSql(
@@ -1363,7 +1532,12 @@ function grantOnTargetToSql(on: AST.GrantOnTarget): string {
   if (on.tables) {
     const tableParts = on.tables.map((t) => {
       let sql = qualifiedNameToSql(t.table)
-      if (t.columns && t.columns.length > 0) {
+      if (t.allColumns) {
+        sql +=
+          t.excludeColumns && t.excludeColumns.length > 0
+            ? ` (* EXCLUDE(${t.excludeColumns.map(escapeIdentifier).join(", ")}))`
+            : " (*)"
+      } else if (t.columns && t.columns.length > 0) {
         sql += ` (${t.columns.map(escapeIdentifier).join(", ")})`
       }
       return sql
@@ -1793,7 +1967,20 @@ function windowSpecToSql(spec: AST.WindowSpecification): string {
     parts.push(windowFrameToSql(spec.frame))
   }
 
+  if (spec.anchor) {
+    parts.push(anchorClauseToSql(spec.anchor))
+  }
+
   return parts.join(" ")
+}
+
+function anchorClauseToSql(a: AST.AnchorClause): string {
+  if (a.kind === "expression") {
+    return `ANCHOR EXPRESSION ${expressionToSql(a.expr!)}`
+  }
+  let s = `ANCHOR DAILY ${escapeString(a.time!)}`
+  if (a.timezone) s += ` ${escapeString(a.timezone)}`
+  return s
 }
 
 function namedWindowToSql(w: AST.NamedWindow): string {
@@ -1807,6 +1994,9 @@ function namedWindowToSql(w: AST.NamedWindow): string {
   }
   if (w.frame) {
     inner.push(windowFrameToSql(w.frame))
+  }
+  if (w.anchor) {
+    inner.push(anchorClauseToSql(w.anchor))
   }
   return `${w.name} AS (${inner.join(" ")})`
 }

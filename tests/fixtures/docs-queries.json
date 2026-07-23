@@ -4088,10 +4088,10 @@
     "query": "CREATE VIEW mixed_params AS (\n  DECLARE @fixed := 5, OVERRIDABLE @adjustable := 10\n  SELECT * FROM data WHERE a >= @fixed AND b <= @adjustable\n)"
   },
   {
-    "query": "CREATE VIEW 日本語ビュー AS (SELECT * FROM trades)"
+    "query": "CREATE VIEW \u65e5\u672c\u8a9e\u30d3\u30e5\u30fc AS (SELECT * FROM trades)"
   },
   {
-    "query": "CREATE VIEW Részvény_árak AS (SELECT * FROM prices)"
+    "query": "CREATE VIEW R\u00e9szv\u00e9ny_\u00e1rak AS (SELECT * FROM prices)"
   },
   {
     "query": "CREATE VIEW with_timestamp AS (\n  (SELECT ts, value FROM my_view ORDER BY ts) timestamp(ts)\n)"
@@ -4442,7 +4442,7 @@
     "skipAutocomplete": true
   },
   {
-    "query": "-- This would fail if combinations × aggregates > 5000\ntrades PIVOT (\n    avg(price)\n    FOR symbol IN (SELECT DISTINCT symbol FROM trades)  -- many symbols\n        side IN ('buy', 'sell')                         -- × 2\n)",
+    "query": "-- This would fail if combinations \u00d7 aggregates > 5000\ntrades PIVOT (\n    avg(price)\n    FOR symbol IN (SELECT DISTINCT symbol FROM trades)  -- many symbols\n        side IN ('buy', 'sell')                         -- \u00d7 2\n)",
     "skipAutocomplete": true
   },
   {
@@ -5362,5 +5362,107 @@
   },
   {
     "query": "CREATE TABLE t (x LONG, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 12h"
+  },
+  {
+    "query": "SELECT ts, avg(px) FROM trades SAMPLE BY w",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "REFRESH MATERIALIZED VIEW price_1h STATS"
+  },
+  {
+    "query": "ALTER TABLE trades REBASE WAL"
+  },
+  {
+    "query": "ALTER TABLE trades REBASE WAL INTO 'replica_dir'"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW price_1h REBASE WAL"
+  },
+  {
+    "query": "SHOW CREATE DATABASE"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE ALL"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (tables, views, users)"
+  },
+  {
+    "query": "CREATE TABLE trades (ts TIMESTAMP, px DOUBLE) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "ALTER TABLE trades SET FORMAT NATIVE"
+  },
+  {
+    "query": "SWITCH ROLE TO PRIMARY"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 5000"
+  },
+  {
+    "query": "SWITCH STATUS"
+  },
+  {
+    "query": "GRANT SELECT ON trades(*) TO alice"
+  },
+  {
+    "query": "GRANT SELECT ON trades(* EXCLUDE(secret)) TO alice"
+  },
+  {
+    "query": "GRANT SET TABLE FORMAT ON trades TO alice"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW price_1h AS (SELECT ts, avg(px) FROM trades SAMPLE BY 1h) PARTITION BY DAY EXPIRE ROWS KEEP LATEST PARTITION BY sym"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW price_1h SET EXPIRE ROWS KEEP HIGHEST px PARTITION BY sym CLEANUP EVERY 1h"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW price_1h DROP EXPIRE ROWS"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 5s START FROM NOW AS (SELECT * FROM trades)",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 5s IN MEMORY 1h PARTITION BY DAY START FROM BEGINNING AS (SELECT ts, px FROM trades)",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "DROP LIVE VIEW IF EXISTS lv"
+  },
+  {
+    "query": "ALTER LIVE VIEW lv RESUME WAL"
+  },
+  {
+    "query": "SHOW CREATE LIVE VIEW lv"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (tables, all)"
+  },
+  {
+    "query": "SELECT avg(px) OVER (PARTITION BY sym ORDER BY ts ANCHOR DAILY '09:30') FROM trades",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "CREATE TABLE trades (sym SYMBOL INDEX TYPE POSTING DELTA CAPACITY 256, px DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL"
+  },
+  {
+    "query": "CREATE TABLE t (sym SYMBOL INDEX TYPE POSTING INCLUDE (px), px DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "SELECT * FROM trades t WINDOW JOIN prices p ON t.sym = p.sym RANGE BETWEEN wndBound SECONDS PRECEDING AND wndBound SECONDS FOLLOWING",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "SELECT * FROM trades t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (-1s, 0s, 1s) AS h",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "COPY PERMISSIONS FROM alice TO bob"
+  },
+  {
+    "query": "GRANT CONVERT PARTITION TO PARQUET ON trades TO alice"
   }
 ]

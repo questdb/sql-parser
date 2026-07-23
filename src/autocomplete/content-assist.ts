@@ -7,7 +7,10 @@ import {
   IDENTIFIER_KEYWORD_TOKENS,
   EXPRESSION_OPERATORS,
 } from "./token-classification"
-import { computeContentAssistBudgeted } from "./budgeted-content-assist"
+import {
+  computeContentAssistBudgeted,
+  type ContentAssistSuggestion,
+} from "./budgeted-content-assist"
 
 // =============================================================================
 // Constants
@@ -99,6 +102,14 @@ export interface ContentAssistResult {
   referencedColumns: Set<string>
   /** Whether the cursor is inside a WHERE clause expression */
   isConditionContext: boolean
+  /**
+   * Concrete keywords the grammar accepts only through the generic `identifier`
+   * sub-rule (so the word stays non-reserved) and therefore never surface via
+   * the normal `IdentifierKeyword` path. Re-injected per rule context so
+   * multi-word `GRANT`/`REVOKE`, `CONVERT PARTITION` and `SHOW CREATE DATABASE`
+   * clauses can be autocompleted. See `contextKeywordSuggestions`.
+   */
+  contextKeywords: string[]
 }
 
 // =============================================================================
@@ -829,6 +840,86 @@ function accumulateFlags(target: CategoryFlags, kind: PositionKind): void {
 interface ComputeResult extends CategoryFlags {
   nextTokenTypes: TokenType[]
   isConditionContext: boolean
+  contextKeywords: string[]
+}
+
+// Category names valid inside SHOW CREATE DATABASE (INCLUDE|EXCLUDE) ( ... ).
+// The grammar consumes these via `identifier` (they are non-reserved), so only
+// the explicit `ALL` token surfaces on its own; re-inject the rest.
+const DATABASE_CATEGORY_KEYWORDS = [
+  "ALL",
+  "TABLES",
+  "VIEWS",
+  "MATERIALIZED_VIEWS",
+  "USERS",
+  "GROUPS",
+  "SERVICE_ACCOUNTS",
+  "PERMISSIONS",
+  "SCHEMA",
+  "ACL",
+]
+
+/**
+ * Re-inject the concrete keywords that the grammar only accepts through the
+ * generic `identifier` sub-rule — kept non-reserved on purpose, which means
+ * Chevrotain's content-assist reports them merely as the abstract
+ * `IdentifierKeyword` category and the suggestion builder renders that slot as
+ * "type a name here" rather than a keyword. We recover the intended words from
+ * the active rule context (the `ruleStack` of any `IdentifierKeyword` path) plus
+ * the immediately preceding tokens, so multi-word `GRANT`/`REVOKE`,
+ * `CONVERT PARTITION` and `SHOW CREATE DATABASE` clauses autocomplete
+ * token-by-token. Parsing already accepts all of these; this only affects hints.
+ */
+function contextKeywordSuggestions(
+  tokens: IToken[],
+  suggestions: ContentAssistSuggestion[],
+): string[] {
+  // Rule contexts in which the `identifier` catch-all is a valid next token.
+  const idKeywordStacks = suggestions
+    .filter((s) => s.nextTokenType.name === "IdentifierKeyword")
+    .map((s) => s.ruleStack)
+  if (idKeywordStacks.length === 0) return []
+  const inRule = (r: string): boolean =>
+    idKeywordStacks.some((stack) => stack.includes(r))
+
+  const last = tokens[tokens.length - 1]?.tokenType.name
+  const prev = tokens[tokens.length - 2]?.tokenType.name
+  const out = new Set<string>()
+
+  // GRANT / REVOKE permission phrases whose words route through `identifier`:
+  //   CONVERT PARTITION [TO PARQUET|NATIVE], SET TABLE FORMAT, SET TABLE TYPE,
+  //   SET STORAGE POLICY, REMOVE STORAGE POLICY.
+  // (SET / TABLE / TO / PARQUET / NATIVE at their spots are explicit CONSUMEs
+  // and already surface; we only add the identifier-path words.)
+  if (inRule("permissionToken")) {
+    if (last === "Grant" || last === "Revoke") {
+      out.add("CONVERT")
+      out.add("REMOVE")
+    } else if (last === "Convert") {
+      out.add("PARTITION")
+    } else if (last === "Set" || last === "Remove") {
+      out.add("STORAGE")
+    } else if (last === "Table" && prev === "Set") {
+      out.add("FORMAT")
+      out.add("TYPE")
+    } else if (last === "Storage" && (prev === "Set" || prev === "Remove")) {
+      out.add("POLICY")
+    }
+  }
+
+  // ALTER TABLE ... CONVERT PARTITION TO { PARQUET | NATIVE }: the target is
+  // OR([CONSUME(Table), SUBRULE(identifier)]) so PARQUET/NATIVE go via identifier.
+  if (inRule("convertPartitionTarget") && last === "To") {
+    out.add("PARQUET")
+    out.add("NATIVE")
+  }
+
+  // SHOW CREATE DATABASE (INCLUDE|EXCLUDE) ( <category>, ... ).
+  if (inRule("showCreateDatabaseCategory")) {
+    for (const c of DATABASE_CATEGORY_KEYWORDS) out.add(c)
+  }
+
+  return [...out]
 }
 
 /**
@@ -907,10 +998,13 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       s.ruleStack.includes("whereClause"),
   )
 
+  const contextKeywords = contextKeywordSuggestions(tokens, suggestions)
+
   return {
     nextTokenTypes: result,
     ...flags,
     isConditionContext,
+    contextKeywords,
   }
 }
 
@@ -1051,6 +1145,7 @@ export function getContentAssist(
         suggestTableValuedFunctions: false,
         referencedColumns: new Set(),
         isConditionContext: false,
+        contextKeywords: [],
       }
     }
   }
@@ -1084,6 +1179,7 @@ export function getContentAssist(
   let suggestWindowFunctions = false
   let suggestTableValuedFunctions = false
   let isConditionContext = false
+  let contextKeywords: string[] = []
   try {
     const computed = computeSuggestions(tokensForAssist)
     nextTokenTypes = computed.nextTokenTypes
@@ -1094,6 +1190,7 @@ export function getContentAssist(
     suggestWindowFunctions = computed.suggestWindowFunctions
     suggestTableValuedFunctions = computed.suggestTableValuedFunctions
     isConditionContext = computed.isConditionContext
+    contextKeywords = computed.contextKeywords
   } catch (e) {
     // If content assist fails, return empty suggestions
     // This can happen with malformed input
@@ -1185,6 +1282,7 @@ export function getContentAssist(
     suggestTableValuedFunctions,
     referencedColumns,
     isConditionContext,
+    contextKeywords,
   }
 }
 

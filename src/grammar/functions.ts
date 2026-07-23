@@ -16,8 +16,8 @@
 //   letter "p" alone doesn't bury real schema results in JOIN positions.
 //   `information_schema.*` is NOT gated — those names are SQL-standard.
 //
-// Removed from earlier flat list: 17 entries absent from QuestDB runtime AND
-// docs (e.g. `array_agg`, `lcase`, `len`, `nvl`, `headers`, `show`,
+// Removed from earlier flat list: entries absent from QuestDB runtime AND
+// docs (e.g. `lcase`, `len`, `nvl`, `headers`, `show`,
 // `commitLag`, `batch`); 11 SQL operators / syntactic keywords (e.g. `and`,
 // `or`, `between`, `case`, `cast`) — they exist as factories internally but
 // users always write them as syntax, and the parser keyword path covers them.
@@ -84,6 +84,7 @@ export const scalarFunctions: string[] = [
   "insertion_point",
   "interval_end",
   "interval_start",
+  "is_end_of_month",
   "is_leap_year",
   "json_extract",
   "l2price",
@@ -229,6 +230,7 @@ export const aggregateFunctions: string[] = [
   "approx_percentile",
   "arg_max",
   "arg_min",
+  "array_agg",
   "array_elem_avg",
   "array_elem_max",
   "array_elem_min",
@@ -250,6 +252,9 @@ export const aggregateFunctions: string[] = [
   "haversine_dist_deg",
   "isOrdered",
   "ksum",
+  "kurtosis",
+  "kurtosis_pop",
+  "kurtosis_samp",
   "last",
   "last_not_null",
   "max",
@@ -257,7 +262,11 @@ export const aggregateFunctions: string[] = [
   "mode",
   "nsum",
   "regr_intercept",
+  "regr_r2",
   "regr_slope",
+  "skewness",
+  "skewness_pop",
+  "skewness_samp",
   "sparkline",
   "stddev",
   "stddev_pop",
@@ -277,11 +286,14 @@ export const aggregateFunctions: string[] = [
 ]
 
 export const windowFunctions: string[] = [
+  "cume_dist",
   "dense_rank",
   "first_value",
   "lag",
   "last_value",
   "lead",
+  "nth_value",
+  "ntile",
   "percent_rank",
   "rank",
   "row_number",
@@ -290,6 +302,7 @@ export const windowFunctions: string[] = [
 export const tableValuedFunctions: string[] = [
   // CURSOR type — explicitly row-returning
   "all_permissions",
+  "backups",
   "generate_series",
   "information_schema._pg_expandarray",
   "long_sequence",
@@ -313,6 +326,7 @@ export const tableValuedFunctions: string[] = [
   "pg_roles",
   "pg_type",
   "read_parquet",
+  "sleep",
   "table_partitions",
   // STANDARD type but succeed as `SELECT * FROM <name>()` — meta pseudo-tables
   "all_tables",
@@ -320,6 +334,7 @@ export const tableValuedFunctions: string[] = [
   "functions",
   "import_files",
   "keywords",
+  "live_views",
   "materialized_views",
   "memory_metrics",
   "permissions",

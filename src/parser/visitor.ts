@@ -22,7 +22,9 @@ import type {
   AlterTableStatementCstChildren,
   AlterUserActionCstChildren,
   AlterUserStatementCstChildren,
+  AlterLiveViewStatementCstChildren,
   AlterViewStatementCstChildren,
+  AnchorClauseCstChildren,
   AndExpressionCstChildren,
   ArrayBracketBodyCstChildren,
   ArrayElementCstChildren,
@@ -48,12 +50,14 @@ import type {
   Ipv4ContainmentExpressionCstChildren,
   ConvertPartitionTargetCstChildren,
   CopyCancelCstChildren,
+  CopyPermissionsCstChildren,
   CopyFromCstChildren,
   CopyOptionCstChildren,
   CopyOptionsCstChildren,
   CopyStatementCstChildren,
   CopyToCstChildren,
   CreateGroupStatementCstChildren,
+  CreateLiveViewBodyCstChildren,
   CreateMaterializedViewBodyCstChildren,
   CreateServiceAccountStatementCstChildren,
   CreateStatementCstChildren,
@@ -71,10 +75,12 @@ import type {
   DropStatementCstChildren,
   DropTableStatementCstChildren,
   DropUserStatementCstChildren,
+  DropLiveViewStatementCstChildren,
   DropViewStatementCstChildren,
   DurationExpressionCstChildren,
   EqualityExpressionCstChildren,
   ExitServiceAccountStatementCstChildren,
+  ExpireRowsClauseCstChildren,
   ExplainStatementCstChildren,
   ExpressionCstChildren,
   FillClauseCstChildren,
@@ -94,6 +100,7 @@ import type {
   ImplicitSelectBodyCstChildren,
   ImplicitSelectStatementCstChildren,
   IndexDefinitionCstChildren,
+  IndexTypeOptionsCstChildren,
   InsertStatementCstChildren,
   IntervalValueCstChildren,
   JoinClauseCstChildren,
@@ -109,7 +116,9 @@ import type {
   OrderByClauseCstChildren,
   OrderByItemCstChildren,
   OverClauseCstChildren,
+  OptionalExpireRowsCstChildren,
   OptionalStoragePolicyCstChildren,
+  OptionalTableFormatCstChildren,
   ParquetCompressionCstChildren,
   ParquetConfigCstChildren,
   ParquetEncodingCstChildren,
@@ -141,6 +150,7 @@ import type {
   SetExpressionCstChildren,
   SetOperationCstChildren,
   SetTypeStatementCstChildren,
+  ShowCreateDatabaseCategoryCstChildren,
   ShowStatementCstChildren,
   SimpleSelectCstChildren,
   SnapshotStatementCstChildren,
@@ -158,6 +168,8 @@ import type {
   StringOrQualifiedNameCstChildren,
   TableFunctionCallCstChildren,
   TableFunctionNameCstChildren,
+  SwitchStatementCstChildren,
+  TableFormatKindCstChildren,
   TableNameCstChildren,
   TableNameOrStringCstChildren,
   TableParamCstChildren,
@@ -352,6 +364,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.backupStatement) {
       return this.visit(ctx.backupStatement) as AST.BackupStatement
+    }
+    if (ctx.switchStatement) {
+      return this.visit(ctx.switchStatement) as AST.SwitchStatement
     }
     if (ctx.compileViewStatement) {
       return this.visit(ctx.compileViewStatement) as AST.CompileViewStatement
@@ -840,8 +855,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Identifier) {
       // Implicit alias (bare identifier, not a keyword)
       tableRef.alias = ctx.Identifier[0].image
-    } else if (ctx.identifier && ctx.identifier.length > 1) {
-      // Explicit alias (AS <id>): first identifier is table alias, last is horizon alias
+    } else if (ctx.identifier && ctx.identifier.length > 0) {
+      // Explicit alias (AS <id>): the FIRST identifier is the table alias.
+      // (The horizon alias, when present, is the last identifier.)
       tableRef.alias = (
         this.visit(ctx.identifier[0]) as AST.QualifiedName
       ).parts[0]
@@ -869,8 +885,9 @@ class QuestDBVisitor extends BaseVisitor {
         (o) => this.visit(o) as string,
       )
     }
-    // Horizon alias is always the last identifier
-    if (ctx.identifier) {
+    // Horizon alias (the trailing `AS <x>`) exists only with a RANGE/LIST clause,
+    // and is the LAST identifier. Non-last joins in a chain have none (#6881).
+    if ((ctx.Range || ctx.List) && ctx.identifier) {
       const lastId = ctx.identifier[ctx.identifier.length - 1]
       result.horizonAlias = (this.visit(lastId) as AST.QualifiedName).parts[0]
     }
@@ -913,6 +930,11 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.durationExpression) {
       result.duration = this.visit(ctx.durationExpression) as string
+    } else if (ctx.expression) {
+      result.boundExpr = this.visit(ctx.expression[0]) as AST.Expression
+      if (ctx.timeUnit) {
+        result.unit = this.visit(ctx.timeUnit[0]) as string
+      }
     }
     return result
   }
@@ -945,7 +967,9 @@ class QuestDBVisitor extends BaseVisitor {
       type: "sampleBy",
       duration: ctx.DurationLiteral
         ? this.tokenImage(ctx.DurationLiteral[0])
-        : this.tokenImage(ctx.VariableReference![0]),
+        : ctx.VariableReference
+          ? this.tokenImage(ctx.VariableReference[0])
+          : this.tokenImage(ctx.Identifier![0]),
     }
     if (ctx.fillClause) {
       result.fill = this.visit(ctx.fillClause) as string[]
@@ -1200,6 +1224,9 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.createMaterializedViewBody,
       ) as AST.CreateMaterializedViewStatement
     }
+    if (ctx.createLiveViewBody) {
+      return this.visit(ctx.createLiveViewBody) as AST.CreateLiveViewStatement
+    }
     if (ctx.createViewBody) {
       return this.visit(ctx.createViewBody) as AST.CreateViewStatement
     }
@@ -1330,7 +1357,31 @@ class QuestDBVisitor extends BaseVisitor {
       result.dedupKeys = this.visit(ctx.dedupClause) as string[]
     }
 
+    // FORMAT { PARQUET | NATIVE } — accepted in three positions; take the
+    // first one that carried a value.
+    if (ctx.optionalTableFormat) {
+      for (const node of ctx.optionalTableFormat) {
+        const fmt = this.visit(node) as "parquet" | "native" | undefined
+        if (fmt) {
+          result.tableFormat = fmt
+          break
+        }
+      }
+    }
+
     return result
+  }
+
+  tableFormatKind(ctx: TableFormatKindCstChildren): "parquet" | "native" {
+    return ctx.Native ? "native" : "parquet"
+  }
+
+  optionalTableFormat(
+    ctx: OptionalTableFormatCstChildren,
+  ): "parquet" | "native" | undefined {
+    return ctx.tableFormatKind
+      ? (this.visit(ctx.tableFormatKind) as "parquet" | "native")
+      : undefined
   }
 
   columnDefinition(ctx: ColumnDefinitionCstChildren): AST.ColumnDefinition {
@@ -1375,6 +1426,16 @@ class QuestDBVisitor extends BaseVisitor {
     // INDEX
     if (indexToken) {
       result.indexed = true
+      if (ctx.indexTypeOptions) {
+        const opts = this.visit(ctx.indexTypeOptions[0]) as {
+          capacity?: number
+          indexType?: AST.ColumnDefinition["indexType"]
+          include?: string[]
+        }
+        if (opts.capacity !== undefined) result.indexCapacity = opts.capacity
+        if (opts.indexType) result.indexType = opts.indexType
+        if (opts.include) result.indexInclude = opts.include
+      }
     }
 
     // PARQUET config
@@ -1498,10 +1559,51 @@ class QuestDBVisitor extends BaseVisitor {
       type: "indexDefinition",
       column: colRef.name ?? colRef,
     }
-    if (ctx.Capacity && ctx.NumberLiteral) {
-      result.capacity = tokenInt(ctx.NumberLiteral[0].image)
+    if (ctx.indexTypeOptions) {
+      const opts = this.visit(ctx.indexTypeOptions[0]) as {
+        capacity?: number
+        indexType?: AST.IndexDefinition["indexType"]
+        include?: string[]
+      }
+      if (opts.capacity !== undefined) result.capacity = opts.capacity
+      if (opts.indexType) result.indexType = opts.indexType
+      if (opts.include) result.include = opts.include
     }
     return result
+  }
+
+  indexTypeOptions(ctx: IndexTypeOptionsCstChildren): {
+    capacity?: number
+    indexType?: AST.ColumnDefinition["indexType"]
+    include?: string[]
+  } {
+    const r: {
+      capacity?: number
+      indexType?: AST.ColumnDefinition["indexType"]
+      include?: string[]
+    } = {}
+    if (ctx.Type) {
+      if (ctx.Posting) {
+        r.indexType = ctx.Delta
+          ? "posting_delta"
+          : ctx.Ef
+            ? "posting_ef"
+            : "posting"
+      } else if (ctx.Bitmap) {
+        r.indexType = "bitmap"
+      } else if (ctx.None) {
+        r.indexType = "none"
+      }
+    }
+    if (ctx.Include && ctx.identifier) {
+      r.include = ctx.identifier.map(
+        (id) => (this.visit(id) as AST.QualifiedName).parts[0],
+      )
+    }
+    if (ctx.Capacity && ctx.NumberLiteral) {
+      r.capacity = tokenInt(ctx.NumberLiteral[0].image)
+    }
+    return r
   }
 
   tableParamName(ctx: TableParamNameCstChildren): string {
@@ -1683,7 +1785,54 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Owned && ctx.stringOrIdentifier) {
       result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
+    if (ctx.optionalExpireRows) {
+      const er = this.visit(ctx.optionalExpireRows) as
+        | AST.ExpireRowsClause
+        | undefined
+      if (er) result.expireRows = er
+    }
     return result
+  }
+
+  expireRowsClause(ctx: ExpireRowsClauseCstChildren): AST.ExpireRowsClause {
+    const idents = (ctx.identifier ?? []).map((id: IdentifierCstNode) =>
+      this.extractIdentifierName(id.children),
+    )
+    let clause: AST.ExpireRowsClause
+    if (ctx.When) {
+      clause = {
+        mode: "when",
+        predicate: this.visit(ctx.expression!) as AST.Expression,
+      }
+    } else if (ctx.Latest) {
+      let i = 0
+      const on = ctx.On ? idents[i++] : undefined
+      clause = { mode: "keepLatest", partitionBy: idents.slice(i) }
+      if (on) clause.on = on
+    } else {
+      clause = {
+        mode: "keepExtremum",
+        extremum: ctx.Highest ? "highest" : "lowest",
+        column: idents[0],
+      }
+      const partitionBy = idents.slice(1)
+      if (partitionBy.length > 0) clause.partitionBy = partitionBy
+      if (ctx.NumberLiteral) {
+        clause.keepCount = tokenInt(ctx.NumberLiteral[0].image)
+      }
+    }
+    if (ctx.Cleanup && ctx.DurationLiteral) {
+      clause.cleanupEvery = ctx.DurationLiteral[0].image
+    }
+    return clause
+  }
+
+  optionalExpireRows(
+    ctx: OptionalExpireRowsCstChildren,
+  ): AST.ExpireRowsClause | undefined {
+    return ctx.expireRowsClause
+      ? (this.visit(ctx.expireRowsClause) as AST.ExpireRowsClause)
+      : undefined
   }
 
   materializedViewRefresh(
@@ -1746,6 +1895,92 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
       result.ttl = this.extractTtl(ctx)
+    }
+    return result
+  }
+
+  createLiveViewBody(
+    ctx: CreateLiveViewBodyCstChildren,
+  ): AST.CreateLiveViewStatement {
+    const durations = (ctx.DurationLiteral ?? []).map((t) => t.image)
+    const result: AST.CreateLiveViewStatement = {
+      type: "createLiveView",
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      flushEvery: durations[0],
+      query: this.visit(ctx.selectStatement![0]) as AST.SelectStatement,
+    }
+    if (ctx.If) result.ifNotExists = true
+    if (ctx.Memory && durations.length > 1) result.inMemory = durations[1]
+    if (ctx.partitionPeriod) {
+      result.partitionBy = this.visit(
+        ctx.partitionPeriod,
+      ) as AST.CreateLiveViewStatement["partitionBy"]
+    }
+    if (ctx.Start) {
+      if (ctx.Beginning) {
+        result.startFrom = { kind: "beginning" }
+      } else if (ctx.StringLiteral) {
+        result.startFrom = {
+          kind: "timestamp",
+          value: ctx.StringLiteral[0].image.slice(1, -1),
+        }
+      } else {
+        result.startFrom = { kind: "now" }
+      }
+    }
+    return result
+  }
+
+  dropLiveViewStatement(
+    ctx: DropLiveViewStatementCstChildren,
+  ): AST.DropLiveViewStatement {
+    return {
+      type: "dropLiveView",
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      ifExists: !!ctx.If,
+    }
+  }
+
+  alterLiveViewStatement(
+    ctx: AlterLiveViewStatementCstChildren,
+  ): AST.AlterLiveViewStatement {
+    const result: AST.AlterLiveViewStatement = {
+      type: "alterLiveView",
+      view: this.visit(ctx.tableName) as AST.QualifiedName,
+      action: ctx.Suspend ? "suspendWal" : "resumeWal",
+    }
+    if (ctx.Resume && ctx.NumberLiteral) {
+      const n = tokenInt(ctx.NumberLiteral[0].image)
+      if (ctx.Txn) result.fromTxn = n
+      else if (ctx.Transaction) result.fromTransaction = n
+    }
+    if (ctx.Suspend && ctx.With) {
+      if (ctx.NumberLiteral) {
+        result.code = tokenInt(ctx.NumberLiteral[0].image)
+      } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
+        result.code = ctx.StringLiteral[0].image.slice(1, -1)
+      }
+      const strings = ctx.StringLiteral || []
+      if (strings.length > 0) {
+        result.message = strings[strings.length - 1].image.slice(1, -1)
+      }
+    }
+    return result
+  }
+
+  anchorClause(ctx: AnchorClauseCstChildren): AST.AnchorClause {
+    if (ctx.Expression) {
+      return {
+        kind: "expression",
+        expr: this.visit(ctx.expression!) as AST.Expression,
+      }
+    }
+    const result: AST.AnchorClause = {
+      kind: "daily",
+      time: ctx.StringLiteral![0].image.slice(1, -1),
+    }
+    if (ctx.StringLiteral && ctx.StringLiteral.length > 1) {
+      result.timezone = ctx.StringLiteral[1].image.slice(1, -1)
     }
     return result
   }
@@ -1815,6 +2050,11 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(
         ctx.alterMaterializedViewStatement,
       ) as AST.AlterMaterializedViewStatement
+    }
+    if (ctx.alterLiveViewStatement) {
+      return this.visit(
+        ctx.alterLiveViewStatement,
+      ) as AST.AlterLiveViewStatement
     }
     if (ctx.alterViewStatement) {
       return this.visit(ctx.alterViewStatement) as AST.AlterViewStatement
@@ -1896,6 +2136,17 @@ class QuestDBVisitor extends BaseVisitor {
         policy: this.visit(ctx.storagePolicy) as AST.StoragePolicy,
       }
     }
+    // SET EXPIRE ROWS ...
+    if (ctx.Set && ctx.expireRowsClause) {
+      return {
+        actionType: "setExpireRows",
+        expireRows: this.visit(ctx.expireRowsClause) as AST.ExpireRowsClause,
+      }
+    }
+    // DROP EXPIRE [ROWS]
+    if (ctx.Drop && ctx.Expire) {
+      return { actionType: "dropExpire" }
+    }
     // DROP STORAGE POLICY
     if (ctx.Drop && ctx.Storage && ctx.Policy && !ctx.Alter) {
       return { actionType: "dropStoragePolicy" }
@@ -1965,6 +2216,17 @@ class QuestDBVisitor extends BaseVisitor {
     // SUSPEND WAL
     if (ctx.Suspend) {
       return { actionType: "suspendWal" }
+    }
+
+    // REBASE WAL [INTO '<targetDir>']
+    if (ctx.Rebase) {
+      const result: AST.AlterMaterializedViewRebaseWal = {
+        actionType: "rebaseWal",
+      }
+      if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
+        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+      }
+      return result
     }
 
     return {
@@ -2128,6 +2390,8 @@ class QuestDBVisitor extends BaseVisitor {
         | "symbolCapacity" = "type"
       let newType: string | undefined
       let capacity: number | undefined
+      let indexType: AST.AlterColumnAction["indexType"]
+      let indexInclude: string[] | undefined
 
       if (ctx.Type) {
         alterType = "type"
@@ -2137,6 +2401,16 @@ class QuestDBVisitor extends BaseVisitor {
         }
       } else if (ctx.Add && ctx.Index) {
         alterType = "addIndex"
+        if (ctx.indexTypeOptions) {
+          const opts = this.visit(ctx.indexTypeOptions[0]) as {
+            capacity?: number
+            indexType?: AST.AlterColumnAction["indexType"]
+            include?: string[]
+          }
+          if (opts.capacity !== undefined) capacity = opts.capacity
+          if (opts.indexType) indexType = opts.indexType
+          if (opts.include) indexInclude = opts.include
+        }
       } else if (ctx.Drop && ctx.Index) {
         alterType = "dropIndex"
       } else if (ctx.Symbol && ctx.Capacity) {
@@ -2159,6 +2433,8 @@ class QuestDBVisitor extends BaseVisitor {
       if (capacity !== undefined) {
         result.capacity = capacity
       }
+      if (indexType) result.indexType = indexType
+      if (indexInclude) result.indexInclude = indexInclude
       if (alterType === "type") {
         if (ctx.Cache) result.cache = true
         else if (ctx.Nocache) result.cache = false
@@ -2229,6 +2505,13 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
+    if (ctx.Set && ctx.tableFormatKind) {
+      return {
+        actionType: "setTableFormat",
+        format: this.visit(ctx.tableFormatKind) as "parquet" | "native",
+      }
+    }
+
     if (ctx.Dedup && ctx.Disable) {
       return {
         actionType: "dedupDisable",
@@ -2277,6 +2560,15 @@ class QuestDBVisitor extends BaseVisitor {
       return result
     }
 
+    // REBASE WAL [INTO '<targetDir>']
+    if (ctx.Rebase) {
+      const result: AST.RebaseWalAction = { actionType: "rebaseWal" }
+      if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
+        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+      }
+      return result
+    }
+
     // CONVERT PARTITION
     if (ctx.Convert) {
       const target = this.visit(
@@ -2311,6 +2603,9 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(
         ctx.dropMaterializedViewStatement,
       ) as AST.DropMaterializedViewStatement
+    }
+    if (ctx.dropLiveViewStatement) {
+      return this.visit(ctx.dropLiveViewStatement) as AST.DropLiveViewStatement
     }
     if (ctx.dropViewStatement) {
       return this.visit(ctx.dropViewStatement) as AST.DropViewStatement
@@ -2497,6 +2792,14 @@ class QuestDBVisitor extends BaseVisitor {
   // SHOW Statement
   // ==========================================================================
 
+  showCreateDatabaseCategory(
+    ctx: ShowCreateDatabaseCategoryCstChildren,
+  ): string {
+    return ctx.All
+      ? "all"
+      : (this.visit(ctx.identifier![0]) as AST.QualifiedName).parts[0]
+  }
+
   showStatement(ctx: ShowStatementCstChildren): AST.ShowStatement {
     if (ctx.Tables) {
       return {
@@ -2529,12 +2832,39 @@ class QuestDBVisitor extends BaseVisitor {
           table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
         }
       }
+      if (ctx.Live) {
+        return {
+          type: "show",
+          showType: "createLiveView",
+          table: this.visit(ctx.tableName!) as AST.QualifiedName,
+        }
+      }
       if (ctx.View) {
         return {
           type: "show",
           showType: "createView",
           table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
         }
+      }
+      if (ctx.Database) {
+        const result: AST.ShowStatement = {
+          type: "show",
+          showType: "createDatabase",
+        }
+        if (ctx.Include || ctx.Exclude) {
+          const mode = ctx.Include ? "include" : "exclude"
+          if (ctx.All) {
+            result.databaseInclude = { mode, all: true }
+          } else {
+            result.databaseInclude = {
+              mode,
+              categories: (ctx.showCreateDatabaseCategory ?? []).map(
+                (n) => this.visit(n) as string,
+              ),
+            }
+          }
+        }
+        return result
       }
       return {
         type: "show",
@@ -2668,6 +2998,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.copyCancel) {
       return this.visit(ctx.copyCancel) as AST.CopyCancelStatement
     }
+    if (ctx.copyPermissions) {
+      return this.visit(ctx.copyPermissions) as AST.CopyPermissionsStatement
+    }
     if (ctx.copyFrom) {
       return this.visit(ctx.copyFrom) as AST.CopyFromStatement
     }
@@ -2686,6 +3019,16 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "copyCancel",
       id,
+    }
+  }
+
+  copyPermissions(
+    ctx: CopyPermissionsCstChildren,
+  ): AST.CopyPermissionsStatement {
+    return {
+      type: "copyPermissions",
+      from: this.visit(ctx.identifier[0]) as AST.QualifiedName,
+      to: this.visit(ctx.identifier[1]) as AST.QualifiedName,
     }
   }
 
@@ -2843,6 +3186,21 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
+  switchStatement(ctx: SwitchStatementCstChildren): AST.SwitchStatement {
+    if (ctx.Status) {
+      return { type: "switch", action: "status" }
+    }
+    const result: AST.SwitchStatement = {
+      type: "switch",
+      action: "role",
+      role: ctx.Replica ? "REPLICA" : "PRIMARY",
+    }
+    if (ctx.Timeout && ctx.NumberLiteral) {
+      result.timeout = tokenInt(ctx.NumberLiteral[0].image)
+    }
+    return result
+  }
+
   compileViewStatement(
     ctx: CompileViewStatementCstChildren,
   ): AST.CompileViewStatement {
@@ -2979,10 +3337,16 @@ class QuestDBVisitor extends BaseVisitor {
       type: "grantTableTarget",
       table: this.visit(ctx.tableName) as AST.QualifiedName,
     }
-    if (ctx.identifier && ctx.identifier.length > 0) {
-      result.columns = ctx.identifier.map((id: IdentifierCstNode) =>
-        this.extractIdentifierName(id.children),
-      )
+    const cols = (ctx.identifier ?? []).map((id: IdentifierCstNode) =>
+      this.extractIdentifierName(id.children),
+    )
+    if (ctx.Star) {
+      result.allColumns = true
+      if (ctx.Exclude && cols.length > 0) {
+        result.excludeColumns = cols
+      }
+    } else if (cols.length > 0) {
+      result.columns = cols
     }
     return result
   }
@@ -3076,6 +3440,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Full) result.mode = "full"
     if (ctx.Incremental) result.mode = "incremental"
+    if (ctx.Stats) result.mode = "stats"
     if (ctx.Range) {
       result.mode = "range"
       if (ctx.stringOrIdentifier) {
@@ -3952,6 +4317,10 @@ class QuestDBVisitor extends BaseVisitor {
       result.frame = this.visit(ctx.windowFrameClause) as AST.WindowFrame
     }
 
+    if (ctx.anchorClause) {
+      result.anchor = this.visit(ctx.anchorClause) as AST.AnchorClause
+    }
+
     return result
   }
 
@@ -3993,6 +4362,10 @@ class QuestDBVisitor extends BaseVisitor {
 
     if (ctx.windowFrameClause) {
       result.frame = this.visit(ctx.windowFrameClause) as AST.WindowFrame
+    }
+
+    if (ctx.anchorClause) {
+      result.anchor = this.visit(ctx.anchorClause) as AST.AnchorClause
     }
 
     return result
