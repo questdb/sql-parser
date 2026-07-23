@@ -17,6 +17,7 @@ export type Statement =
   | UpdateStatement
   | CreateTableStatement
   | CreateMaterializedViewStatement
+  | CreateLiveViewStatement
   | CreateUserStatement
   | CreateGroupStatement
   | CreateServiceAccountStatement
@@ -26,9 +27,11 @@ export type Statement =
   | AlterServiceAccountStatement
   | CreateViewStatement
   | AlterViewStatement
+  | AlterLiveViewStatement
   | DropTableStatement
   | DropMaterializedViewStatement
   | DropViewStatement
+  | DropLiveViewStatement
   | DropUserStatement
   | DropGroupStatement
   | DropServiceAccountStatement
@@ -55,6 +58,7 @@ export type Statement =
   | RefreshMaterializedViewStatement
   | PivotStatement
   | BackupStatement
+  | SwitchStatement
   | AlterGroupStatement
   | CompileViewStatement
 
@@ -93,6 +97,7 @@ export interface NamedWindow extends AstNode {
   partitionBy?: Expression[]
   orderBy?: OrderByItem[]
   frame?: WindowFrame
+  anchor?: AnchorClause
 }
 
 export interface CTE extends AstNode {
@@ -172,6 +177,7 @@ export interface CreateTableStatement extends AstNode {
   volume?: string
   ownedBy?: string
   dedupKeys?: string[]
+  tableFormat?: "parquet" | "native"
 }
 
 export interface TableParam extends AstNode {
@@ -190,6 +196,8 @@ export interface IndexDefinition extends AstNode {
   type: "indexDefinition"
   column: QualifiedName
   capacity?: number
+  indexType?: "posting" | "posting_delta" | "posting_ef" | "bitmap" | "none"
+  include?: string[]
 }
 
 export interface CreateUserStatement extends AstNode {
@@ -216,6 +224,23 @@ export interface CreateServiceAccountStatement extends AstNode {
   ownedBy?: string
 }
 
+// EXPIRE ROWS row-retention clause (materialized views).
+export interface ExpireRowsClause {
+  mode: "when" | "keepLatest" | "keepExtremum"
+  // when: EXPIRE ROWS WHEN <predicate>
+  predicate?: Expression
+  // keepLatest: KEEP LATEST [ON <ts>] PARTITION BY <cols>
+  on?: string
+  // keepExtremum: KEEP [<N>] HIGHEST|LOWEST <col> [PARTITION BY <cols>]
+  keepCount?: number
+  extremum?: "highest" | "lowest"
+  column?: string
+  // partition columns (required for keepLatest, optional for keepExtremum)
+  partitionBy?: string[]
+  // optional trailing CLEANUP EVERY <duration>
+  cleanupEvery?: string
+}
+
 export interface CreateMaterializedViewStatement extends AstNode {
   type: "createMaterializedView"
   view: QualifiedName
@@ -235,6 +260,49 @@ export interface CreateMaterializedViewStatement extends AstNode {
   storagePolicy?: StoragePolicy
   volume?: string
   ownedBy?: string
+  expireRows?: ExpireRowsClause
+}
+
+// LIVE VIEWS (#6939)
+export interface CreateLiveViewStatement extends AstNode {
+  type: "createLiveView"
+  view: QualifiedName
+  ifNotExists?: boolean
+  flushEvery: string
+  inMemory?: string
+  partitionBy?: "NONE" | "HOUR" | "DAY" | "WEEK" | "MONTH" | "YEAR"
+  startFrom?: {
+    kind: "now" | "beginning" | "timestamp"
+    value?: string
+  }
+  query: SelectStatement
+}
+
+export interface DropLiveViewStatement extends AstNode {
+  type: "dropLiveView"
+  view: QualifiedName
+  ifExists?: boolean
+}
+
+export interface AlterLiveViewStatement extends AstNode {
+  type: "alterLiveView"
+  view: QualifiedName
+  action: "resumeWal" | "suspendWal"
+  // RESUME WAL [FROM TXN|TRANSACTION n]
+  fromTxn?: number
+  fromTransaction?: number
+  // SUSPEND WAL [WITH code, 'message']
+  code?: number | string
+  message?: string
+}
+
+// OVER(...) / named WINDOW ANCHOR clause (live views):
+//   ANCHOR EXPRESSION <expr>  |  ANCHOR DAILY '<HH:MM>' ['<tz>']
+export interface AnchorClause {
+  kind: "expression" | "daily"
+  expr?: Expression
+  time?: string
+  timezone?: string
 }
 
 export interface StoragePolicy extends AstNode {
@@ -298,6 +366,10 @@ export interface ColumnDefinition extends AstNode {
   indexed?: boolean
   /** INDEX CAPACITY value */
   indexCapacity?: number
+  /** Index type (#6861 posting index) */
+  indexType?: "posting" | "posting_delta" | "posting_ef" | "bitmap" | "none"
+  /** POSTING index INCLUDE columns */
+  indexInclude?: string[]
   /** PARQUET encoding/compression/bloom filter config */
   parquetConfig?: ParquetConfig
 }
@@ -323,6 +395,9 @@ export type AlterMaterializedViewAction =
   | AlterMaterializedViewSetRefresh
   | AlterMaterializedViewResumeWal
   | AlterMaterializedViewSuspendWal
+  | AlterMaterializedViewRebaseWal
+  | AlterMaterializedViewSetExpireRows
+  | AlterMaterializedViewDropExpire
   | AlterMaterializedViewSetStoragePolicy
   | AlterMaterializedViewDropStoragePolicy
   | AlterMaterializedViewEnableStoragePolicy
@@ -374,6 +449,20 @@ export interface AlterMaterializedViewResumeWal {
 
 export interface AlterMaterializedViewSuspendWal {
   actionType: "suspendWal"
+}
+
+export interface AlterMaterializedViewRebaseWal {
+  actionType: "rebaseWal"
+  targetDir?: string
+}
+
+export interface AlterMaterializedViewSetExpireRows {
+  actionType: "setExpireRows"
+  expireRows: ExpireRowsClause
+}
+
+export interface AlterMaterializedViewDropExpire {
+  actionType: "dropExpire"
 }
 
 export interface AlterMaterializedViewSetStoragePolicy {
@@ -453,11 +542,13 @@ export type AlterTableAction =
   | SquashPartitionsAction
   | SetParamAction
   | SetTtlAction
+  | SetTableFormatAction
   | DedupDisableAction
   | DedupEnableAction
   | SetTypeWalAction
   | SuspendWalAction
   | ResumeWalAction
+  | RebaseWalAction
   | ConvertPartitionAction
   | SetStoragePolicyAction
   | DropStoragePolicyAction
@@ -494,6 +585,9 @@ export interface AlterColumnAction {
     | "setParquet"
   newType?: string
   capacity?: number
+  // ADD INDEX options (#6861 posting index)
+  indexType?: "posting" | "posting_delta" | "posting_ef" | "bitmap" | "none"
+  indexInclude?: string[]
   cache?: boolean
   /** PARQUET config for SET PARQUET(...) */
   parquetConfig?: ParquetConfig
@@ -531,6 +625,11 @@ export interface SetTtlAction {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   }
+}
+
+export interface SetTableFormatAction {
+  actionType: "setTableFormat"
+  format: "parquet" | "native"
 }
 
 export interface SetStoragePolicyAction {
@@ -574,6 +673,11 @@ export interface ResumeWalAction {
   actionType: "resumeWal"
   fromTxn?: number
   fromTransaction?: number
+}
+
+export interface RebaseWalAction {
+  actionType: "rebaseWal"
+  targetDir?: string
 }
 
 export interface ConvertPartitionAction {
@@ -686,6 +790,8 @@ export interface ShowStatement extends AstNode {
     | "createTable"
     | "createView"
     | "createMaterializedView"
+    | "createLiveView"
+    | "createDatabase"
     | "user"
     | "users"
     | "groups"
@@ -704,6 +810,12 @@ export interface ShowStatement extends AstNode {
     | "defaultTransactionReadOnly"
   table?: QualifiedName
   name?: QualifiedName
+  // SHOW CREATE DATABASE optional (INCLUDE|EXCLUDE) (ALL | (categories))
+  databaseInclude?: {
+    mode: "include" | "exclude"
+    all?: boolean
+    categories?: string[]
+  }
 }
 
 export interface ExplainStatement extends AstNode {
@@ -716,10 +828,18 @@ export type CopyStatement =
   | CopyCancelStatement
   | CopyFromStatement
   | CopyToStatement
+  | CopyPermissionsStatement
 
 export interface CopyCancelStatement extends AstNode {
   type: "copyCancel"
   id: string
+}
+
+// Enterprise: COPY PERMISSIONS FROM <src> TO <dst>
+export interface CopyPermissionsStatement extends AstNode {
+  type: "copyPermissions"
+  from: QualifiedName
+  to: QualifiedName
 }
 
 export interface CopyFromStatement extends AstNode {
@@ -780,6 +900,10 @@ export interface GrantTableTarget extends AstNode {
   type: "grantTableTarget"
   table: QualifiedName
   columns?: string[]
+  // Column wildcard: tab(*) sets allColumns; tab(* EXCLUDE(c1, c2)) also sets
+  // excludeColumns. Mutually exclusive with `columns`.
+  allColumns?: boolean
+  excludeColumns?: string[]
 }
 
 export interface GrantAssumeServiceAccountStatement extends AstNode {
@@ -823,7 +947,7 @@ export interface ReindexTableStatement extends AstNode {
 export interface RefreshMaterializedViewStatement extends AstNode {
   type: "refreshMaterializedView"
   view: QualifiedName
-  mode?: "full" | "incremental" | "range"
+  mode?: "full" | "incremental" | "range" | "stats"
   from?: string
   to?: string
 }
@@ -832,6 +956,14 @@ export interface BackupStatement extends AstNode {
   type: "backup"
   action: "database" | "table" | "abort"
   table?: QualifiedName
+}
+
+// Enterprise: SWITCH ROLE TO {PRIMARY|REPLICA} [TIMEOUT <ms>] | SWITCH STATUS
+export interface SwitchStatement extends AstNode {
+  type: "switch"
+  action: "role" | "status"
+  role?: "PRIMARY" | "REPLICA"
+  timeout?: number
 }
 
 export interface AlterGroupStatement extends AstNode {
@@ -991,6 +1123,10 @@ export interface WindowJoinBound extends AstNode {
   boundType: "currentRow" | "duration"
   direction?: "preceding" | "following"
   duration?: string
+  // Dynamic bound (#6859): a column/cast/function expression, with an optional
+  // time unit (e.g. `wndBound SECONDS PRECEDING`).
+  boundExpr?: Expression
+  unit?: string
 }
 
 export interface SampleByClause extends AstNode {
@@ -1114,6 +1250,7 @@ export interface WindowSpecification extends AstNode {
   partitionBy?: Expression[]
   orderBy?: OrderByItem[]
   frame?: WindowFrame
+  anchor?: AnchorClause
 }
 
 export interface WindowFrame extends AstNode {

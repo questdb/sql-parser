@@ -4691,4 +4691,126 @@ describe("Position-typed suggestions — by statement type", () => {
       expect(labels).toContain("WINDOW")
     })
   })
+
+  // ===========================================================================
+  // Non-reserved keyword clauses that the grammar accepts only via the
+  // `identifier` sub-rule (so Chevrotain reports them as the abstract
+  // IdentifierKeyword category). content-assist re-injects the concrete words
+  // per rule context so these multi-word clauses autocomplete token-by-token.
+  // Regression guard for CAVEATS.md gaps #1–#4. Parsing already accepted all of
+  // these (see tests/parser.test.ts); this covers the autocomplete hint only.
+  // ===========================================================================
+  describe("context keywords: GRANT / CONVERT PARTITION / SHOW CREATE DATABASE", () => {
+    describe("GRANT/REVOKE CONVERT PARTITION permission", () => {
+      it("suggests CONVERT (and REMOVE) as a GRANT permission", () => {
+        const labels = getLabelsAt(provider, "GRANT ")
+        expect(labels).toContain("CONVERT")
+        expect(labels).toContain("REMOVE")
+        // existing explicit permissions still there
+        expect(labels).toContain("SELECT")
+        expect(labels).toContain("SET")
+      })
+
+      it("suggests CONVERT as a REVOKE permission", () => {
+        expect(getLabelsAt(provider, "REVOKE ")).toContain("CONVERT")
+      })
+
+      it("suggests PARTITION after GRANT CONVERT", () => {
+        expect(getLabelsAt(provider, "GRANT CONVERT ")).toContain("PARTITION")
+      })
+
+      it("suggests PARTITION after REVOKE CONVERT", () => {
+        expect(getLabelsAt(provider, "REVOKE CONVERT ")).toContain("PARTITION")
+      })
+
+      it("does NOT leak CONVERT into the grantee position", () => {
+        // After ON <table> TO we are choosing a grantee, not a permission.
+        const labels = getLabelsAt(provider, "GRANT SELECT ON trades TO ")
+        expect(labels).not.toContain("CONVERT")
+        expect(labels).not.toContain("PARTITION")
+      })
+    })
+
+    describe("three-word GRANT permissions", () => {
+      it("suggests FORMAT and TYPE after GRANT SET TABLE", () => {
+        const labels = getLabelsAt(provider, "GRANT SET TABLE ")
+        expect(labels).toContain("FORMAT")
+        expect(labels).toContain("TYPE")
+      })
+
+      it("suggests STORAGE after GRANT SET", () => {
+        expect(getLabelsAt(provider, "GRANT SET ")).toContain("STORAGE")
+      })
+
+      it("suggests POLICY after GRANT SET STORAGE", () => {
+        expect(getLabelsAt(provider, "GRANT SET STORAGE ")).toContain("POLICY")
+      })
+
+      it("suggests POLICY after GRANT REMOVE STORAGE", () => {
+        expect(getLabelsAt(provider, "GRANT REMOVE STORAGE ")).toContain(
+          "POLICY",
+        )
+      })
+    })
+
+    describe("ALTER TABLE ... CONVERT PARTITION TO { PARQUET | NATIVE }", () => {
+      it("suggests PARQUET and NATIVE after CONVERT PARTITION TO", () => {
+        const labels = getLabelsAt(
+          provider,
+          "ALTER TABLE trades CONVERT PARTITION TO ",
+        )
+        expect(labels).toContain("PARQUET")
+        expect(labels).toContain("NATIVE")
+      })
+    })
+
+    describe("SHOW CREATE DATABASE (INCLUDE|EXCLUDE) categories", () => {
+      it("suggests category names after INCLUDE (", () => {
+        const labels = getLabelsAt(provider, "SHOW CREATE DATABASE INCLUDE (")
+        expect(labels).toContain("TABLES")
+        expect(labels).toContain("USERS")
+        expect(labels).toContain("PERMISSIONS")
+        expect(labels).toContain("ALL")
+      })
+
+      it("suggests category names after EXCLUDE (", () => {
+        expect(
+          getLabelsAt(provider, "SHOW CREATE DATABASE EXCLUDE ("),
+        ).toContain("VIEWS")
+      })
+
+      it("suggests remaining categories after a comma", () => {
+        const labels = getLabelsAt(
+          provider,
+          "SHOW CREATE DATABASE INCLUDE (PERMISSIONS, ",
+        )
+        expect(labels).toContain("TABLES")
+        expect(labels).toContain("MATERIALIZED_VIEWS")
+      })
+    })
+
+    it("does NOT leak permission keywords into an ordinary SELECT", () => {
+      const labels = getLabelsAt(provider, "SELECT ")
+      expect(labels).not.toContain("POLICY")
+      expect(labels).not.toContain("CONVERT")
+      expect(labels).not.toContain("STORAGE")
+    })
+
+    describe("CREATE LIVE VIEW ... START FROM", () => {
+      it("suggests NOW and BEGINNING after START FROM", () => {
+        const labels = getLabelsAt(
+          provider,
+          "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM ",
+        )
+        // NOW is matched via a gated Identifier; re-injected here.
+        expect(labels).toContain("NOW")
+        // BEGINNING comes from an explicit token.
+        expect(labels).toContain("BEGINNING")
+      })
+
+      it("does NOT leak NOW into an unrelated FROM clause", () => {
+        expect(getLabelsAt(provider, "SELECT * FROM ")).not.toContain("NOW")
+      })
+    })
+  })
 })
