@@ -250,7 +250,6 @@ export const aggregateFunctions: string[] = [
   "first_not_null",
   "geomean",
   "haversine_dist_deg",
-  "isOrdered",
   "ksum",
   "kurtosis",
   "kurtosis_pop",

@@ -4157,7 +4157,7 @@ describe("Position-typed suggestions — by statement type", () => {
     it("CREATE TABLE x (id i| — data type keywords, no scalar functions", () => {
       assertAtPosition("CREATE TABLE x (id i", {
         hasKeyword: ["INT"],
-        noFunction: ["isOrdered"],
+        noFunction: ["is_leap_year"],
       })
     })
 

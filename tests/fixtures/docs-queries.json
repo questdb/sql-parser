@@ -1758,12 +1758,6 @@
     "query": "SELECT base64(rnd_bin(), 20)"
   },
   {
-    "query": "SELECT isOrdered(numeric_sequence) is_num_ordered,\n       isOrdered(ts) is_ts_ordered\nFROM my_table"
-  },
-  {
-    "query": "SELECT isOrdered(numeric_sequence) FROM my_table"
-  },
-  {
     "query": "SELECT timestamp,\n       coalesce(amount, 0) as amount_not_null\nFROM transactions"
   },
   {
