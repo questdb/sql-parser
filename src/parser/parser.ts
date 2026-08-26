@@ -217,6 +217,10 @@ import {
   Timeout,
   Expire,
   Cleanup,
+  Cold,
+  Force,
+  Manager,
+  Refresher,
   Highest,
   Lowest,
   Live,
@@ -3754,7 +3758,10 @@ class QuestDBParser extends CstParser {
     ])
   })
 
-  // SWITCH ROLE TO { PRIMARY | REPLICA } [ TIMEOUT <ms> ]  |  SWITCH STATUS
+  // SWITCH ROLE TO { PRIMARY | REPLICA } [ TIMEOUT <ms> ]
+  // SWITCH STATUS
+  // SWITCH COLD STORAGE ROLE TO { MANAGER [ FORCE ] | REFRESHER } [ TIMEOUT <ms> ]
+  // SWITCH COLD STORAGE STATUS
   private switchStatement = this.RULE("switchStatement", () => {
     this.CONSUME(Switch)
     this.OR([
@@ -3773,6 +3780,42 @@ class QuestDBParser extends CstParser {
         },
       },
       { ALT: () => this.CONSUME(Status) },
+      {
+        ALT: () => {
+          this.CONSUME(Cold)
+          this.CONSUME(Storage)
+          this.OR2([
+            { ALT: () => this.CONSUME1(Status) },
+            {
+              ALT: () => {
+                this.CONSUME1(Role)
+                this.CONSUME1(To)
+                this.OR3([
+                  {
+                    ALT: () => {
+                      this.CONSUME(Manager)
+                      this.OPTION1(() => this.CONSUME(Force))
+                      this.OPTION2(() => {
+                        this.CONSUME1(Timeout)
+                        this.CONSUME1(NumberLiteral)
+                      })
+                    },
+                  },
+                  {
+                    ALT: () => {
+                      this.CONSUME(Refresher)
+                      this.OPTION3(() => {
+                        this.CONSUME2(Timeout)
+                        this.CONSUME2(NumberLiteral)
+                      })
+                    },
+                  },
+                ])
+              },
+            },
+          ])
+        },
+      },
     ])
   })
 
