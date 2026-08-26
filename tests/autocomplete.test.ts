@@ -150,6 +150,35 @@ describe("createAutocompleteProvider", () => {
       const labels = getLabelsAt(provider, "SELECT * FROM trades ORDER ")
       expect(labels).toContain("BY")
     })
+
+    it("walks through SWITCH COLD STORAGE role and status commands", () => {
+      assertSuggestionsWalkthrough(provider, [
+        { typed: "SWITCH ", expects: ["COLD", "ROLE", "STATUS"] },
+        { typed: "SWITCH COLD ", expects: ["STORAGE"] },
+        {
+          typed: "SWITCH COLD STORAGE ",
+          expects: ["ROLE", "STATUS"],
+        },
+        { typed: "SWITCH COLD STORAGE ROLE ", expects: ["TO"] },
+        {
+          typed: "SWITCH COLD STORAGE ROLE TO ",
+          expects: ["MANAGER", "REFRESHER"],
+        },
+        {
+          typed: "SWITCH COLD STORAGE ROLE TO MANAGER ",
+          expects: ["FORCE", "TIMEOUT"],
+        },
+        {
+          typed: "SWITCH COLD STORAGE ROLE TO MANAGER FORCE ",
+          expects: ["TIMEOUT"],
+        },
+        {
+          typed: "SWITCH COLD STORAGE ROLE TO REFRESHER ",
+          expects: ["TIMEOUT"],
+          rejects: ["FORCE"],
+        },
+      ])
+    })
   })
 
   describe("column suggestions", () => {

@@ -1439,7 +1439,12 @@ function backupToSql(stmt: AST.BackupStatement): string {
 
 function switchToSql(stmt: AST.SwitchStatement): string {
   if (stmt.action === "status") return "SWITCH STATUS"
-  let s = `SWITCH ROLE TO ${stmt.role}`
+  if (stmt.action === "coldStorageStatus") return "SWITCH COLD STORAGE STATUS"
+  const coldStorage = stmt.action === "coldStorageRole"
+  let s = coldStorage
+    ? `SWITCH COLD STORAGE ROLE TO ${stmt.role}`
+    : `SWITCH ROLE TO ${stmt.role}`
+  if (coldStorage && stmt.force) s += " FORCE"
   if (stmt.timeout !== undefined) s += ` TIMEOUT ${stmt.timeout}`
   return s
 }

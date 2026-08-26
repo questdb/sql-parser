@@ -1997,13 +1997,18 @@ export interface SwitchStatementCstNode extends CstNode {
 
 export type SwitchStatementCstChildren = {
   Switch: IToken[];
-  Role?: IToken[];
-  To?: IToken[];
+  Role?: (IToken)[];
+  To?: (IToken)[];
   Primary?: IToken[];
   Replica?: IToken[];
-  Timeout?: IToken[];
-  NumberLiteral?: IToken[];
-  Status?: IToken[];
+  Timeout?: (IToken)[];
+  NumberLiteral?: (IToken)[];
+  Status?: (IToken)[];
+  Cold?: IToken[];
+  Storage?: IToken[];
+  Manager?: IToken[];
+  Force?: IToken[];
+  Refresher?: IToken[];
 };
 
 export interface CompileViewStatementCstNode extends CstNode {

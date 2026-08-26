@@ -3187,6 +3187,23 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   switchStatement(ctx: SwitchStatementCstChildren): AST.SwitchStatement {
+    if (ctx.Cold) {
+      if (ctx.Status) {
+        return { type: "switch", action: "coldStorageStatus" }
+      }
+      const result: AST.SwitchStatement = {
+        type: "switch",
+        action: "coldStorageRole",
+        role: ctx.Refresher ? "REFRESHER" : "MANAGER",
+      }
+      if (ctx.Force) {
+        result.force = true
+      }
+      if (ctx.Timeout && ctx.NumberLiteral) {
+        result.timeout = tokenInt(ctx.NumberLiteral[0].image)
+      }
+      return result
+    }
     if (ctx.Status) {
       return { type: "switch", action: "status" }
     }

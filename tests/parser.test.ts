@@ -8064,6 +8064,57 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
   })
 
+  describe("SWITCH COLD STORAGE — parse & AST", () => {
+    it("parses a forced manager switch with a timeout", () => {
+      const result = parseToAst(
+        "SWITCH COLD STORAGE ROLE TO MANAGER FORCE TIMEOUT 10000",
+      )
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast).toHaveLength(1)
+
+      const statement = result.ast[0] as AST.SwitchStatement
+      expect(statement.type).toBe("switch")
+      expect(statement.action).toBe("coldStorageRole")
+      expect(statement.role).toBe("MANAGER")
+      expect(statement.force).toBe(true)
+      expect(statement.timeout).toBe(10000)
+    })
+
+    it("parses a refresher switch without FORCE", () => {
+      const statement = parseToAst(
+        "SWITCH COLD STORAGE ROLE TO REFRESHER TIMEOUT 30000",
+      ).ast[0] as AST.SwitchStatement
+
+      expect(statement.action).toBe("coldStorageRole")
+      expect(statement.role).toBe("REFRESHER")
+      expect(statement.force).toBeUndefined()
+      expect(statement.timeout).toBe(30000)
+    })
+
+    it("parses cold storage status", () => {
+      const statement = parseToAst("SWITCH COLD STORAGE STATUS")
+        .ast[0] as AST.SwitchStatement
+
+      expect(statement.action).toBe("coldStorageStatus")
+      expect(statement.role).toBeUndefined()
+    })
+
+    it("is case-insensitive", () => {
+      expect(
+        parseToAst("sWiTcH cOlD sToRaGe rOlE tO mAnAgEr fOrCe tImEoUt 10000")
+          .errors,
+      ).toHaveLength(0)
+    })
+
+    it("keeps the new non-reserved keywords usable as identifiers", () => {
+      expect(
+        parseToAst(
+          "SELECT cold, force, manager, refresher FROM cold AS manager",
+        ).errors,
+      ).toHaveLength(0)
+    })
+  })
+
   describe("GRANT/REVOKE column wildcard + EXCLUDE — parse & AST", () => {
     it("wildcard", () => {
       const r = parseToAst("GRANT SELECT ON tab(*) TO alice")
@@ -8330,6 +8381,29 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         const r2 = parseToAst(toSql(r.ast[0]))
         expect(r2.errors).toHaveLength(0)
         expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("SWITCH COLD STORAGE (Enterprise #989) — round-trip", () => {
+    const queries = [
+      "SWITCH COLD STORAGE STATUS",
+      "SWITCH COLD STORAGE ROLE TO MANAGER",
+      "SWITCH COLD STORAGE ROLE TO MANAGER FORCE",
+      "SWITCH COLD STORAGE ROLE TO MANAGER TIMEOUT 10000",
+      "SWITCH COLD STORAGE ROLE TO MANAGER FORCE TIMEOUT 10000",
+      "SWITCH COLD STORAGE ROLE TO REFRESHER",
+      "SWITCH COLD STORAGE ROLE TO REFRESHER TIMEOUT 30000",
+    ]
+
+    for (const query of queries) {
+      it(`round-trips: ${query}`, () => {
+        const parsed = parseToAst(query)
+        expect(parsed.errors, JSON.stringify(parsed.errors)).toHaveLength(0)
+
+        const reparsed = parseToAst(toSql(parsed.ast[0]))
+        expect(reparsed.errors).toHaveLength(0)
+        expect(reparsed.ast[0]).toEqual(parsed.ast[0])
       })
     }
   })

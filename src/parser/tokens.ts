@@ -337,6 +337,10 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Only",
   "Align",
   "Latest",
+  "Cold",
+  "Force",
+  "Manager",
+  "Refresher",
   // New constants that can be used as identifiers
   "Ilp",
   "Native",
@@ -765,6 +769,10 @@ export const Replica = getToken("Replica")
 export const Timeout = getToken("Timeout")
 export const Expire = getToken("Expire")
 export const Cleanup = getToken("Cleanup")
+export const Cold = getToken("Cold")
+export const Force = getToken("Force")
+export const Manager = getToken("Manager")
+export const Refresher = getToken("Refresher")
 export const Highest = getToken("Highest")
 export const Lowest = getToken("Lowest")
 export const Live = getToken("Live")

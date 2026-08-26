@@ -958,11 +958,12 @@ export interface BackupStatement extends AstNode {
   table?: QualifiedName
 }
 
-// Enterprise: SWITCH ROLE TO {PRIMARY|REPLICA} [TIMEOUT <ms>] | SWITCH STATUS
+// Enterprise role and cold-storage role switching.
 export interface SwitchStatement extends AstNode {
   type: "switch"
-  action: "role" | "status"
-  role?: "PRIMARY" | "REPLICA"
+  action: "role" | "status" | "coldStorageRole" | "coldStorageStatus"
+  role?: "PRIMARY" | "REPLICA" | "MANAGER" | "REFRESHER"
+  force?: boolean
   timeout?: number
 }
 
