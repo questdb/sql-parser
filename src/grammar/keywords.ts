@@ -72,6 +72,7 @@ export const keywords: string[] = [
   "explain",
   "external",
   "fill",
+  "filter",
   "first",
   "flush",
   "following",
