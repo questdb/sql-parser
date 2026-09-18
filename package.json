@@ -27,6 +27,16 @@
         "types": "./dist/grammar/index.d.ts",
         "default": "./dist/grammar/index.cjs"
       }
+    },
+    "./formatter": {
+      "import": {
+        "types": "./dist/formatter/index.d.ts",
+        "default": "./dist/formatter/index.js"
+      },
+      "require": {
+        "types": "./dist/formatter/index.d.ts",
+        "default": "./dist/formatter/index.cjs"
+      }
     }
   },
   "packageManager": "yarn@4.9.1",
@@ -46,6 +56,7 @@
     "questdb",
     "sql",
     "parser",
+    "formatter",
     "chevrotain",
     "ast"
   ],

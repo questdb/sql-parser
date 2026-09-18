@@ -69,6 +69,33 @@ const statements = parseStatements(`
 console.log(statements.length); // 3
 ```
 
+### Format SQL
+
+```typescript
+import { format } from "@questdb/sql-parser/formatter";
+
+format("SELECT * FROM trades WHERE symbol = 'BTC-USD' LATEST ON ts PARTITION BY symbol");
+// SELECT *
+// FROM trades
+// WHERE symbol = 'BTC-USD'
+// LATEST ON ts PARTITION BY symbol
+```
+
+The formatter is token-based and never throws on SQL content. It preserves every token, comment, and unknown character, changes whitespace only, and leaves unterminated or unbalanced input verbatim from the point of the problem.
+
+Options: `indent` (default two spaces), `maxWidth` (default 50), and `capitalize` (default `false`).
+
+```typescript
+format(
+  "create table tab (s symbol index type bitmap, timestamp timestamp) timestamp(timestamp) partition by day wal",
+  { capitalize: true },
+);
+// CREATE TABLE tab (s SYMBOL INDEX TYPE BITMAP, timestamp TIMESTAMP)
+// TIMESTAMP(timestamp) PARTITION BY DAY WAL
+```
+
+With `capitalize`, the formatter parses the statement and raises only the words the grammar read as syntax, so a keyword that names a table, view or column keeps its case, as `timestamp` does above. Most QuestDB keywords are non-reserved and double as names, which is why this needs the grammar. SQL the parser cannot read comes back with its case untouched, and the layout is the same either way.
+
 ### Autocomplete
 
 ```typescript
@@ -183,6 +210,7 @@ The parser uses Chevrotain's [CST pattern](https://chevrotain.io/docs/guide/conc
 | `parseOne(sql)`        | Parse a single statement, throws on errors or multiple statements |
 | `parseStatements(sql)` | Parse multiple statements, throws on errors                       |
 | `toSql(ast)`           | Convert `Statement[]` back to a SQL string                        |
+| `format(sql, options)` | Format SQL text; tolerant of invalid input, whitespace-only edits |
 
 ### Low-Level API
 

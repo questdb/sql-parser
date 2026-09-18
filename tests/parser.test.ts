@@ -8622,3 +8622,160 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     }
   })
 })
+
+describe("Docs gaps (2026-09): memory limits, outer joins, unnest joins, fill prev column, parquet bloom filters, live view owner", () => {
+  const roundtrip = (sql: string) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toHaveLength(0)
+    const regenerated = toSql(result.ast[0])
+    const reparsed = parseToAst(regenerated)
+    expect(reparsed.errors).toHaveLength(0)
+    expect(toSql(reparsed.ast[0])).toBe(regenerated)
+    return { ast: result.ast[0], regenerated }
+  }
+
+  describe("SET MEMORY LIMIT", () => {
+    it.each([
+      ["ALTER USER john SET MEMORY LIMIT 512M", "512M"],
+      ["ALTER USER tenant_a SET MEMORY LIMIT 1G", "1G"],
+      ["ALTER USER john SET MEMORY LIMIT 0", "0"],
+      ["ALTER USER john SET MEMORY LIMIT UNLIMITED", "UNLIMITED"],
+    ])("parses %s", (sql, limit) => {
+      const { ast } = roundtrip(sql)
+      expect(ast.type).toBe("alterUser")
+      if (ast.type === "alterUser") {
+        expect(ast.action).toEqual({ actionType: "setMemoryLimit", limit })
+      }
+    })
+
+    it("parses ALTER SERVICE ACCOUNT ... SET MEMORY LIMIT", () => {
+      const { ast, regenerated } = roundtrip(
+        "ALTER SERVICE ACCOUNT client_app SET MEMORY LIMIT 1G",
+      )
+      expect(ast.type).toBe("alterServiceAccount")
+      expect(regenerated).toBe(
+        "ALTER SERVICE ACCOUNT client_app SET MEMORY LIMIT 1G",
+      )
+    })
+
+    it("parses ALTER GROUP ... SET MEMORY LIMIT and keeps alias actions", () => {
+      const { ast } = roundtrip(
+        "ALTER GROUP analysts SET MEMORY LIMIT UNLIMITED",
+      )
+      if (ast.type === "alterGroup") {
+        expect(ast.action).toBe("setMemoryLimit")
+        expect(ast.memoryLimit).toBe("UNLIMITED")
+      }
+      const alias = roundtrip("ALTER GROUP analysts WITH EXTERNAL ALIAS 'ext'")
+      if (alias.ast.type === "alterGroup") {
+        expect(alias.ast.action).toBe("setAlias")
+        expect(alias.ast.externalAlias).toBe("ext")
+      }
+    })
+  })
+
+  describe("RIGHT and FULL OUTER JOIN", () => {
+    it.each([
+      ["SELECT * FROM a RIGHT JOIN b ON a.x = b.x", "right", false],
+      ["SELECT * FROM a RIGHT OUTER JOIN b ON a.x = b.x", "right", true],
+      ["SELECT * FROM a FULL JOIN b ON a.x = b.x", "full", false],
+      ["SELECT * FROM a FULL OUTER JOIN b ON a.x = b.x", "full", true],
+    ])("parses %s", (sql, joinType, outer) => {
+      const { ast, regenerated } = roundtrip(sql)
+      if (ast.type === "select") {
+        const join = ast.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe(joinType)
+        expect(!!join?.outer).toBe(outer)
+      }
+      expect(regenerated).toBe(sql)
+    })
+
+    it("parses the docs FULL OUTER JOIN with CTEs", () => {
+      roundtrip(
+        "WITH may_trades AS (SELECT symbol, COUNT(*) AS may_total FROM trades WHERE timestamp IN '2024-05'), june_trades AS (SELECT symbol, COUNT(*) AS june_total FROM trades WHERE timestamp IN '2024-06') SELECT COALESCE(may_trades.symbol, june_trades.symbol) AS symbol, may_total, june_total FROM may_trades FULL OUTER JOIN june_trades ON may_trades.symbol = june_trades.symbol",
+      )
+    })
+  })
+
+  describe("UNNEST after JOIN", () => {
+    it("parses CROSS JOIN UNNEST with a column alias list", () => {
+      const { ast } = roundtrip(
+        "SELECT t.symbol, u.vol FROM market_data t CROSS JOIN UNNEST(t.asks[2]) u(vol) WHERE t.symbol = 'EURUSD'",
+      )
+      if (ast.type === "select") {
+        const join = ast.from?.[0].joins?.[0]
+        expect(join?.joinType).toBe("cross")
+        expect(join?.table.alias).toBe("u")
+        expect(join?.table.columnAliases).toEqual(["vol"])
+        expect((join?.table.table as { type: string }).type).toBe("unnest")
+      }
+    })
+
+    it("still parses plain JOIN with a table", () => {
+      const { ast } = roundtrip("SELECT * FROM a JOIN b ON a.x = b.x")
+      if (ast.type === "select") {
+        expect(ast.from?.[0].joins?.[0].table.table).toEqual({
+          type: "qualifiedName",
+          parts: ["b"],
+        })
+      }
+    })
+  })
+
+  describe("FILL with a column reference", () => {
+    it("parses FILL(PREV(other_column), PREV)", () => {
+      const { ast, regenerated } = roundtrip(
+        "SELECT timestamp, symbol, avg(bid_price) AS bid_price, avg(ask_price) AS ask_price FROM core_price WHERE symbol = 'EURUSD' SAMPLE BY 100T FILL(PREV(ask_price), PREV)",
+      )
+      if (ast.type === "select") {
+        expect(ast.sampleBy?.fill).toEqual(["PREV(ask_price)", "PREV"])
+      }
+      expect(regenerated).toContain("FILL(PREV(ask_price), PREV)")
+    })
+  })
+
+  describe("CONVERT PARTITION ... WITH options", () => {
+    it("parses bloom filter options after WHERE", () => {
+      const sql =
+        "ALTER TABLE trades CONVERT PARTITION TO PARQUET WHERE timestamp < '2025-08-31' WITH (bloom_filter_columns = 'symbol,side', bloom_filter_fpp = 0.01)"
+      const { ast, regenerated } = roundtrip(sql)
+      if (
+        ast.type === "alterTable" &&
+        ast.action.actionType === "convertPartition"
+      ) {
+        expect(ast.action.withParams?.map((p) => p.name)).toEqual([
+          "bloom_filter_columns",
+          "bloom_filter_fpp",
+        ])
+        expect(ast.action.where).toBeDefined()
+      }
+      expect(regenerated).toBe(sql)
+    })
+
+    it("parses WITH options without WHERE", () => {
+      roundtrip(
+        "ALTER TABLE trades CONVERT PARTITION TO PARQUET WITH (bloom_filter_columns = 'symbol')",
+      )
+    })
+  })
+
+  describe("CREATE LIVE VIEW ... OWNED BY", () => {
+    it("parses OWNED BY after a bare SELECT query", () => {
+      const { ast, regenerated } = roundtrip(
+        "CREATE LIVE VIEW trades_ma FLUSH EVERY 1s START FROM NOW AS SELECT timestamp, symbol, avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING) AS moving_avg FROM trades OWNED BY analysts",
+      )
+      if (ast.type === "createLiveView") {
+        expect(ast.ownedBy).toBe("analysts")
+        expect(ast.query.from?.[0].alias).toBeUndefined()
+      }
+      expect(regenerated.endsWith("OWNED BY analysts")).toBe(true)
+    })
+
+    it("parses OWNED BY after a parenthesized query", () => {
+      const { ast } = roundtrip(
+        "CREATE LIVE VIEW v FLUSH EVERY 1s AS (SELECT ts FROM trades) OWNED BY 'ops team'",
+      )
+      if (ast.type === "createLiveView") expect(ast.ownedBy).toBe("ops team")
+    })
+  })
+})

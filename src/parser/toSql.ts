@@ -362,9 +362,11 @@ function tableRefToSql(ref: AST.TableRef): string {
     sql = "LATERAL " + sql
   }
 
-  if (ref.timestampDesignation) {
-    sql += ` TIMESTAMP(${escapeIdentifier(ref.timestampDesignation)})`
-  }
+  const designation = ref.timestampDesignation
+    ? ` TIMESTAMP(${escapeIdentifier(ref.timestampDesignation)})`
+    : ""
+
+  if (!ref.timestampAfterAlias) sql += designation
 
   if (ref.alias) {
     sql += ` AS ${escapeIdentifier(ref.alias)}`
@@ -373,6 +375,8 @@ function tableRefToSql(ref: AST.TableRef): string {
   if (ref.columnAliases && ref.columnAliases.length > 0) {
     sql += `(${ref.columnAliases.map(escapeIdentifier).join(", ")})`
   }
+
+  if (ref.timestampAfterAlias) sql += designation
 
   if (ref.joins) {
     for (const join of ref.joins) {
@@ -724,14 +728,14 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     parts.push(storagePolicyToSql(stmt.storagePolicy))
   }
 
-  if (stmt.tableFormat) {
-    parts.push(`FORMAT ${stmt.tableFormat.toUpperCase()}`)
-  }
-
   if (stmt.bypassWal) {
     parts.push("BYPASS WAL")
   } else if (stmt.wal) {
     parts.push("WAL")
+  }
+
+  if (stmt.tableFormat) {
+    parts.push(`FORMAT ${stmt.tableFormat.toUpperCase()}`)
   }
 
   if (stmt.withParams && stmt.withParams.length > 0) {
@@ -810,7 +814,12 @@ function createLiveViewToSql(stmt: AST.CreateLiveViewStatement): string {
       parts.push("START FROM BEGINNING")
     else parts.push(`START FROM ${escapeString(stmt.startFrom.value!)}`)
   }
-  parts.push(`AS (${selectToSql(stmt.query)})`)
+  parts.push(
+    stmt.asParens
+      ? `AS (${selectToSql(stmt.query)})`
+      : `AS ${selectToSql(stmt.query)}`,
+  )
+  if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
 }
 
@@ -1025,6 +1034,12 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       if (action.where) {
         parts.push("WHERE")
         parts.push(expressionToSql(action.where))
+      }
+      if (action.withParams && action.withParams.length > 0) {
+        const params = action.withParams.map((p) =>
+          p.value ? `${p.name} = ${expressionToSql(p.value)}` : p.name,
+        )
+        parts.push(`WITH (${params.join(", ")})`)
       }
       break
     }
@@ -1286,12 +1301,16 @@ function alterMaterializedViewToSql(
   ]
   const action = stmt.action
   switch (action.actionType) {
-    case "addIndex": {
-      let s = `ALTER COLUMN ${escapeIdentifier(action.column)} ADD INDEX`
-      if (action.capacity) s += ` CAPACITY ${action.capacity}`
-      parts.push(s)
+    case "addIndex":
+      parts.push(
+        `ALTER COLUMN ${escapeIdentifier(action.column)} ADD INDEX` +
+          indexOptionsToSql(
+            action.indexType,
+            action.indexInclude,
+            action.capacity,
+          ),
+      )
       break
-    }
     case "symbolCapacity":
       parts.push(
         `ALTER COLUMN ${escapeIdentifier(action.column)} SYMBOL CAPACITY ${action.capacity}`,
@@ -1423,10 +1442,12 @@ function createGroupToSql(stmt: AST.CreateGroupStatement): string {
 
 function alterGroupToSql(stmt: AST.AlterGroupStatement): string {
   const parts: string[] = ["ALTER GROUP", qualifiedNameToSql(stmt.group)]
-  if (stmt.action === "setAlias") {
-    parts.push(`WITH EXTERNAL ALIAS ${escapeString(stmt.externalAlias)}`)
+  if (stmt.action === "setMemoryLimit") {
+    parts.push(`SET MEMORY LIMIT ${stmt.memoryLimit}`)
+  } else if (stmt.action === "setAlias") {
+    parts.push(`WITH EXTERNAL ALIAS ${escapeString(stmt.externalAlias!)}`)
   } else {
-    parts.push(`DROP EXTERNAL ALIAS ${escapeString(stmt.externalAlias)}`)
+    parts.push(`DROP EXTERNAL ALIAS ${escapeString(stmt.externalAlias!)}`)
   }
   return parts.join(" ")
 }
@@ -1471,6 +1492,8 @@ function alterUserActionToSql(action: AST.AlterUserAction): string {
     case "password":
       if (action.noPassword) return "WITH NO PASSWORD"
       return `WITH PASSWORD ${escapeString(action.password!)}`
+    case "setMemoryLimit":
+      return `SET MEMORY LIMIT ${action.limit}`
     case "createToken": {
       const parts = [`CREATE TOKEN TYPE ${action.tokenType}`]
       if (action.publicKeyX != null && action.publicKeyY != null) {
