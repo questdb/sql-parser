@@ -2254,32 +2254,53 @@ describe("QuestDB Parser", () => {
               value: 3,
               unit: "DAYS",
             })
-            expect(result.ast[0].storagePolicy?.dropNative).toBeUndefined()
+            expect(result.ast[0].storagePolicy?.toRemote).toBeUndefined()
+          }
+        })
+
+        it("parses a single TO REMOTE clause", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO REMOTE 30 DAYS)",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
+              value: 30,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.toParquet).toBeUndefined()
           }
         })
 
         it("parses all four clauses in canonical order", () => {
           const result = parseToAst(
-            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, DROP NATIVE 10d, DROP LOCAL 1M, DROP REMOTE 30d)",
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, TO REMOTE 10d, DROP LOCAL 1M, DROP REMOTE 30d)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createTable") {
             const sp = result.ast[0].storagePolicy
             expect(sp?.toParquet).toEqual({ value: 3, unit: "DAYS" })
-            expect(sp?.dropNative).toEqual({ value: 10, unit: "DAYS" })
+            expect(sp?.toRemote).toEqual({ value: 10, unit: "DAYS" })
             expect(sp?.dropLocal).toEqual({ value: 1, unit: "MONTHS" })
             expect(sp?.dropRemote).toEqual({ value: 30, unit: "DAYS" })
           }
         })
 
+        it("rejects the removed DROP NATIVE clause", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP NATIVE 3 DAYS)",
+          )
+          expect(result.errors.length).toBeGreaterThan(0)
+        })
+
         it("accepts clauses in arbitrary order and toSql normalizes", () => {
           const result = parseToAst(
-            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1M, TO PARQUET 3d, DROP NATIVE 10d)",
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1M, TO PARQUET 3d, TO REMOTE 10d)",
           )
           expect(result.errors).toHaveLength(0)
           const sql = toSql(result.ast[0])
           expect(sql).toContain(
-            "STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTH)",
+            "STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 10 DAYS, DROP LOCAL 1 MONTH)",
           )
         })
 
@@ -2319,8 +2340,8 @@ describe("QuestDB Parser", () => {
               "duplicate 'TO PARQUET' in storage policy",
             ],
             [
-              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP NATIVE 1d, DROP NATIVE 2d)",
-              "duplicate 'DROP NATIVE' in storage policy",
+              "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO REMOTE 1d, TO REMOTE 2d)",
+              "duplicate 'TO REMOTE' in storage policy",
             ],
             [
               "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(DROP LOCAL 1d, DROP LOCAL 2d)",
@@ -2382,7 +2403,7 @@ describe("QuestDB Parser", () => {
 
         it("accepts NumberLiteral + unit form for clause TTLs", () => {
           const result = parseToAst(
-            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 2 WEEKS)",
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 2 WEEKS)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createTable") {
@@ -2390,7 +2411,7 @@ describe("QuestDB Parser", () => {
               value: 3,
               unit: "DAYS",
             })
-            expect(result.ast[0].storagePolicy?.dropNative).toEqual({
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
               value: 2,
               unit: "WEEKS",
             })
@@ -2414,7 +2435,7 @@ describe("QuestDB Parser", () => {
       describe("CREATE MATERIALIZED VIEW", () => {
         it("parses CREATE MATERIALIZED VIEW with STORAGE POLICY", () => {
           const result = parseToAst(
-            "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(price) FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)",
+            "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(price) FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createMaterializedView") {
@@ -2422,7 +2443,7 @@ describe("QuestDB Parser", () => {
               value: 7,
               unit: "DAYS",
             })
-            expect(result.ast[0].storagePolicy?.dropNative).toEqual({
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
               value: 14,
               unit: "DAYS",
             })
@@ -2433,7 +2454,7 @@ describe("QuestDB Parser", () => {
       describe("ALTER TABLE", () => {
         it("parses SET STORAGE POLICY with three clauses (1M = MONTHS)", () => {
           const result = parseToAst(
-            "ALTER TABLE abc SET STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d, DROP LOCAL 1M)",
+            "ALTER TABLE abc SET STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d, DROP LOCAL 1M)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "alterTable") {
@@ -2444,7 +2465,7 @@ describe("QuestDB Parser", () => {
                 value: 7,
                 unit: "DAYS",
               })
-              expect(action.policy.dropNative).toEqual({
+              expect(action.policy.toRemote).toEqual({
                 value: 14,
                 unit: "DAYS",
               })
@@ -2526,7 +2547,7 @@ describe("QuestDB Parser", () => {
       describe("ALTER MATERIALIZED VIEW", () => {
         it("parses ALTER MATERIALIZED VIEW SET STORAGE POLICY", () => {
           const result = parseToAst(
-            "ALTER MATERIALIZED VIEW mv SET STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)",
+            "ALTER MATERIALIZED VIEW mv SET STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)",
           )
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "alterMaterializedView") {
@@ -2635,7 +2656,7 @@ describe("QuestDB Parser", () => {
       describe("CREATE MATERIALIZED VIEW — full feature set", () => {
         it("parses WITH BASE, post-AS INDEX, STORAGE POLICY, IN VOLUME", () => {
           const result = parseToAst(
-            "CREATE MATERIALIZED VIEW v WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) IN VOLUME vol1",
+            "CREATE MATERIALIZED VIEW v WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) IN VOLUME vol1",
           )
           expect(result.errors).toHaveLength(0)
           const stmt = result.ast[0]
@@ -2650,7 +2671,7 @@ describe("QuestDB Parser", () => {
               value: 10,
               unit: "DAYS",
             })
-            expect(stmt.storagePolicy?.dropNative).toEqual({
+            expect(stmt.storagePolicy?.toRemote).toEqual({
               value: 1,
               unit: "MONTHS",
             })
@@ -2898,6 +2919,32 @@ describe("QuestDB Parser", () => {
             expect(result.ast[0].ownedBy).toBe("group1")
           }
         })
+
+        it("parses TO PARQUET + TO REMOTE followed by OWNED BY (reported repro)", () => {
+          const result = parseToAst(
+            "CREATE TABLE 'corporate_bonds' (ts TIMESTAMP, isin SYMBOL, price DOUBLE) timestamp(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 30 DAYS) OWNED BY 'admin'",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 3,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].storagePolicy?.toRemote).toEqual({
+              value: 30,
+              unit: "DAYS",
+            })
+            expect(result.ast[0].ownedBy).toBe("admin")
+          }
+        })
+      })
+
+      describe("storage_policies() meta function", () => {
+        it("parses SELECT * FROM storage_policies()", () => {
+          const result = parseToAst("SELECT * FROM storage_policies()")
+          expect(result.errors).toHaveLength(0)
+          expect(result.ast[0].type).toBe("select")
+        })
       })
 
       describe("Identifier compatibility", () => {
@@ -2965,6 +3012,40 @@ describe("QuestDB Parser", () => {
           expect(result.errors).toHaveLength(0)
           if (result.ast[0].type === "createTable") {
             expect(result.ast[0].ttl).toEqual({ value: 0.5, unit: "HOURS" })
+          }
+        })
+
+        it("keeps exponent and fractional long-form values faithful", () => {
+          // parseInt would silently read 1e9 as 1 and .5 as NaN
+          const r1 = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO REMOTE 1e9 DAYS)",
+          )
+          expect(r1.errors).toHaveLength(0)
+          if (r1.ast[0].type === "createTable") {
+            expect(r1.ast[0].storagePolicy?.toRemote).toEqual({
+              value: 1_000_000_000,
+              unit: "DAYS",
+            })
+          }
+          const r2 = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET .5 DAYS)",
+          )
+          expect(r2.errors).toHaveLength(0)
+          if (r2.ast[0].type === "createTable") {
+            expect(r2.ast[0].storagePolicy?.toParquet).toEqual({
+              value: 0.5,
+              unit: "DAYS",
+            })
+          }
+        })
+
+        it("keeps underscore digit separators faithful in long-form values", () => {
+          const result = parseToAst(
+            "CREATE TABLE t (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 1_000 DAYS",
+          )
+          expect(result.errors).toHaveLength(0)
+          if (result.ast[0].type === "createTable") {
+            expect(result.ast[0].ttl).toEqual({ value: 1000, unit: "DAYS" })
           }
         })
       })
@@ -7847,5 +7928,697 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(reparsed.errors).toHaveLength(0)
       expect(reparsed.ast[0]).toEqual(result.ast[0])
     })
+  })
+  // ===========================================================================
+  // QuestDB parity: parse + AST shape for the new / modified statements
+  // ===========================================================================
+
+  describe("SAMPLE BY bare unit — parse & AST", () => {
+    for (const u of ["s", "m", "h", "d", "w", "M", "y", "T", "U", "n"]) {
+      it(`parses SAMPLE BY ${u}`, () => {
+        const r = parseToAst(`SELECT ts, avg(x) FROM t SAMPLE BY ${u}`)
+        expect(r.errors).toHaveLength(0)
+        const s = r.ast[0]
+        if (s.type === "select") expect(s.sampleBy?.duration).toBe(u)
+      })
+    }
+    it("rejects an arbitrary identifier unit", () => {
+      expect(
+        parseToAst("SELECT ts, avg(x) FROM t SAMPLE BY foo").errors.length,
+      ).toBeGreaterThan(0)
+    })
+  })
+
+  describe("REFRESH MATERIALIZED VIEW STATS — parse & AST", () => {
+    it("STATS mode", () => {
+      const r = parseToAst("REFRESH MATERIALIZED VIEW mv STATS")
+      expect(r.errors).toHaveLength(0)
+      const s = r.ast[0] as AST.RefreshMaterializedViewStatement
+      expect(s.type).toBe("refreshMaterializedView")
+      expect(s.mode).toBe("stats")
+    })
+  })
+
+  describe("REBASE WAL — parse & AST", () => {
+    it("ALTER TABLE ... REBASE WAL INTO dir", () => {
+      const r = parseToAst("ALTER TABLE t REBASE WAL INTO 'd1'")
+      expect(r.errors).toHaveLength(0)
+      const s = r.ast[0] as AST.AlterTableStatement
+      expect(s.action.actionType).toBe("rebaseWal")
+    })
+    it("ALTER MATERIALIZED VIEW ... REBASE WAL", () => {
+      expect(
+        parseToAst("ALTER MATERIALIZED VIEW mv REBASE WAL").errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("SHOW CREATE DATABASE — parse & AST", () => {
+    it("bare", () => {
+      const s = parseToAst("SHOW CREATE DATABASE").ast[0] as AST.ShowStatement
+      expect(s.showType).toBe("createDatabase")
+    })
+    it("EXCLUDE (list)", () => {
+      const s = parseToAst("SHOW CREATE DATABASE EXCLUDE (users, groups)")
+        .ast[0] as AST.ShowStatement
+      expect(s.databaseInclude).toEqual({
+        mode: "exclude",
+        categories: ["users", "groups"],
+      })
+    })
+    it("`all` inside the category list", () => {
+      expect(
+        parseToAst("SHOW CREATE DATABASE INCLUDE (tables, all)").errors,
+      ).toHaveLength(0)
+    })
+
+    // The nine category names are now registered grammar constants (previously
+    // schema/views/acl/materialized_views/service_accounts lexed as plain
+    // Identifier). Each must still parse and round-trip into the AST as its
+    // lowercase name.
+    it("captures every category name", () => {
+      const s = parseToAst(
+        "SHOW CREATE DATABASE INCLUDE (tables, views, materialized_views, users, groups, service_accounts, permissions, schema, acl)",
+      ).ast[0] as AST.ShowStatement
+      expect(s.databaseInclude).toEqual({
+        mode: "include",
+        categories: [
+          "tables",
+          "views",
+          "materialized_views",
+          "users",
+          "groups",
+          "service_accounts",
+          "permissions",
+          "schema",
+          "acl",
+        ],
+      })
+    })
+
+    // Registering these as constants must NOT make them reserved — they stay
+    // usable as table/column names and aliases.
+    it("newly-registered category words remain usable as identifiers", () => {
+      for (const sql of [
+        "SELECT schema, views, acl FROM t",
+        "CREATE TABLE t (schema INT, views LONG, acl STRING, ts TIMESTAMP) TIMESTAMP(ts)",
+        "SELECT * FROM schema",
+        "SELECT views AS materialized_views FROM t",
+      ]) {
+        expect(parseToAst(sql).errors, sql).toHaveLength(0)
+      }
+    })
+  })
+
+  describe("table FORMAT — parse & AST", () => {
+    it("CREATE TABLE ... FORMAT PARQUET", () => {
+      const s = parseToAst(
+        "CREATE TABLE t (a INT) TIMESTAMP(a) PARTITION BY DAY FORMAT PARQUET WAL",
+      ).ast[0] as AST.CreateTableStatement
+      expect(s.tableFormat).toBe("parquet")
+    })
+    it("ALTER TABLE ... SET FORMAT NATIVE", () => {
+      expect(parseToAst("ALTER TABLE t SET FORMAT NATIVE").errors).toHaveLength(
+        0,
+      )
+    })
+  })
+
+  describe("SWITCH ROLE / STATUS — parse & AST", () => {
+    it("SWITCH ROLE TO REPLICA TIMEOUT n", () => {
+      const s = parseToAst("SWITCH ROLE TO REPLICA TIMEOUT 5000")
+        .ast[0] as AST.SwitchStatement
+      expect(s.type).toBe("switch")
+      expect(s.action).toBe("role")
+      expect(s.role).toBe("REPLICA")
+      expect(s.timeout).toBe(5000)
+    })
+    it("SWITCH STATUS", () => {
+      const s = parseToAst("SWITCH STATUS").ast[0] as AST.SwitchStatement
+      expect(s.action).toBe("status")
+    })
+    it("switch() function is unaffected", () => {
+      expect(
+        parseToAst("SELECT switch(x, 1, 'a', 'b') FROM t").errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("SWITCH COLD STORAGE — parse & AST", () => {
+    it("parses a forced manager switch with a timeout", () => {
+      const result = parseToAst(
+        "SWITCH COLD STORAGE ROLE TO MANAGER FORCE TIMEOUT 10000",
+      )
+      expect(result.errors).toHaveLength(0)
+      expect(result.ast).toHaveLength(1)
+
+      const statement = result.ast[0] as AST.SwitchStatement
+      expect(statement.type).toBe("switch")
+      expect(statement.action).toBe("coldStorageRole")
+      expect(statement.role).toBe("MANAGER")
+      expect(statement.force).toBe(true)
+      expect(statement.timeout).toBe(10000)
+    })
+
+    it("parses a refresher switch without FORCE", () => {
+      const statement = parseToAst(
+        "SWITCH COLD STORAGE ROLE TO REFRESHER TIMEOUT 30000",
+      ).ast[0] as AST.SwitchStatement
+
+      expect(statement.action).toBe("coldStorageRole")
+      expect(statement.role).toBe("REFRESHER")
+      expect(statement.force).toBeUndefined()
+      expect(statement.timeout).toBe(30000)
+    })
+
+    it("parses cold storage status", () => {
+      const statement = parseToAst("SWITCH COLD STORAGE STATUS")
+        .ast[0] as AST.SwitchStatement
+
+      expect(statement.action).toBe("coldStorageStatus")
+      expect(statement.role).toBeUndefined()
+    })
+
+    it("is case-insensitive", () => {
+      expect(
+        parseToAst("sWiTcH cOlD sToRaGe rOlE tO mAnAgEr fOrCe tImEoUt 10000")
+          .errors,
+      ).toHaveLength(0)
+    })
+
+    it("keeps the new non-reserved keywords usable as identifiers", () => {
+      expect(
+        parseToAst(
+          "SELECT cold, force, manager, refresher FROM cold AS manager",
+        ).errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("GRANT/REVOKE column wildcard + EXCLUDE — parse & AST", () => {
+    it("wildcard", () => {
+      const r = parseToAst("GRANT SELECT ON tab(*) TO alice")
+      expect(r.errors).toHaveLength(0)
+      expect(JSON.stringify(r.ast[0])).toContain('"allColumns":true')
+    })
+    it("wildcard EXCLUDE", () => {
+      const r = parseToAst("GRANT SELECT ON tab(* EXCLUDE(a, b)) TO alice")
+      expect(r.errors).toHaveLength(0)
+      expect(JSON.stringify(r.ast[0])).toContain('"excludeColumns":["a","b"]')
+    })
+    it("3-word permission and CONVERT PARTITION permission parse", () => {
+      expect(
+        parseToAst("GRANT SET TABLE FORMAT ON t TO alice").errors,
+      ).toHaveLength(0)
+      expect(
+        parseToAst("GRANT CONVERT PARTITION TO PARQUET ON tab TO alice").errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("mat-view EXPIRE ROWS — parse & AST", () => {
+    it("KEEP LATEST PARTITION BY", () => {
+      const s = parseToAst(
+        "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP LATEST PARTITION BY sym",
+      ).ast[0] as AST.CreateMaterializedViewStatement
+      expect(s.expireRows?.mode).toBe("keepLatest")
+    })
+    it("ALTER ... DROP EXPIRE", () => {
+      expect(
+        parseToAst("ALTER MATERIALIZED VIEW mv DROP EXPIRE").errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("LIVE VIEWS — parse & AST", () => {
+    it("CREATE with clauses", () => {
+      const s = parseToAst(
+        "CREATE LIVE VIEW lv FLUSH EVERY 5s IN MEMORY 1h START FROM BEGINNING AS (SELECT * FROM t)",
+      ).ast[0] as AST.CreateLiveViewStatement
+      expect(s.type).toBe("createLiveView")
+      expect(s.flushEvery).toBe("5s")
+      expect(s.inMemory).toBe("1h")
+      expect(s.startFrom).toEqual({ kind: "beginning" })
+    })
+    it("ALTER LIVE VIEW RESUME WAL FROM TXN", () => {
+      expect(
+        parseToAst("ALTER LIVE VIEW lv RESUME WAL FROM TXN 1").errors,
+      ).toHaveLength(0)
+    })
+    it("SHOW CREATE LIVE VIEW", () => {
+      const s = parseToAst("SHOW CREATE LIVE VIEW lv")
+        .ast[0] as AST.ShowStatement
+      expect(s.showType).toBe("createLiveView")
+    })
+    it("ANCHOR in named window and inline OVER", () => {
+      expect(
+        parseToAst(
+          "SELECT avg(x) OVER w FROM t WINDOW w AS (ORDER BY ts ANCHOR DAILY '09:30')",
+        ).errors,
+      ).toHaveLength(0)
+      expect(
+        parseToAst(
+          "SELECT avg(x) OVER (ORDER BY ts ANCHOR EXPRESSION timestamp_floor('1d', ts)) FROM t",
+        ).errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("COPY PERMISSIONS — parse & AST", () => {
+    it("COPY PERMISSIONS FROM src TO dst", () => {
+      const s = parseToAst("COPY PERMISSIONS FROM src TO dst")
+        .ast[0] as AST.CopyPermissionsStatement
+      expect(s.type).toBe("copyPermissions")
+    })
+  })
+
+  describe("posting index — parse & AST", () => {
+    it("column TYPE POSTING DELTA INCLUDE", () => {
+      const s = parseToAst(
+        "CREATE TABLE t (s SYMBOL INDEX TYPE POSTING DELTA INCLUDE (a, b), a INT, b INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+      ).ast[0] as AST.CreateTableStatement
+      expect(s.columns![0].indexType).toBe("posting_delta")
+      expect(s.columns![0].indexInclude).toEqual(["a", "b"])
+    })
+    it("table-level INDEX(col TYPE POSTING)", () => {
+      expect(
+        parseToAst(
+          "CREATE TABLE t (s SYMBOL, ts TIMESTAMP), INDEX(s TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY",
+        ).errors,
+      ).toHaveLength(0)
+    })
+    it("ALTER COLUMN ADD INDEX TYPE POSTING INCLUDE", () => {
+      expect(
+        parseToAst(
+          "ALTER TABLE t ALTER COLUMN sym ADD INDEX TYPE POSTING INCLUDE (p)",
+        ).errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("dynamic WINDOW JOIN bound — parse", () => {
+    it("column / cast expression bound", () => {
+      expect(
+        parseToAst(
+          "SELECT * FROM t WINDOW JOIN p ON t.sym = p.sym RANGE BETWEEN wndBound SECONDS PRECEDING AND wndBound SECONDS FOLLOWING",
+        ).errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("multi-RHS HORIZON JOIN — parse", () => {
+    it("chained HORIZON JOINs before one trailing LIST", () => {
+      expect(
+        parseToAst(
+          "SELECT * FROM trades t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (-1s, 0s, 1s) AS h",
+        ).errors,
+      ).toHaveLength(0)
+    })
+  })
+
+  describe("new function names — parse", () => {
+    const fns = [
+      "SELECT sleep(1.5)",
+      "SELECT regr_r2(y, x) FROM t",
+      "SELECT is_end_of_month(ts) FROM t",
+      "SELECT kurtosis(x), skewness(x) FROM t",
+      "SELECT array_agg(x) FROM t",
+      "SELECT * FROM live_views()",
+      "SELECT cume_dist() OVER (ORDER BY x) FROM t",
+      "SELECT ntile(4) OVER (ORDER BY x) FROM t",
+      "SELECT * FROM backups()",
+    ]
+    for (const q of fns)
+      it(`parses: ${q}`, () => expect(parseToAst(q).errors).toHaveLength(0))
+  })
+
+  // ===========================================================================
+  // QuestDB parity: round-trip over the SQL harvested from each feature's own
+  // QuestDB / QuestDB-Enterprise test suite (see commits-since-release.md).
+  // ===========================================================================
+
+  describe("SAMPLE BY bare unit (QuestDB #7391) — round-trip", () => {
+    const queries = [
+      "select ts, avg(x) from fromto sample by w from '2017-12-20' to '2018-01-31' fill(null) align to calendar",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("REFRESH MATERIALIZED VIEW STATS (QuestDB #7112) — round-trip", () => {
+    const queries = ["refresh materialized view price_1h stats"]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("REBASE WAL (QuestDB #7239) — round-trip", () => {
+    const queries = [
+      "alter table t rebase wal",
+      "alter table base_price rebase wal",
+      "alter materialized view price_1h rebase wal",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("SHOW CREATE DATABASE (QuestDB #7232) — round-trip", () => {
+    const queries = [
+      "SHOW CREATE DATABASE",
+      "SHOW CREATE DATABASE INCLUDE (TABLES)",
+      "SHOW CREATE DATABASE INCLUDE (SCHEMA)",
+      "SHOW CREATE DATABASE EXCLUDE (VIEWS)",
+      "SHOW CREATE DATABASE INCLUDE ALL",
+      "SHOW CREATE DATABASE INCLUDE (USERS)",
+      "SHOW CREATE DATABASE INCLUDE (GROUPS)",
+      "SHOW CREATE DATABASE INCLUDE (SERVICE_ACCOUNTS)",
+      "SHOW CREATE DATABASE INCLUDE (PERMISSIONS)",
+      "SHOW CREATE DATABASE INCLUDE (ACL)",
+      "SHOW CREATE DATABASE INCLUDE (PERMISSIONS, TABLES)",
+      "SHOW CREATE DATABASE INCLUDE (ALL)",
+      "SHOW CREATE DATABASE INCLUDE (VIEWS)",
+      "SHOW CREATE DATABASE INCLUDE (MATERIALIZED_VIEWS)",
+      "SHOW CREATE DATABASE EXCLUDE ALL",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("table FORMAT PARQUET|NATIVE (QuestDB #7107) — round-trip", () => {
+    const queries = [
+      "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL",
+      "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET",
+      "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY FORMAT NATIVE WAL",
+      "CREATE TABLE tango (ts TIMESTAMP, n LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP UPSERT KEYS(ts) FORMAT PARQUET",
+      "CREATE TABLE tango (ts TIMESTAMP, n LONG) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET DEDUP UPSERT KEYS(ts)",
+      "CREATE TABLE tango (val INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET",
+      "CREATE TABLE tango (val INT PARQUET(BLOOM_FILTER), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET",
+      "CREATE TABLE tango (ts TIMESTAMP, sym SYMBOL, n LONG) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL",
+      "CREATE TABLE tango (ts TIMESTAMP, s STRING, v VARCHAR, b BINARY) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL",
+      "CREATE TABLE tango (ts TIMESTAMP PARQUET(plain), v LONG) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL",
+      "CREATE TABLE 'tango' (ts TIMESTAMP) timestamp(ts) PARTITION BY DAY FORMAT PARQUET",
+      "ALTER TABLE tango SET FORMAT NATIVE",
+      "ALTER TABLE tango SET FORMAT PARQUET",
+      "ALTER TABLE no_partition SET FORMAT NATIVE",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("SWITCH ROLE / SWITCH STATUS (Enterprise #1024) — round-trip", () => {
+    const queries = [
+      "SWITCH ROLE TO REPLICA",
+      "SWITCH ROLE TO PRIMARY",
+      "SWITCH STATUS",
+      "SWITCH ROLE TO REPLICA TIMEOUT 10000",
+      "SWITCH ROLE TO PRIMARY TIMEOUT 10000",
+      "SWITCH ROLE TO REPLICA TIMEOUT 1",
+      "SWITCH ROLE TO REPLICA TIMEOUT 500",
+      "SWITCH ROLE TO REPLICA TIMEOUT 8000",
+      "SWITCH ROLE TO REPLICA TIMEOUT 42000",
+      "SWITCH ROLE TO PRIMARY TIMEOUT 1000",
+      "SWITCH ROLE TO PRIMARY TIMEOUT 2000",
+      "SWITCH ROLE TO PRIMARY TIMEOUT 42000",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("SWITCH COLD STORAGE (Enterprise #989) — round-trip", () => {
+    const queries = [
+      "SWITCH COLD STORAGE STATUS",
+      "SWITCH COLD STORAGE ROLE TO MANAGER",
+      "SWITCH COLD STORAGE ROLE TO MANAGER FORCE",
+      "SWITCH COLD STORAGE ROLE TO MANAGER TIMEOUT 10000",
+      "SWITCH COLD STORAGE ROLE TO MANAGER FORCE TIMEOUT 10000",
+      "SWITCH COLD STORAGE ROLE TO REFRESHER",
+      "SWITCH COLD STORAGE ROLE TO REFRESHER TIMEOUT 30000",
+    ]
+
+    for (const query of queries) {
+      it(`round-trips: ${query}`, () => {
+        const parsed = parseToAst(query)
+        expect(parsed.errors, JSON.stringify(parsed.errors)).toHaveLength(0)
+
+        const reparsed = parseToAst(toSql(parsed.ast[0]))
+        expect(reparsed.errors).toHaveLength(0)
+        expect(reparsed.ast[0]).toEqual(parsed.ast[0])
+      })
+    }
+  })
+
+  describe("GRANT/REVOKE column wildcard + EXCLUDE (Enterprise #1033) — round-trip", () => {
+    const queries = [
+      "grant select on t1(*) to ddd",
+      "grant select on t1(* exclude(b, c)) to ddd",
+      "grant select on t1(* exclude(b)) to ddd with grant option",
+      'grant select on t1(* exclude("a", "B")) to ddd',
+      "grant select on t1(* exclude(c)) to ddd",
+      "grant all on t1(*) to ddd",
+      "grant select, update on t1(*) to ddd",
+      "grant select on t1(a, b), t2(*), t3(* exclude(q)) to ddd",
+      "grant select on t1(* exclude(a)), t2(* exclude(z)) to ddd",
+      "grant select on mv1(* exclude(avg_x)) to ddd",
+      "grant select on mv1(*) to ddd",
+      "grant select on v1(*) to ddd",
+      "grant select on v1(* exclude(a)) to ddd",
+      "GRANT SELECT ON tgs1(* EXCLUDE(b)) TO ugs1",
+      "GRANT SELECT ON tgs1(*) TO ugs1",
+      "revoke select on t1(*) from ddd",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("mat-view EXPIRE ROWS (QuestDB #7263) — round-trip", () => {
+    const queries = [
+      "create materialized view mv as (select * from base) EXPIRE ROWS WHEN v < 2.0",
+      "create materialized view mv as (select * from base) expire rows when v < 2.0 cleanup every 30m",
+      "create materialized view mv as (select * from base) EXPIRE ROWS WHEN v < 2.0 cleanup every 15m",
+      "create materialized view mv as (select * from base) expire rows when v < 2.0 cleanup every 90m",
+      "create materialized view mv as (select * from base) EXPIRE ROWS WHEN (v < 2.0) CLEANUP EVERY 30m",
+      "create materialized view mv as (select * from base) EXPIRE ROWS WHEN cleanup > 5",
+      "create materialized view mv as (select * from base) expire rows when v < 0",
+      "create materialized view mv as (select * from base) expire rows when v < 0.0",
+      "create materialized view mv as (select * from base) expire rows when v > 100",
+      "create materialized view mv as (select * from base) expire rows when ts < '2024-01-02T00:00:00.000000Z'",
+      "create materialized view mv as (select * from base) expire rows when ts < '2024-01-02T00:00:00.000000Z' cleanup every 1h",
+      "create materialized view mv as (select * from base) expire rows when ts <= '2024-01-02T00:00:00.000000Z'",
+      "create materialized view mv as (select * from base) expire rows when ts < dateadd('d', -1, now())",
+      "create materialized view mv as (select * from base) expire rows when ts < now()",
+      "create materialized view mv as (select * from base) expire rows when ts > now()",
+      "create materialized view mv as (select * from base) expire rows when ts < cast(null as timestamp)",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("LIVE VIEWS (QuestDB #6939) — round-trip", () => {
+    const queries = [
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW lv FLUSH EVERY 100ms START FROM NOW AS SELECT ts, sym, x, count(*) OVER (PARTITION BY g ORDER BY ts ROWS BETWEEN 1_000_000 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW IF NOT EXISTS lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1_200s IN MEMORY 1_800s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW lv2 FLUSH EVERY 1_500ms START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW lv0 FLUSH EVERY 1s START FROM BEGINNING AS SELECT ts, x, count(*) OVER (PARTITION BY 0 ORDER BY ts ROWS BETWEEN 1000000 PRECEDING AND CURRENT ROW) AS rn FROM base WHERE x > 0",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM '2026-04-01T00:00:15.000000Z' AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM '2026-04-01T00:00:15.000000123Z' AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base_ns",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS (SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM tab)",
+      'CREATE LIVE VIEW "select" FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base',
+      "CREATE LIVE VIEW public.lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR EXPRESSION timestamp_floor('1d', ts))",
+      "CREATE LIVE VIEW lv_daily FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, x, row_number() OVER w AS rn FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR DAILY '00:00')",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR DAILY '09:30')",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR DAILY '00:00' 'Europe/London')",
+      "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR EXPRESSION timestamp_floor('4h', ts))",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("COPY PERMISSIONS (Enterprise #939) — round-trip", () => {
+    const queries = [
+      "COPY PERMISSIONS FROM src TO dst",
+      "COPY PERMISSIONS FROM src TO dst;",
+      "COPY PERMISSIONS FROM 'my table' TO 'other table'",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("CONVERT PARTITION permissions (Enterprise #956) — round-trip", () => {
+    const queries = [
+      "GRANT CONVERT PARTITION TO PARQUET ON tab TO testUser",
+      "GRANT CONVERT PARTITION TO NATIVE ON tab TO testUser",
+      "REVOKE CONVERT PARTITION TO PARQUET ON tab FROM testUser",
+      "ALTER TABLE tab CONVERT PARTITION TO PARQUET WHERE ts > 0",
+      "ALTER TABLE tab CONVERT PARTITION TO NATIVE WHERE ts > 0",
+      "alter table test convert partition to parquet where ts > 0",
+      "alter table test convert partition to native where ts > 0",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("posting index (QuestDB #6861) — round-trip", () => {
+    const queries = [
+      "create table x (t TIMESTAMP, x SYMBOL index type posting) timestamp(t)",
+      "create table x (t TIMESTAMP, x SYMBOL index type bitmap) timestamp(t)",
+      "create table x (t TIMESTAMP, x SYMBOL index type bitmap capacity 64) timestamp(t)",
+      "create table x (t TIMESTAMP, x SYMBOL index type posting delta) timestamp(t)",
+      "create table x (t TIMESTAMP, x SYMBOL index type posting ef) timestamp(t)",
+      "create table x (t TIMESTAMP, p DOUBLE, x SYMBOL index include (p)) timestamp(t)",
+      "create table x (t TIMESTAMP, p DOUBLE, x SYMBOL index type posting include (p)) timestamp(t)",
+      "create table x (t TIMESTAMP, p DOUBLE, x SYMBOL index type posting ef include (p)) timestamp(t)",
+      "create table x (t TIMESTAMP, x SYMBOL), index(x type posting delta) timestamp(t)",
+      "create table x (t TIMESTAMP, x SYMBOL), index(x type posting ef) timestamp(t)",
+      "CREATE TABLE tab (s SYMBOL INDEX TYPE POSTING, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+      "CREATE TABLE tab (s SYMBOL INDEX TYPE POSTING DELTA, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+      "CREATE TABLE tab (s SYMBOL INDEX TYPE POSTING EF, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY",
+      "create table tab (s symbol index type posting, ts timestamp) timestamp(ts)",
+      "create table tab (s symbol index type bitmap, ts timestamp) timestamp(ts)",
+      "CREATE TABLE tab (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING INCLUDE (v), v DOUBLE) TIMESTAMP(ts) PARTITION BY DAY",
+      'CREATE TABLE tab (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING INCLUDE ("v"), v DOUBLE) TIMESTAMP(ts) PARTITION BY DAY',
+      "CREATE TABLE t (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY BYPASS WAL",
+      "CREATE TABLE t (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY WAL",
+      "CREATE TABLE tab (s SYMBOL, ts TIMESTAMP), INDEX(s TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("dynamic WINDOW JOIN bound (QuestDB #6859) — round-trip", () => {
+    const queries = [
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long minutes PRECEDING AND 1 minute FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long minutes PRECEDING AND 1 minute FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long PRECEDING AND 60_000_000 FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long PRECEDING AND 60_000_000 FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN 1 minute PRECEDING AND t.price::long seconds FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN 1 minute PRECEDING AND t.price::long seconds FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN price::long seconds PRECEDING AND 1 minute FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN price::long seconds PRECEDING AND 1 minute FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;",
+      "SELECT m.ts, m.lo_bound, m.hi_bound, sum(s.val) AS agg FROM master m WINDOW JOIN slave s RANGE BETWEEN lo_bound minutes PRECEDING AND hi_bound minutes FOLLOWING EXCLUDE PREVAILING ORDER BY m.ts",
+      "SELECT m.ts, m.lo_bound, m.hi_bound, sum(s.val) AS agg FROM master m WINDOW JOIN slave s RANGE BETWEEN lo_bound minutes PRECEDING AND hi_bound minutes FOLLOWING INCLUDE PREVAILING ORDER BY m.ts",
+      "SELECT m.ts, sum(s.val) AS agg FROM master m WINDOW JOIN slave s RANGE BETWEEN bound minutes PRECEDING AND 0 seconds FOLLOWING EXCLUDE PREVAILING ORDER BY m.ts",
+      "SELECT m.ts, sum(s.val) AS agg FROM (SELECT * FROM master LIMIT 4) m WINDOW JOIN slave s RANGE BETWEEN bound minutes PRECEDING AND 0 seconds FOLLOWING EXCLUDE PREVAILING ORDER BY m.ts",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("multi-RHS HORIZON JOIN (QuestDB #6881) — round-trip", () => {
+    const queries = [
+      "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (-1s, 0s, 1s) AS h",
+      "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b HORIZON JOIN asks AS a LIST (0s) AS h",
+      "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) RANGE FROM -1s TO 1s STEP 1s AS h",
+      "SELECT avg(b.arr[1]), avg(a.ask), sum(t.qty) FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (0) AS h",
+      "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (0) AS h",
+      "EXPLAIN SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (0) AS h",
+      "SELECT avg(b.bid + a.ask) AS avg_spread, avg(b.bid) AS avg_bid FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (0) AS h",
+      "SELECT avg(p.price) AS avg_price, avg(f.fee) AS avg_fee FROM trades AS t HORIZON JOIN prices AS p ON (t.sym = p.sym) HORIZON JOIN fees AS f ON (t.exchange = f.exchange) LIST (0) AS h",
+      "SELECT min(h.timestamp), max(h.timestamp), avg(b.bid) AS avg_bid FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (0) AS h",
+      "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM (SELECT * FROM trades LIMIT 2) AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (0) AS h",
+      "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM (SELECT * FROM trades LIMIT 2) AS t HORIZON JOIN bids AS b HORIZON JOIN asks AS a LIST (0) AS h",
+      "SELECT avg(p.price) AS avg_price, avg(r.rate) AS avg_rate FROM trades AS t HORIZON JOIN prices AS p ON (t.sym = p.sym) HORIZON JOIN rates AS r LIST (0) AS h",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
   })
 })

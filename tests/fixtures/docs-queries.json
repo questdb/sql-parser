@@ -1758,12 +1758,6 @@
     "query": "SELECT base64(rnd_bin(), 20)"
   },
   {
-    "query": "SELECT isOrdered(numeric_sequence) is_num_ordered,\n       isOrdered(ts) is_ts_ordered\nFROM my_table"
-  },
-  {
-    "query": "SELECT isOrdered(numeric_sequence) FROM my_table"
-  },
-  {
     "query": "SELECT timestamp,\n       coalesce(amount, 0) as amount_not_null\nFROM transactions"
   },
   {
@@ -4088,10 +4082,10 @@
     "query": "CREATE VIEW mixed_params AS (\n  DECLARE @fixed := 5, OVERRIDABLE @adjustable := 10\n  SELECT * FROM data WHERE a >= @fixed AND b <= @adjustable\n)"
   },
   {
-    "query": "CREATE VIEW 日本語ビュー AS (SELECT * FROM trades)"
+    "query": "CREATE VIEW \u65e5\u672c\u8a9e\u30d3\u30e5\u30fc AS (SELECT * FROM trades)"
   },
   {
-    "query": "CREATE VIEW Részvény_árak AS (SELECT * FROM prices)"
+    "query": "CREATE VIEW R\u00e9szv\u00e9ny_\u00e1rak AS (SELECT * FROM prices)"
   },
   {
     "query": "CREATE VIEW with_timestamp AS (\n  (SELECT ts, value FROM my_view ORDER BY ts) timestamp(ts)\n)"
@@ -4442,7 +4436,7 @@
     "skipAutocomplete": true
   },
   {
-    "query": "-- This would fail if combinations × aggregates > 5000\ntrades PIVOT (\n    avg(price)\n    FOR symbol IN (SELECT DISTINCT symbol FROM trades)  -- many symbols\n        side IN ('buy', 'sell')                         -- × 2\n)",
+    "query": "-- This would fail if combinations \u00d7 aggregates > 5000\ntrades PIVOT (\n    avg(price)\n    FOR symbol IN (SELECT DISTINCT symbol FROM trades)  -- many symbols\n        side IN ('buy', 'sell')                         -- \u00d7 2\n)",
     "skipAutocomplete": true
   },
   {
@@ -5307,13 +5301,16 @@
     "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1d)"
   },
   {
-    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 3 DAYS, DROP NATIVE 10 DAYS, DROP LOCAL 1 MONTH)"
+    "query": "SELECT * FROM storage_policies()"
   },
   {
-    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1 HOUR, DROP NATIVE 1 YEAR)"
+    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 3 DAYS, TO REMOTE 10 DAYS, DROP LOCAL 1 MONTH)"
   },
   {
-    "query": "ALTER TABLE trades SET STORAGE POLICY(DROP NATIVE 1d)"
+    "query": "ALTER TABLE trades SET STORAGE POLICY(TO PARQUET 1 HOUR, TO REMOTE 1 YEAR)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(TO REMOTE 1d)"
   },
   {
     "query": "ALTER TABLE trades SET STORAGE POLICY(DROP LOCAL 7d)"
@@ -5331,7 +5328,7 @@
     "query": "ALTER TABLE trades DROP STORAGE POLICY;"
   },
   {
-    "query": "ALTER MATERIALIZED VIEW trades_hourly SET STORAGE POLICY(TO PARQUET 7 DAYS, DROP NATIVE 14 DAYS, DROP LOCAL 1 MONTH)"
+    "query": "ALTER MATERIALIZED VIEW trades_hourly SET STORAGE POLICY(TO PARQUET 7 DAYS, TO REMOTE 14 DAYS, DROP LOCAL 1 MONTH)"
   },
   {
     "query": "ALTER MATERIALIZED VIEW trades_hourly DISABLE STORAGE POLICY"
@@ -5340,24 +5337,126 @@
     "query": "ALTER MATERIALIZED VIEW trades_hourly DROP STORAGE POLICY"
   },
   {
-    "query": "CREATE TABLE trades (ts TIMESTAMP, symbol SYMBOL, price DOUBLE) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, DROP NATIVE 10d, DROP LOCAL 1M) WAL"
+    "query": "CREATE TABLE trades (ts TIMESTAMP, symbol SYMBOL, price DOUBLE) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, TO REMOTE 10d, DROP LOCAL 1M) WAL"
   },
   {
     "query": "CREATE TABLE IF NOT EXISTS trades (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 1d) WAL"
   },
   {
-    "query": "CREATE TABLE trades (ts TIMESTAMP, k SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) WAL OWNED BY 'group1'"
+    "query": "CREATE TABLE trades (ts TIMESTAMP, k SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) WAL OWNED BY 'group1'"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW hourly_trades AS (SELECT ts, symbol, sum(price) total FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, DROP NATIVE 14d)"
+    "query": "CREATE MATERIALIZED VIEW hourly_trades AS (SELECT ts, symbol, sum(price) total FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW test WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, DROP NATIVE 1M, DROP LOCAL 3M) IN VOLUME vol1"
+    "query": "CREATE MATERIALIZED VIEW test WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) IN VOLUME vol1"
   },
   {
     "query": "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(x) FROM t SAMPLE BY 1h) PARTITION BY DAY TTL 10d"
   },
   {
     "query": "CREATE TABLE t (x LONG, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY TTL 12h"
+  },
+  {
+    "query": "SELECT ts, avg(px) FROM trades SAMPLE BY w",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "REFRESH MATERIALIZED VIEW price_1h STATS"
+  },
+  {
+    "query": "ALTER TABLE trades REBASE WAL"
+  },
+  {
+    "query": "ALTER TABLE trades REBASE WAL INTO 'replica_dir'"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW price_1h REBASE WAL"
+  },
+  {
+    "query": "SHOW CREATE DATABASE"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE ALL"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (tables, views, users)"
+  },
+  {
+    "query": "CREATE TABLE trades (ts TIMESTAMP, px DOUBLE) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "ALTER TABLE trades SET FORMAT NATIVE"
+  },
+  {
+    "query": "SWITCH ROLE TO PRIMARY"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 5000"
+  },
+  {
+    "query": "SWITCH STATUS"
+  },
+  {
+    "query": "GRANT SELECT ON trades(*) TO alice"
+  },
+  {
+    "query": "GRANT SELECT ON trades(* EXCLUDE(secret)) TO alice"
+  },
+  {
+    "query": "GRANT SET TABLE FORMAT ON trades TO alice"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW price_1h AS (SELECT ts, avg(px) FROM trades SAMPLE BY 1h) PARTITION BY DAY EXPIRE ROWS KEEP LATEST PARTITION BY sym"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW price_1h SET EXPIRE ROWS KEEP HIGHEST px PARTITION BY sym CLEANUP EVERY 1h"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW price_1h DROP EXPIRE ROWS"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 5s START FROM NOW AS (SELECT * FROM trades)",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 5s IN MEMORY 1h PARTITION BY DAY START FROM BEGINNING AS (SELECT ts, px FROM trades)",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "DROP LIVE VIEW IF EXISTS lv"
+  },
+  {
+    "query": "ALTER LIVE VIEW lv RESUME WAL"
+  },
+  {
+    "query": "SHOW CREATE LIVE VIEW lv"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (tables, all)"
+  },
+  {
+    "query": "SELECT avg(px) OVER (PARTITION BY sym ORDER BY ts ANCHOR DAILY '09:30') FROM trades",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "CREATE TABLE trades (sym SYMBOL INDEX TYPE POSTING DELTA CAPACITY 256, px DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL"
+  },
+  {
+    "query": "CREATE TABLE t (sym SYMBOL INDEX TYPE POSTING INCLUDE (px), px DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "SELECT * FROM trades t WINDOW JOIN prices p ON t.sym = p.sym RANGE BETWEEN wndBound SECONDS PRECEDING AND wndBound SECONDS FOLLOWING",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "SELECT * FROM trades t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (-1s, 0s, 1s) AS h",
+    "skipAutocomplete": true
+  },
+  {
+    "query": "COPY PERMISSIONS FROM alice TO bob"
+  },
+  {
+    "query": "GRANT CONVERT PARTITION TO PARQUET ON trades TO alice"
   }
 ]

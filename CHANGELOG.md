@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.17 - 2026.08.18
+### Changed
+- `isOrdered` removed from the aggregate function list, so it no longer appears in autocomplete. [#29](https://github.com/questdb/sql-parser/pull/29)
+
+## 0.1.16 - 2026.07.23
+### Added
+- expand parser with live views, row expiry, posting indexes [#28](https://github.com/questdb/sql-parser/pull/28)
+
+## 0.1.15 - 2026.07.02
+### Changed
+- Storage policy now matches the current QuestDB spec: the four stages are `TO PARQUET`, `TO REMOTE`, `DROP LOCAL`, `DROP REMOTE`. Added `TO REMOTE` (grammar, `StoragePolicy.toRemote` AST field, `toSql`, autocomplete). Removed the unsupported `DROP NATIVE` stage and the `StoragePolicy.dropNative` field — `DROP NATIVE` is now a parse error. [08688b6](https://github.com/questdb/sql-parser/commit/08688b6)
+### Added
+- `storage_policies()` registered as a table-valued (meta) function. [08688b6](https://github.com/questdb/sql-parser/commit/08688b6)
+### Fixed
+- Long-form TTL / storage-policy values now parse faithfully: `1e9 DAYS` no longer collapses to `1` and `.5 DAYS` no longer becomes `NaN` (`parseInt` → `parseFloat`, `_` separators still honored). The server remains the validator. [08688b6](https://github.com/questdb/sql-parser/commit/08688b6)
+
 ## 0.1.14 - 2026.06.02
 ### Fixed
 - emit singular time units from toSql [35982c8](https://github.com/questdb/sql-parser/commit/35982c8)

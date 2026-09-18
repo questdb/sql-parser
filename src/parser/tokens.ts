@@ -337,6 +337,10 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Only",
   "Align",
   "Latest",
+  "Cold",
+  "Force",
+  "Manager",
+  "Refresher",
   // New constants that can be used as identifiers
   "Ilp",
   "Native",
@@ -364,6 +368,35 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Lateral",
   "Ordinality",
   "BloomFilter",
+  "Rebase",
+  "Stats",
+  "Switch",
+  "Role",
+  "Status",
+  "Replica",
+  "Timeout",
+  "Expire",
+  "Cleanup",
+  "Highest",
+  "Lowest",
+  "Live",
+  "Flush",
+  "Anchor",
+  "Beginning",
+  "Memory",
+  "Daily",
+  "Expression",
+  "Posting",
+  "Delta",
+  "Ef",
+  "Bitmap",
+  "Schema",
+  "Acl",
+  "Views",
+  "MaterializedViews",
+  "ServiceAccounts",
+  // CREATE LIVE VIEW ... START FROM NOW (same word as the now() function)
+  "Now",
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
@@ -553,6 +586,7 @@ export const Owned = getToken("Owned")
 export const Param = getToken("Param")
 export const Parameters = getToken("Parameters")
 export const Parquet = getToken("Parquet")
+export const Native = getToken("Native")
 export const ParquetVersion = getToken("ParquetVersion")
 export const PartitionBy = getToken("PartitionBy")
 export const Partition = getToken("Partition")
@@ -655,7 +689,6 @@ export const Lzo = getToken("Lzo")
 // Storage policy keywords / constants
 export const Storage = getToken("Storage")
 export const Policy = getToken("Policy")
-export const Native = getToken("Native")
 export const Local = getToken("Local")
 export const Remote = getToken("Remote")
 
@@ -727,3 +760,30 @@ export const Doy = getToken("Doy")
 export const Epoch = getToken("Epoch")
 export const Isodow = getToken("Isodow")
 export const Isoyear = getToken("Isoyear")
+export const Rebase = getToken("Rebase")
+export const Stats = getToken("Stats")
+export const Switch = getToken("Switch")
+export const Role = getToken("Role")
+export const Status = getToken("Status")
+export const Replica = getToken("Replica")
+export const Timeout = getToken("Timeout")
+export const Expire = getToken("Expire")
+export const Cleanup = getToken("Cleanup")
+export const Cold = getToken("Cold")
+export const Force = getToken("Force")
+export const Manager = getToken("Manager")
+export const Refresher = getToken("Refresher")
+export const Highest = getToken("Highest")
+export const Lowest = getToken("Lowest")
+export const Live = getToken("Live")
+export const Flush = getToken("Flush")
+export const Anchor = getToken("Anchor")
+export const Beginning = getToken("Beginning")
+export const Now = getToken("Now")
+export const Memory = getToken("Memory")
+export const Daily = getToken("Daily")
+export const Expression = getToken("Expression")
+export const Posting = getToken("Posting")
+export const Delta = getToken("Delta")
+export const Ef = getToken("Ef")
+export const Bitmap = getToken("Bitmap")

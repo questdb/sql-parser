@@ -194,6 +194,7 @@ export function createAutocompleteProvider(
         suggestTableValuedFunctions,
         referencedColumns,
         isConditionContext,
+        contextKeywords,
       } = getContentAssist(query, cursorOffset)
 
       // Merge CTE columns into the schema so getColumnsInScope() can find them
@@ -264,6 +265,28 @@ export function createAutocompleteProvider(
             partialPrefix,
           },
         )
+        if (contextKeywords.length > 0) {
+          const seen = new Set(suggestions.map((s) => s.label.toUpperCase()))
+          for (const kw of contextKeywords) {
+            if (seen.has(kw.toUpperCase())) continue
+            if (
+              isMidWord &&
+              partialPrefix &&
+              !kw.toLowerCase().startsWith(partialPrefix)
+            ) {
+              continue
+            }
+            seen.add(kw.toUpperCase())
+            suggestions.push({
+              label: kw,
+              kind: SuggestionKind.Keyword,
+              insertText: kw,
+              filterText: kw.toLowerCase(),
+              priority: SuggestionPriority.Medium,
+            })
+          }
+        }
+
         if (suggestTables) {
           rankTableSuggestions(suggestions, referencedColumns, columnIndex)
         }
