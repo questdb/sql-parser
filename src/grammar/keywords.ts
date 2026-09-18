@@ -211,7 +211,6 @@ export const keywords: string[] = [
   "txn",
   "type",
   "unbounded",
-  "unlimited",
   "union",
   "unlock",
   "unnest",
