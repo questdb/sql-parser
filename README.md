@@ -81,7 +81,7 @@ format("SELECT * FROM trades WHERE symbol = 'BTC-USD' LATEST ON ts PARTITION BY 
 // LATEST ON ts PARTITION BY symbol
 ```
 
-The formatter is token-based and never throws on SQL content. It preserves every token, comment, and unknown character, changes whitespace only, and leaves unterminated or unbalanced input verbatim from the point of the problem. Options: `indent` (default two spaces) and `maxLineWidth` (default 80). `format` is also exported from the package root; the `./formatter` subpath loads the lexer without the parser.
+The formatter is token-based and never throws on SQL content. It preserves every token, comment, and unknown character, changes whitespace only, and leaves unterminated or unbalanced input verbatim from the point of the problem. Options: `indent` (default two spaces) and `maxLineWidth` (default 50). `format` is also exported from the package root; the `./formatter` subpath loads the lexer without the parser.
 
 ### Autocomplete
 

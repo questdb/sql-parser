@@ -80,6 +80,11 @@ const startsQuery = (piece: Piece | undefined) =>
 
 const opensBlock = (next: Piece | undefined) => startsQuery(next)
 
+type Clause = { doc: Doc; headless: boolean }
+
+const alwaysBreaksList = (phrase: Phrase | null) =>
+  phrase !== null && phrase.names[0] === "Declare"
+
 const allowsLogical = (phrase: Phrase | null) =>
   phrase !== null && phrase.names[0] === "Where"
 
@@ -124,6 +129,7 @@ const toPieces = (
 class StatementBuilder {
   private index = 0
   private phrases: Phrase[]
+  private kind: StatementKind
   private readonly tokens: StreamToken[]
   previous: Piece | null = null
 
@@ -131,8 +137,24 @@ class StatementBuilder {
     private readonly pieces: Piece[],
     kind: StatementKind,
   ) {
+    this.kind = kind
     this.phrases = clausePhrases[kind]
     this.tokens = pieces.map((piece) => piece.token)
+  }
+
+  private enterQuery() {
+    this.kind = "select"
+    this.phrases = clausePhrases.select
+  }
+
+  private startsQueryBody(match: PhraseMatch | null): boolean {
+    if (match === null) return false
+    const first = match.phrase.names[0]
+    if (first === "Select" || first === "Declare") return true
+    return (
+      first === "With" &&
+      (this.kind === "insert" || this.phrases === clausePhrases.select)
+    )
   }
 
   build(): Doc {
@@ -185,25 +207,44 @@ class StatementBuilder {
   }
 
   private buildClauses(insideParens: boolean): Doc {
-    const parts: Doc[] = []
-    let first = true
+    return concat(
+      this.collectClauses(insideParens).map((clause, i) =>
+        i === 0 ? clause.doc : concat([hardline, clause.doc]),
+      ),
+    )
+  }
+
+  private collectClauses(insideParens: boolean): Clause[] {
+    const clauses: Clause[] = []
     while (!this.atEnd) {
       const piece = this.peek()!
       if (insideParens && piece.token.tokenName === "RParen") break
+      if (clauses.length > 0 && this.kind !== "select") {
+        if (this.startsQueryBody(this.matchClause(null))) {
+          this.enterQuery()
+          clauses.push({
+            doc: indent(concat([hardline, this.buildClauses(insideParens)])),
+            headless: false,
+          })
+          break
+        }
+      }
       const start = this.index
       const clause = this.buildClause(insideParens)
       if (this.index === start) {
         const element = this.takeText()
-        parts.push(element.leading, element.doc)
+        clauses.push({
+          doc: concat([element.leading, element.doc]),
+          headless: true,
+        })
         continue
       }
-      parts.push(first ? clause : concat([hardline, clause]))
-      first = false
+      clauses.push(clause)
     }
-    return concat(parts)
+    return clauses
   }
 
-  private buildClause(insideParens: boolean): Doc {
+  private buildClause(insideParens: boolean): Clause {
     const match = this.matchClause(null)
     const phrase = match === null ? null : match.phrase
     let head: Doc | null = null
@@ -225,10 +266,17 @@ class StatementBuilder {
       expandableGroups: groupExpansionFor(phrase),
       groupsSeen: 0,
     })
-    return this.renderClause(head, sequence)
+    return {
+      doc: this.renderClause(head, sequence, alwaysBreaksList(phrase)),
+      headless: head === null,
+    }
   }
 
-  private renderClause(head: Doc | null, sequence: Sequence): Doc {
+  private renderClause(
+    head: Doc | null,
+    sequence: Sequence,
+    alwaysBreak: boolean,
+  ): Doc {
     const { items } = sequence
     if (head === null) return this.renderList(sequence, false)
     if (items.length === 0) return head
@@ -238,9 +286,11 @@ class StatementBuilder {
     const firstInline = sequence.separators.every(
       (separator) => separator.kind === "subClause",
     )
-    return group(
-      concat([head, indent(this.renderList(sequence, true, firstInline))]),
-    )
+    const body = concat([
+      head,
+      indent(this.renderList(sequence, true, firstInline)),
+    ])
+    return alwaysBreak ? body : group(body)
   }
 
   private renderList(
@@ -381,7 +431,9 @@ class StatementBuilder {
     const piece = this.peek()!
     const name = piece.token.tokenName
     if (name === "LParen") {
-      if (opensBlock(this.peek(1))) return this.buildBlock()
+      if (opensBlock(this.peek(1)) || this.precedesTableSource(ctx)) {
+        return this.buildBlock()
+      }
       const afterIn = this.previous?.token.tokenName === "In"
       const afterOver =
         this.previous?.token.tokenName === "Over" ||
@@ -450,6 +502,17 @@ class StatementBuilder {
     }
   }
 
+  private precedesTableSource(ctx: SequenceContext): boolean {
+    const name = this.previous?.token.tokenName
+    if (name === undefined || name === null) return false
+    if (name === "From" || name === "Join") return true
+    const clause = ctx.phrase?.names[0]
+    if (name === "Comma") return clause === "From"
+    if (name === "As")
+      return clause === "With" || this.kind.startsWith("create")
+    return false
+  }
+
   private buildBlock(): Element {
     const open = this.peek()!
     const base = gapBetween(this.previous, open)
@@ -459,18 +522,34 @@ class StatementBuilder {
     this.take()
 
     const outerPhrases = this.phrases
-    this.phrases = clausePhrases.select
-    const clauses = this.buildClauses(true)
+    const outerKind = this.kind
+    this.enterQuery()
+    const clauses = this.collectClauses(true)
     this.phrases = outerPhrases
+    this.kind = outerKind
 
     const close =
       this.peek()?.token.tokenName === "RParen" ? this.takeText() : null
+
+    if (clauses.length === 1 && clauses[0].headless) {
+      const closeParts = close === null ? [] : [close.leading, close.doc]
+      return {
+        leading,
+        doc: concat([text(open.token.image), clauses[0].doc, ...closeParts]),
+      }
+    }
+
+    const body = concat(
+      clauses.map((clause, i) =>
+        i === 0 ? clause.doc : concat([hardline, clause.doc]),
+      ),
+    )
     const closeParts = close === null ? [] : [hardline, close.doc]
     return {
       leading,
       doc: concat([
         text(open.token.image),
-        indent(concat([hardline, clauses])),
+        indent(concat([hardline, body])),
         ...closeParts,
       ]),
     }

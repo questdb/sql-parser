@@ -8,7 +8,7 @@ export type FormatOptions = {
   maxLineWidth?: number
 }
 
-const DEFAULT_OPTIONS: PrintOptions = { indent: "  ", maxLineWidth: 80 }
+const DEFAULT_OPTIONS: PrintOptions = { indent: "  ", maxLineWidth: 50 }
 
 const resolveOptions = (options: FormatOptions): PrintOptions => {
   const indent = options.indent ?? DEFAULT_OPTIONS.indent

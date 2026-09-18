@@ -3,16 +3,22 @@ import { format } from "../../src/formatter/index"
 import { fixtures } from "./fixtures"
 import { assertPreserved } from "./oracles"
 
+// Fixtures pin the layout at width 80 unless a case sets its own width.
+const FIXTURE_WIDTH = 80
+
 describe("format fixtures", () => {
   it.each(fixtures.map((fixture) => [fixture.name, fixture] as const))(
     "%s",
     (_name, fixture) => {
+      // Given
+      const options = { maxLineWidth: FIXTURE_WIDTH, ...fixture.options }
+
       // When
-      const output = format(fixture.input, fixture.options)
+      const output = format(fixture.input, options)
 
       // Then
       expect(output).toBe(fixture.expected)
-      assertPreserved(fixture.input, fixture.options)
+      assertPreserved(fixture.input, options)
     },
   )
 })

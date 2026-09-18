@@ -120,7 +120,7 @@ export const printDoc = (doc: Doc, options: PrintOptions): string => {
         column += current.text.length
         break
       case "gap":
-        pendingGap = current.text
+        if (lineHasContent) pendingGap = current.text
         break
       case "line":
         if (mode === "flat") pendingGap = current.flat

@@ -87,13 +87,17 @@ const alterActionPhrases: Phrase[] = action(
   ["Rename", "Column"],
   ["Alter", "Column"],
   ["Attach", "Partition"],
+  ["Attach", "Partition", "List"],
   ["Detach", "Partition"],
+  ["Detach", "Partition", "List"],
   ["Drop", "Partition"],
+  ["Drop", "Partition", "List"],
   ["Set"],
   ["Squash"],
   ["Dedup"],
   ["Resume", "Wal"],
   ["Convert", "Partition"],
+  ["Convert", "Partition", "List"],
 )
 
 export const joinSubClauses: Phrase[] = clause(

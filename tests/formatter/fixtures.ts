@@ -122,9 +122,9 @@ export const fixtures: Fixture[] = [
       "INSERT INTO trades_archive SELECT * FROM trades WHERE timestamp < dateadd('d', -30, now())",
     expected: [
       "INSERT INTO trades_archive",
-      "SELECT *",
-      "FROM trades",
-      "WHERE timestamp < dateadd('d', -30, now())",
+      "  SELECT *",
+      "  FROM trades",
+      "  WHERE timestamp < dateadd('d', -30, now())",
     ].join("\n"),
   },
   {
@@ -144,6 +144,30 @@ export const fixtures: Fixture[] = [
         (c, i) => `  ${c}'${i < 9 ? "," : ""}`,
       ),
       ")",
+    ].join("\n"),
+  },
+  {
+    name: "PARTITION LIST keeps LIST in the clause head when the list breaks",
+    input:
+      "ALTER TABLE tab ATTACH PARTITION LIST '2022', '2023', '2024', '2025', '2026', '2027'",
+    options: { maxLineWidth: 50 },
+    expected: [
+      "ALTER TABLE tab",
+      "ATTACH PARTITION LIST",
+      "  '2022',",
+      "  '2023',",
+      "  '2024',",
+      "  '2025',",
+      "  '2026',",
+      "  '2027'",
+    ].join("\n"),
+  },
+  {
+    name: "DROP PARTITION WHERE stays inline",
+    input: "ALTER TABLE tab DROP PARTITION WHERE timestamp < '2024-01-01'",
+    expected: [
+      "ALTER TABLE tab",
+      "DROP PARTITION WHERE timestamp < '2024-01-01'",
     ].join("\n"),
   },
   {
@@ -421,9 +445,20 @@ export const fixtures: Fixture[] = [
     expected: ["trades", "WHERE symbol = 'BTC-USD'"].join("\n"),
   },
   {
-    name: "DECLARE",
-    input: "DECLARE @x := 1 SELECT @x FROM t",
-    expected: ["DECLARE @x := 1", "SELECT @x", "FROM t"].join("\n"),
+    name: "DECLARE with one variable stays inline",
+    input: "DECLARE OVERRIDABLE @x := 1 SELECT @x FROM t",
+    expected: ["DECLARE OVERRIDABLE @x := 1", "SELECT @x", "FROM t"].join("\n"),
+  },
+  {
+    name: "DECLARE with several variables breaks one per line",
+    input: "DECLARE @x := 5, OVERRIDABLE @y := 6 SELECT @x + @y FROM t",
+    expected: [
+      "DECLARE",
+      "  @x := 5,",
+      "  OVERRIDABLE @y := 6",
+      "SELECT @x + @y",
+      "FROM t",
+    ].join("\n"),
   },
   {
     name: "materialized view",
@@ -446,9 +481,9 @@ export const fixtures: Fixture[] = [
     expected: [
       "CREATE MATERIALIZED VIEW trades_daily",
       "REFRESH PERIOD (LENGTH 1d TIME ZONE 'Europe/London' DELAY 2h) AS",
-      "SELECT timestamp, symbol, avg(price) AS avg_price",
-      "FROM trades",
-      "SAMPLE BY 1d",
+      "  SELECT timestamp, symbol, avg(price) AS avg_price",
+      "  FROM trades",
+      "  SAMPLE BY 1d",
     ].join("\n"),
   },
   {
@@ -456,9 +491,61 @@ export const fixtures: Fixture[] = [
     input: "CREATE TABLE t AS SELECT * FROM trades WHERE x = 1",
     expected: [
       "CREATE TABLE t AS",
+      "  SELECT *",
+      "  FROM trades",
+      "  WHERE x = 1",
+    ].join("\n"),
+  },
+  {
+    name: "INSERT with a CTE indents the whole query",
+    input: "INSERT INTO t WITH c AS (SELECT 1 AS x) SELECT x FROM c",
+    expected: [
+      "INSERT INTO t",
+      "  WITH c AS (",
+      "    SELECT 1 AS x",
+      "  )",
+      "  SELECT x",
+      "  FROM c",
+    ].join("\n"),
+  },
+  {
+    name: "implicit select in FROM opens a block",
+    input:
+      "SELECT symbol, side FROM (trades_latest_1d LATEST ON timestamp PARTITION BY symbol, side) ORDER BY timestamp DESC",
+    expected: [
+      "SELECT symbol, side",
+      "FROM (",
+      "  trades_latest_1d",
+      "  LATEST ON timestamp PARTITION BY symbol, side",
+      ")",
+      "ORDER BY timestamp DESC",
+    ].join("\n"),
+  },
+  {
+    name: "implicit select in a CTE opens a block",
+    input: "WITH c AS (trades WHERE x = 1) SELECT * FROM c",
+    expected: [
+      "WITH c AS (",
+      "  trades",
+      "  WHERE x = 1",
+      ")",
       "SELECT *",
-      "FROM trades",
-      "WHERE x = 1",
+      "FROM c",
+    ].join("\n"),
+  },
+  {
+    name: "a plain parenthesized table after JOIN stays inline",
+    input: "SELECT * FROM orders ASOF JOIN (md) ON (symbol)",
+    expected: ["SELECT *", "FROM orders", "ASOF JOIN (md) ON (symbol)"].join(
+      "\n",
+    ),
+  },
+  {
+    name: "FROM inside function arguments is not a clause",
+    input: "SELECT extract(hour FROM ts), substring(s FROM 1) FROM t",
+    expected: [
+      "SELECT extract(hour FROM ts), substring(s FROM 1)",
+      "FROM t",
     ].join("\n"),
   },
   {
