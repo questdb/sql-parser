@@ -276,6 +276,9 @@ export interface CreateLiveViewStatement extends AstNode {
     value?: string
   }
   query: SelectStatement
+  ownedBy?: string
+  /** Whether the query was written as AS (query) rather than AS query */
+  asParens?: boolean
 }
 
 export interface DropLiveViewStatement extends AstNode {
@@ -407,6 +410,8 @@ export interface AlterMaterializedViewAddIndex {
   actionType: "addIndex"
   column: string
   capacity?: number
+  indexType?: "posting" | "posting_delta" | "posting_ef" | "bitmap" | "none"
+  indexInclude?: string[]
 }
 
 export interface AlterMaterializedViewSymbolCapacity {
@@ -494,6 +499,7 @@ export type AlterUserAction =
   | AlterUserPasswordAction
   | AlterUserCreateTokenAction
   | AlterUserDropTokenAction
+  | AlterUserMemoryLimitAction
 
 export interface AlterUserEnableAction {
   actionType: "enable"
@@ -523,6 +529,12 @@ export interface AlterUserDropTokenAction {
   actionType: "dropToken"
   tokenType: "JWK" | "REST"
   token?: string
+}
+
+/** SET MEMORY LIMIT 1G | 512M | 0 | UNLIMITED */
+export interface AlterUserMemoryLimitAction {
+  actionType: "setMemoryLimit"
+  limit: string
 }
 
 export interface AlterServiceAccountStatement extends AstNode {
@@ -685,6 +697,8 @@ export interface ConvertPartitionAction {
   partitions?: string[]
   target: string
   where?: Expression
+  /** WITH (bloom_filter_columns = '...', bloom_filter_fpp = 0.01) */
+  withParams?: TableParam[]
 }
 
 export interface DropTableStatement extends AstNode {
@@ -970,8 +984,10 @@ export interface SwitchStatement extends AstNode {
 export interface AlterGroupStatement extends AstNode {
   type: "alterGroup"
   group: QualifiedName
-  action: "setAlias" | "dropAlias"
-  externalAlias: string
+  action: "setAlias" | "dropAlias" | "setMemoryLimit"
+  externalAlias?: string
+  /** SET MEMORY LIMIT value, e.g. "2G", "512M", "0", "UNLIMITED" */
+  memoryLimit?: string
 }
 
 export interface CompileViewStatement extends AstNode {
@@ -1087,6 +1103,8 @@ export interface TableRef extends AstNode {
   columnAliases?: string[]
   joins?: JoinClause[]
   timestampDesignation?: string
+  /** TIMESTAMP(col) was written after the alias: FROM t alias TIMESTAMP(col) */
+  timestampAfterAlias?: boolean
 }
 
 export interface JoinClause extends AstNode {
@@ -1094,6 +1112,8 @@ export interface JoinClause extends AstNode {
   joinType?:
     | "inner"
     | "left"
+    | "right"
+    | "full"
     | "cross"
     | "asof"
     | "lt"

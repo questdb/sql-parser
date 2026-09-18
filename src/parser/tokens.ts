@@ -368,6 +368,8 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Lateral",
   "Ordinality",
   "BloomFilter",
+  "BloomFilterColumns",
+  "BloomFilterFpp",
   "Rebase",
   "Stats",
   "Switch",
@@ -384,6 +386,7 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Anchor",
   "Beginning",
   "Memory",
+  "Unlimited",
   "Daily",
   "Expression",
   "Posting",
@@ -464,6 +467,8 @@ export const Base = getToken("Base")
 export const Batch = getToken("Batch")
 export const Between = getToken("Between")
 export const BloomFilter = getToken("BloomFilter")
+export const BloomFilterColumns = getToken("BloomFilterColumns")
+export const BloomFilterFpp = getToken("BloomFilterFpp")
 export const By = getToken("By")
 export const Bypass = getToken("Bypass")
 export const Cache = getToken("Cache")
@@ -657,6 +662,7 @@ export const Type = getToken("Type")
 export const Unbounded = getToken("Unbounded")
 export const Union = getToken("Union")
 export const Unlock = getToken("Unlock")
+export const Unlimited = getToken("Unlimited")
 export const Unnest = getToken("Unnest")
 export const Unpivot = getToken("Unpivot")
 export const Update = getToken("Update")

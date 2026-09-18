@@ -85,6 +85,8 @@ import type {
   ExpressionCstChildren,
   FillClauseCstChildren,
   FillValueCstChildren,
+  AliasTimestampDesignationCstChildren,
+  MemoryLimitCstChildren,
   FromClauseCstChildren,
   FromSourceCstChildren,
   FromToClauseCstChildren,
@@ -206,6 +208,7 @@ type ConvertPartitionTargetResult = {
   partitions?: string[]
   target: string
   where?: AST.Expression
+  withParams?: AST.TableParam[]
 }
 type PivotBodyResult = {
   aggregations: AST.PivotAggregation[]
@@ -753,7 +756,19 @@ class QuestDBVisitor extends BaseVisitor {
       result.timestampDesignation = colRef.name.parts.join(".")
     }
 
+    if (ctx.aliasTimestampDesignation) {
+      result.timestampDesignation = this.visit(
+        ctx.aliasTimestampDesignation,
+      ) as string
+      result.timestampAfterAlias = true
+    }
+
     return result
+  }
+
+  aliasTimestampDesignation(ctx: AliasTimestampDesignationCstChildren): string {
+    const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
+    return colRef.name.parts.join(".")
   }
 
   tableFunctionCall(ctx: TableFunctionCallCstChildren): AST.TableFunctionCall {
@@ -905,10 +920,12 @@ class QuestDBVisitor extends BaseVisitor {
   standardJoin(ctx: StandardJoinCstChildren): AST.JoinClause {
     const result: AST.JoinClause = {
       type: "join",
-      table: this.visit(ctx.tableRef) as AST.TableRef,
+      table: this.visit(ctx.fromSource) as AST.TableRef,
     }
     if (ctx.Inner) result.joinType = "inner"
     else if (ctx.Left) result.joinType = "left"
+    else if (ctx.Right) result.joinType = "right"
+    else if (ctx.Full) result.joinType = "full"
     else if (ctx.Cross) result.joinType = "cross"
     if (ctx.Outer) result.outer = true
     if (ctx.Lateral) result.lateral = true
@@ -993,8 +1010,14 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Null) return "NULL"
     if (ctx.NumberLiteral) return this.tokenImage(ctx.NumberLiteral[0])
     if (ctx.identifier) {
-      const name = this.extractIdentifierName(ctx.identifier[0].children)
-      return name.toUpperCase()
+      const name = this.extractIdentifierName(
+        ctx.identifier[0].children,
+      ).toUpperCase()
+      if (ctx.LParen && ctx.identifier[1]) {
+        const column = this.extractIdentifierName(ctx.identifier[1].children)
+        return `${name}(${column})`
+      }
+      return name
     }
     return ""
   }
@@ -1928,6 +1951,10 @@ class QuestDBVisitor extends BaseVisitor {
         result.startFrom = { kind: "now" }
       }
     }
+    if (ctx.Owned && ctx.stringOrIdentifier) {
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
+    }
+    if (ctx.LParen) result.asParens = true
     return result
   }
 
@@ -2086,19 +2113,20 @@ class QuestDBVisitor extends BaseVisitor {
   alterGroupStatement(
     ctx: AlterGroupStatementCstChildren,
   ): AST.AlterGroupStatement {
-    const alias = ctx.StringLiteral![0].image.slice(1, -1)
-    if (ctx.With) {
+    const group = this.visit(ctx.qualifiedName) as AST.QualifiedName
+    if (ctx.memoryLimit) {
       return {
         type: "alterGroup",
-        group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
-        action: "setAlias",
-        externalAlias: alias,
+        group,
+        action: "setMemoryLimit",
+        memoryLimit: this.visit(ctx.memoryLimit) as string,
       }
     }
+    const alias = ctx.StringLiteral![0].image.slice(1, -1)
     return {
       type: "alterGroup",
-      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
-      action: "dropAlias",
+      group,
+      action: ctx.With ? "setAlias" : "dropAlias",
       externalAlias: alias,
     }
   }
@@ -2166,8 +2194,15 @@ class QuestDBVisitor extends BaseVisitor {
         actionType: "addIndex",
         column: colRef.name.parts[colRef.name.parts.length - 1],
       }
-      if (ctx.Capacity && ctx.NumberLiteral) {
-        result.capacity = tokenInt(ctx.NumberLiteral[0].image)
+      if (ctx.indexTypeOptions) {
+        const opts = this.visit(ctx.indexTypeOptions[0]) as {
+          capacity?: number
+          indexType?: AST.AlterMaterializedViewAddIndex["indexType"]
+          include?: string[]
+        }
+        if (opts.capacity !== undefined) result.capacity = opts.capacity
+        if (opts.indexType) result.indexType = opts.indexType
+        if (opts.include) result.indexInclude = opts.include
       }
       return result
     }
@@ -2263,6 +2298,12 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   alterUserAction(ctx: AlterUserActionCstChildren): AST.AlterUserAction {
+    if (ctx.memoryLimit) {
+      return {
+        actionType: "setMemoryLimit",
+        limit: this.visit(ctx.memoryLimit) as string,
+      }
+    }
     if (ctx.Enable) {
       return { actionType: "enable" }
     }
@@ -2307,6 +2348,12 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.Identifier?.[0]?.image ??
         ctx.StringLiteral?.[0]?.image?.slice(1, -1),
     }
+  }
+
+  memoryLimit(ctx: MemoryLimitCstChildren): string {
+    if (ctx.Unlimited) return "UNLIMITED"
+    if (ctx.DurationLiteral) return ctx.DurationLiteral[0].image
+    return ctx.NumberLiteral![0].image + (ctx.Identifier?.[0]?.image ?? "")
   }
 
   alterTableAction(ctx: AlterTableActionCstChildren): AST.AlterTableAction {
@@ -3078,6 +3125,8 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.StatisticsEnabled?.[0] ??
       ctx.ParquetVersion?.[0] ??
       ctx.RawArrayEncoding?.[0] ??
+      ctx.BloomFilterColumns?.[0] ??
+      ctx.BloomFilterFpp?.[0] ??
       (ctx.On ? ctx.On[0] : undefined)
 
     let key = keyToken?.image ?? "OPTION"
@@ -3227,16 +3276,10 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
-  convertPartitionTarget(ctx: ConvertPartitionTargetCstChildren): {
-    partitions?: string[]
-    target: string
-    where?: AST.Expression
-  } {
-    const result: {
-      partitions?: string[]
-      target: string
-      where?: AST.Expression
-    } = {
+  convertPartitionTarget(
+    ctx: ConvertPartitionTargetCstChildren,
+  ): ConvertPartitionTargetResult {
+    const result: ConvertPartitionTargetResult = {
       target: "TABLE",
     }
 
@@ -3259,6 +3302,12 @@ class QuestDBVisitor extends BaseVisitor {
     // Optional WHERE clause
     if (ctx.expression) {
       result.where = this.visit(ctx.expression[0]) as AST.Expression
+    }
+
+    if (ctx.tableParam) {
+      result.withParams = ctx.tableParam.map(
+        (p: CstNode) => this.visit(p) as AST.TableParam,
+      )
     }
 
     return result

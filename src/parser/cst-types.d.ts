@@ -289,6 +289,19 @@ export type TableRefCstChildren = {
   columnRef?: ColumnRefCstNode[];
   As?: IToken[];
   identifier?: (IdentifierCstNode)[];
+  aliasTimestampDesignation?: AliasTimestampDesignationCstNode[];
+};
+
+export interface AliasTimestampDesignationCstNode extends CstNode {
+  name: "aliasTimestampDesignation";
+  children: AliasTimestampDesignationCstChildren;
+}
+
+export type AliasTimestampDesignationCstChildren = {
+  Timestamp: IToken[];
+  LParen: IToken[];
+  columnRef: ColumnRefCstNode[];
+  RParen: IToken[];
 };
 
 export interface TableFunctionCallCstNode extends CstNode {
@@ -418,12 +431,14 @@ export interface StandardJoinCstNode extends CstNode {
 
 export type StandardJoinCstChildren = {
   Left?: IToken[];
-  Outer?: IToken[];
+  Outer?: (IToken)[];
+  Right?: IToken[];
+  Full?: IToken[];
   Inner?: IToken[];
   Cross?: IToken[];
   Join: IToken[];
   Lateral?: IToken[];
-  tableRef: TableRefCstNode[];
+  fromSource: FromSourceCstNode[];
   On?: IToken[];
   expression?: ExpressionCstNode[];
 };
@@ -516,7 +531,9 @@ export interface FillValueCstNode extends CstNode {
 export type FillValueCstChildren = {
   Null?: IToken[];
   NumberLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  identifier?: (IdentifierCstNode)[];
+  LParen?: IToken[];
+  RParen?: IToken[];
 };
 
 export interface AlignToClauseCstNode extends CstNode {
@@ -1234,7 +1251,7 @@ export type CreateLiveViewBodyCstChildren = {
   In?: IToken[];
   Memory?: IToken[];
   Partition?: IToken[];
-  By?: IToken[];
+  By?: (IToken)[];
   partitionPeriod?: PartitionPeriodCstNode[];
   Start?: IToken[];
   From?: IToken[];
@@ -1245,6 +1262,8 @@ export type CreateLiveViewBodyCstChildren = {
   LParen?: IToken[];
   selectStatement?: (SelectStatementCstNode)[];
   RParen?: IToken[];
+  Owned?: IToken[];
+  stringOrIdentifier?: StringOrIdentifierCstNode[];
 };
 
 export interface DropLiveViewStatementCstNode extends CstNode {
@@ -1365,6 +1384,10 @@ export type AlterGroupStatementCstChildren = {
   Alias?: (IToken)[];
   StringLiteral?: (IToken)[];
   Drop?: IToken[];
+  Set?: IToken[];
+  Memory?: IToken[];
+  Limit?: IToken[];
+  memoryLimit?: MemoryLimitCstNode[];
 };
 
 export interface AlterViewStatementCstNode extends CstNode {
@@ -1412,6 +1435,10 @@ export interface AlterUserActionCstNode extends CstNode {
 export type AlterUserActionCstChildren = {
   Enable?: IToken[];
   Disable?: IToken[];
+  Set?: IToken[];
+  Memory?: IToken[];
+  Limit?: IToken[];
+  memoryLimit?: MemoryLimitCstNode[];
   With?: (IToken)[];
   No?: IToken[];
   Password?: (IToken)[];
@@ -1429,6 +1456,18 @@ export type AlterUserActionCstChildren = {
   Refresh?: IToken[];
   Transient?: IToken[];
   Drop?: IToken[];
+};
+
+export interface MemoryLimitCstNode extends CstNode {
+  name: "memoryLimit";
+  children: MemoryLimitCstChildren;
+}
+
+export type MemoryLimitCstChildren = {
+  Unlimited?: IToken[];
+  DurationLiteral?: IToken[];
+  NumberLiteral?: IToken[];
+  Identifier?: IToken[];
 };
 
 export interface AlterTableStatementCstNode extends CstNode {
@@ -1519,12 +1558,16 @@ export interface ConvertPartitionTargetCstNode extends CstNode {
 export type ConvertPartitionTargetCstChildren = {
   List?: IToken[];
   StringLiteral?: (IToken)[];
-  Comma?: IToken[];
+  Comma?: (IToken)[];
   To: IToken[];
   Table?: IToken[];
   identifier?: IdentifierCstNode[];
   Where?: IToken[];
   expression?: ExpressionCstNode[];
+  With?: IToken[];
+  LParen?: IToken[];
+  tableParam?: (TableParamCstNode)[];
+  RParen?: IToken[];
 };
 
 export interface AlterMaterializedViewStatementCstNode extends CstNode {
@@ -1550,10 +1593,11 @@ export type AlterMaterializedViewActionCstChildren = {
   columnRef?: ColumnRefCstNode[];
   Add?: IToken[];
   Index?: (IToken)[];
-  Capacity?: (IToken)[];
-  NumberLiteral?: (IToken)[];
+  indexTypeOptions?: IndexTypeOptionsCstNode[];
   Drop?: (IToken)[];
   Symbol?: IToken[];
+  Capacity?: IToken[];
+  NumberLiteral?: (IToken)[];
   Set?: IToken[];
   Ttl?: IToken[];
   DurationLiteral?: (IToken)[];
@@ -1953,6 +1997,8 @@ export type CopyOptionCstChildren = {
   ParquetVersion?: IToken[];
   NumberLiteral?: IToken[];
   RawArrayEncoding?: IToken[];
+  BloomFilterColumns?: IToken[];
+  BloomFilterFpp?: IToken[];
 };
 
 export interface CheckpointStatementCstNode extends CstNode {
@@ -2913,6 +2959,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   implicitSelectBody(children: ImplicitSelectBodyCstChildren, param?: IN): OUT;
   implicitSelectStatement(children: ImplicitSelectStatementCstChildren, param?: IN): OUT;
   tableRef(children: TableRefCstChildren, param?: IN): OUT;
+  aliasTimestampDesignation(children: AliasTimestampDesignationCstChildren, param?: IN): OUT;
   tableFunctionCall(children: TableFunctionCallCstChildren, param?: IN): OUT;
   tableFunctionName(children: TableFunctionNameCstChildren, param?: IN): OUT;
   joinClause(children: JoinClauseCstChildren, param?: IN): OUT;
@@ -2984,6 +3031,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   alterUserStatement(children: AlterUserStatementCstChildren, param?: IN): OUT;
   alterServiceAccountStatement(children: AlterServiceAccountStatementCstChildren, param?: IN): OUT;
   alterUserAction(children: AlterUserActionCstChildren, param?: IN): OUT;
+  memoryLimit(children: MemoryLimitCstChildren, param?: IN): OUT;
   alterTableStatement(children: AlterTableStatementCstChildren, param?: IN): OUT;
   alterTableAction(children: AlterTableActionCstChildren, param?: IN): OUT;
   convertPartitionTarget(children: ConvertPartitionTargetCstChildren, param?: IN): OUT;

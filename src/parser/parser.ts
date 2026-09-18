@@ -355,11 +355,14 @@ import {
   Alias,
   Compile,
   Lateral,
+  Unlimited,
   Unnest,
   Ordinality,
   // PARQUET clause tokens
   Parquet,
   BloomFilter,
+  BloomFilterColumns,
+  BloomFilterFpp,
   Plain,
   RleDictionary,
   DeltaBinaryPacked,
@@ -928,6 +931,8 @@ class QuestDBParser extends CstParser {
           const la2 = this.LA(2).tokenType
           return la2 !== On && la2 !== By
         }
+        // Don't consume OWNED as alias when followed by BY (OWNED BY clause)
+        if (la1 === Owned) return this.LA(2).tokenType !== By
         // If next token is AS, always allow (explicit alias)
         if (la1 === As) return true
         // Don't consume identifier as alias if followed by LParen —
@@ -948,7 +953,19 @@ class QuestDBParser extends CstParser {
         ])
       },
     })
+    // TIMESTAMP designation after the alias: FROM t alias TIMESTAMP(col)
+    this.OPTION5(() => this.SUBRULE(this.aliasTimestampDesignation))
   })
+
+  private aliasTimestampDesignation = this.RULE(
+    "aliasTimestampDesignation",
+    () => {
+      this.CONSUME(Timestamp)
+      this.CONSUME(LParen)
+      this.SUBRULE(this.columnRef)
+      this.CONSUME(RParen)
+    },
+  )
 
   private tableFunctionCall = this.RULE("tableFunctionCall", () => {
     this.SUBRULE(this.tableFunctionName)
@@ -1106,7 +1123,7 @@ class QuestDBParser extends CstParser {
     ])
   })
 
-  // Standard joins: (INNER | LEFT [OUTER] | CROSS)? JOIN [LATERAL] + ON
+  // Standard joins: (INNER | LEFT|RIGHT|FULL [OUTER] | CROSS)? JOIN [LATERAL] + ON
   private standardJoin = this.RULE("standardJoin", () => {
     this.OPTION(() => {
       this.OR([
@@ -1116,13 +1133,25 @@ class QuestDBParser extends CstParser {
             this.OPTION1(() => this.CONSUME(Outer))
           },
         },
+        {
+          ALT: () => {
+            this.CONSUME(Right)
+            this.OPTION4(() => this.CONSUME1(Outer))
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME(Full)
+            this.OPTION5(() => this.CONSUME2(Outer))
+          },
+        },
         { ALT: () => this.CONSUME(Inner) },
         { ALT: () => this.CONSUME(Cross) },
       ])
     })
     this.CONSUME(Join)
     this.OPTION3(() => this.CONSUME(Lateral))
-    this.SUBRULE(this.tableRef)
+    this.SUBRULE(this.fromSource)
     this.OPTION2(() => {
       this.CONSUME(On)
       this.SUBRULE(this.expression)
@@ -1278,7 +1307,16 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(Null) },
       { ALT: () => this.CONSUME(NumberLiteral) },
-      { ALT: () => this.SUBRULE(this.identifier) },
+      {
+        ALT: () => {
+          this.SUBRULE(this.identifier)
+          this.OPTION(() => {
+            this.CONSUME(LParen)
+            this.SUBRULE1(this.identifier)
+            this.CONSUME(RParen)
+          })
+        },
+      },
     ])
   })
 
@@ -2383,6 +2421,11 @@ class QuestDBParser extends CstParser {
       },
       { ALT: () => this.SUBRULE1(this.selectStatement) },
     ])
+    this.OPTION1(() => {
+      this.CONSUME(Owned)
+      this.CONSUME1(By)
+      this.SUBRULE(this.stringOrIdentifier)
+    })
   })
 
   private dropLiveViewStatement = this.RULE("dropLiveViewStatement", () => {
@@ -2528,6 +2571,14 @@ class QuestDBParser extends CstParser {
           this.CONSUME1(StringLiteral)
         },
       },
+      {
+        ALT: () => {
+          this.CONSUME(Set)
+          this.CONSUME(Memory)
+          this.CONSUME(Limit)
+          this.SUBRULE(this.memoryLimit)
+        },
+      },
     ])
   })
 
@@ -2567,6 +2618,14 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(Enable) },
       { ALT: () => this.CONSUME(Disable) },
+      {
+        ALT: () => {
+          this.CONSUME(Set)
+          this.CONSUME(Memory)
+          this.CONSUME(Limit)
+          this.SUBRULE(this.memoryLimit)
+        },
+      },
       {
         ALT: () => {
           this.CONSUME(With)
@@ -2643,6 +2702,19 @@ class QuestDBParser extends CstParser {
               },
             },
           ])
+        },
+      },
+    ])
+  })
+
+  private memoryLimit = this.RULE("memoryLimit", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Unlimited) },
+      { ALT: () => this.CONSUME(DurationLiteral) },
+      {
+        ALT: () => {
+          this.CONSUME(NumberLiteral)
+          this.OPTION(() => this.CONSUME(Identifier))
         },
       },
     ])
@@ -2992,6 +3064,17 @@ class QuestDBParser extends CstParser {
       this.CONSUME(Where)
       this.SUBRULE(this.expression)
     })
+    // Optional WITH (bloom_filter_columns = '...', bloom_filter_fpp = 0.01)
+    this.OPTION2(() => {
+      this.CONSUME(With)
+      this.CONSUME(LParen)
+      this.SUBRULE(this.tableParam)
+      this.MANY1(() => {
+        this.CONSUME2(Comma)
+        this.SUBRULE1(this.tableParam)
+      })
+      this.CONSUME(RParen)
+    })
   })
 
   // ==========================================================================
@@ -3022,10 +3105,7 @@ class QuestDBParser extends CstParser {
                 ALT: () => {
                   this.CONSUME(Add)
                   this.CONSUME(Index)
-                  this.OPTION(() => {
-                    this.CONSUME(Capacity)
-                    this.CONSUME(NumberLiteral)
-                  })
+                  this.SUBRULE(this.indexTypeOptions)
                 },
               },
               {
@@ -3715,6 +3795,18 @@ class QuestDBParser extends CstParser {
         ALT: () => {
           this.CONSUME(RawArrayEncoding)
           this.SUBRULE2(this.booleanLiteral)
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(BloomFilterColumns)
+          this.SUBRULE3(this.stringOrIdentifier)
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(BloomFilterFpp)
+          this.SUBRULE3(this.expression)
         },
       },
     ])
