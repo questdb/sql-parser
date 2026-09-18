@@ -3,11 +3,19 @@ import * as fs from "fs"
 import * as path from "path"
 import { format } from "../../src/formatter/index"
 
-// Measured locally on 2026-09-17 (median of ten runs, three separate
-// processes): 5,000-line script 18.7-19.1 ms, 50-level nesting 0.28-0.31 ms.
-// Budgets are four times the measured medians, with a floor for timer noise.
-const SCRIPT_BUDGET_MS = 80
-const NESTED_BUDGET_MS = 5
+/**
+ * A wall-clock budget does not survive a shared CI runner, where this file
+ * runs beside suites that saturate the machine. These tests check the shape
+ * of the cost instead: work must grow with the input, not with its square. A
+ * quadratic regression fails here, a slow machine does not.
+ *
+ * Measured on 2026-09-18: ten times the script costs 7.5 to 9.4 times the
+ * work, and four times the nesting costs 2.4 times the work.
+ */
+const GROWTH_LIMIT = 25
+const DEPTH_LIMIT = 12
+/** Only catches a hang; a loaded runner is an order of magnitude under this. */
+const HANG_LIMIT_MS = 5000
 
 const docsQueries: string[] = (
   JSON.parse(
@@ -38,20 +46,32 @@ const buildNested = (depth: number) => {
 const medianDuration = (sql: string) => {
   format(sql)
   const durations: number[] = []
-  for (let run = 0; run < 10; run++) {
+  for (let run = 0; run < 9; run++) {
     const start = performance.now()
     format(sql)
     durations.push(performance.now() - start)
   }
-  return durations.sort((a, b) => a - b)[5]
+  return durations.sort((a, b) => a - b)[4]
 }
 
 describe("formatter performance", () => {
-  it("formats a 5,000-line script within budget", () => {
-    expect(medianDuration(buildScript(5000))).toBeLessThan(SCRIPT_BUDGET_MS)
+  it("costs grow with the size of a script, not with its square", () => {
+    // Given
+    const small = medianDuration(buildScript(500))
+    const large = medianDuration(buildScript(5000))
+
+    // Then
+    expect(large / small).toBeLessThan(GROWTH_LIMIT)
+    expect(large).toBeLessThan(HANG_LIMIT_MS)
   })
 
-  it("formats a 50-level nested query within budget", () => {
-    expect(medianDuration(buildNested(50))).toBeLessThan(NESTED_BUDGET_MS)
+  it("costs grow with nesting depth, not with its square", () => {
+    // Given
+    const shallow = medianDuration(buildNested(50))
+    const deep = medianDuration(buildNested(200))
+
+    // Then
+    expect(deep / shallow).toBeLessThan(DEPTH_LIMIT)
+    expect(deep).toBeLessThan(HANG_LIMIT_MS)
   })
 })
