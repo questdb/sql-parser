@@ -81,7 +81,20 @@ format("SELECT * FROM trades WHERE symbol = 'BTC-USD' LATEST ON ts PARTITION BY 
 // LATEST ON ts PARTITION BY symbol
 ```
 
-The formatter is token-based and never throws on SQL content. It preserves every token, comment, and unknown character, changes whitespace only, and leaves unterminated or unbalanced input verbatim from the point of the problem. Options: `indent` (default two spaces) and `maxLineWidth` (default 50). `format` is also exported from the package root; the `./formatter` subpath loads the lexer without the parser.
+The formatter is token-based and never throws on SQL content. It preserves every token, comment, and unknown character, changes whitespace only, and leaves unterminated or unbalanced input verbatim from the point of the problem.
+
+Options: `indent` (default two spaces), `maxWidth` (default 50), and `capitalize` (default `false`).
+
+```typescript
+format(
+  "create table tab (s symbol index type bitmap, timestamp timestamp) timestamp(timestamp) partition by day wal",
+  { capitalize: true },
+);
+// CREATE TABLE tab (s SYMBOL INDEX TYPE BITMAP, timestamp TIMESTAMP)
+// TIMESTAMP(timestamp) PARTITION BY DAY WAL
+```
+
+With `capitalize`, the formatter parses the statement and raises only the words the grammar read as syntax, so a keyword that names a table, view or column keeps its case, as `timestamp` does above. Most QuestDB keywords are non-reserved and double as names, which is why this needs the grammar. SQL the parser cannot read comes back with its case untouched, and the layout is the same either way.
 
 ### Autocomplete
 

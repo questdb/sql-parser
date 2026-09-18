@@ -31,13 +31,13 @@ const selectPhrases: Phrase[] = [
     ["From"],
     ["Where"],
     ["Latest", "On"],
+    ["Latest", "By"],
     ["Sample", "By"],
     ["Group", "By"],
     ["Order", "By"],
     ["Limit"],
     ["Window"],
     ["Pivot"],
-    ["Unpivot"],
   ),
   ...join(
     ["Join"],
@@ -69,11 +69,19 @@ const insertPhrases: Phrase[] = [
   ...selectPhrases,
 ]
 
-const updatePhrases: Phrase[] = clause(["Update"], ["Set"], ["From"], ["Where"])
+const joinPhrases: Phrase[] = selectPhrases.filter(
+  (phrase) => phrase.role === "join",
+)
+
+const updatePhrases: Phrase[] = [
+  ...clause(["Update"], ["Set"], ["From"], ["Where"]),
+  ...joinPhrases,
+]
 
 const createOptionPhrases: Phrase[] = clause(
   ["Dedup"],
   ["Ttl"],
+  ["Expire", "Rows"],
   ["Storage", "Policy"],
   ["With"],
   ["In", "Volume"],
@@ -96,8 +104,14 @@ const alterActionPhrases: Phrase[] = action(
   ["Squash"],
   ["Dedup"],
   ["Resume", "Wal"],
+  ["Suspend", "Wal"],
+  ["Rebase", "Wal"],
   ["Convert", "Partition"],
   ["Convert", "Partition", "List"],
+  ["Drop", "Expire"],
+  ["Drop", "Storage", "Policy"],
+  ["Enable", "Storage", "Policy"],
+  ["Disable", "Storage", "Policy"],
 )
 
 export const joinSubClauses: Phrase[] = clause(

@@ -31,6 +31,50 @@ export const fixtures: Fixture[] = [
     ].join("\n"),
   },
   {
+    name: "LATEST BY is a clause of its own",
+    input: "SELECT * FROM trades LATEST BY symbol",
+    expected: ["SELECT *", "FROM trades", "LATEST BY symbol"].join("\n"),
+  },
+  {
+    name: "ALTER TABLE WAL and storage policy actions start a line",
+    input: "ALTER TABLE t SUSPEND WAL",
+    expected: ["ALTER TABLE t", "SUSPEND WAL"].join("\n"),
+  },
+  {
+    name: "ALTER TABLE DROP STORAGE POLICY starts a line",
+    input: "ALTER TABLE t DROP STORAGE POLICY",
+    expected: ["ALTER TABLE t", "DROP STORAGE POLICY"].join("\n"),
+  },
+  {
+    name: "ALTER MATERIALIZED VIEW DROP EXPIRE starts a line",
+    input: "ALTER MATERIALIZED VIEW price_1h DROP EXPIRE",
+    expected: ["ALTER MATERIALIZED VIEW price_1h", "DROP EXPIRE"].join("\n"),
+  },
+  {
+    name: "EXPIRE ROWS starts a line",
+    input:
+      "CREATE MATERIALIZED VIEW price_1h AS (SELECT ts, avg(px) FROM trades SAMPLE BY 1h) PARTITION BY DAY EXPIRE ROWS KEEP LATEST PARTITION BY sym",
+    expected: [
+      "CREATE MATERIALIZED VIEW price_1h AS (",
+      "  SELECT ts, avg(px)",
+      "  FROM trades",
+      "  SAMPLE BY 1h",
+      ") PARTITION BY DAY",
+      "EXPIRE ROWS KEEP LATEST PARTITION BY sym",
+    ].join("\n"),
+  },
+  {
+    name: "UPDATE joins break like SELECT joins",
+    input: "UPDATE t SET a = 1 FROM u JOIN v ON u.x = v.x WHERE t.id = u.id",
+    expected: [
+      "UPDATE t",
+      "SET a = 1",
+      "FROM u",
+      "JOIN v ON u.x = v.x",
+      "WHERE t.id = u.id",
+    ].join("\n"),
+  },
+  {
     name: "short select list stays inline",
     input:
       "SELECT symbol, approx_percentile(price, 0.5, 2) AS median, count() FROM trades WHERE timestamp IN today() GROUP BY symbol ORDER BY median DESC",
@@ -150,7 +194,7 @@ export const fixtures: Fixture[] = [
     name: "PARTITION LIST keeps LIST in the clause head when the list breaks",
     input:
       "ALTER TABLE tab ATTACH PARTITION LIST '2022', '2023', '2024', '2025', '2026', '2027'",
-    options: { maxLineWidth: 50 },
+    options: { maxWidth: 50 },
     expected: [
       "ALTER TABLE tab",
       "ATTACH PARTITION LIST",
@@ -193,7 +237,7 @@ export const fixtures: Fixture[] = [
     name: "long predicates break before AND, BETWEEN keeps its AND",
     input:
       "SELECT a FROM t WHERE ts BETWEEN '2024-01-01' AND '2024-02-01' AND x = 1 OR y = 2",
-    options: { maxLineWidth: 30 },
+    options: { maxWidth: 30 },
     expected: [
       "SELECT a",
       "FROM t",
@@ -312,7 +356,7 @@ export const fixtures: Fixture[] = [
   {
     name: "long CASE breaks per branch",
     input: "SELECT CASE WHEN a THEN 1 ELSE 0 END AS f, b FROM t",
-    options: { maxLineWidth: 30 },
+    options: { maxWidth: 30 },
     expected: [
       "SELECT",
       "  CASE",

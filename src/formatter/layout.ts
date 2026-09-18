@@ -136,6 +136,7 @@ class StatementBuilder {
   constructor(
     private readonly pieces: Piece[],
     kind: StatementKind,
+    private readonly uppercaseOffsets: ReadonlySet<number>,
   ) {
     this.kind = kind
     this.phrases = clausePhrases[kind]
@@ -193,11 +194,18 @@ class StatementBuilder {
     return gap(gapBetween(this.previous, piece))
   }
 
+  /** Raises the words the caller identified as syntax; see the capitalize option. */
+  private textOf(piece: Piece): string {
+    return this.uppercaseOffsets.has(piece.token.startOffset)
+      ? piece.token.image.toUpperCase()
+      : piece.token.image
+  }
+
   private takeText(): Element {
     const piece = this.peek()!
     const leading = this.leadingFor(piece)
     this.take()
-    return { leading, doc: text(piece.token.image) }
+    return { leading, doc: text(this.textOf(piece)) }
   }
 
   private matchClause(current: Phrase | null): PhraseMatch | null {
@@ -390,7 +398,7 @@ class StatementBuilder {
         separators.push({
           kind: "logical",
           leading: this.leadingFor(piece),
-          doc: text(piece.token.image),
+          doc: text(this.textOf(piece)),
         })
         this.take()
         continue
@@ -596,11 +604,12 @@ class StatementBuilder {
 export const formatStatement = (
   statement: Statement,
   options: PrintOptions,
+  uppercaseOffsets: ReadonlySet<number>,
 ): string => {
   const kind = detectStatementKind(statement.tokens)
   const boundary = statement.verbatimFrom ?? statement.tokens.length
   const { pieces, trailingGap } = toPieces(statement.tokens.slice(0, boundary))
-  const builder = new StatementBuilder(pieces, kind)
+  const builder = new StatementBuilder(pieces, kind, uppercaseOffsets)
   const parts: Doc[] = [builder.build()]
 
   if (statement.verbatimFrom !== null) {

@@ -11,7 +11,7 @@ describe("format fixtures", () => {
     "%s",
     (_name, fixture) => {
       // Given
-      const options = { maxLineWidth: FIXTURE_WIDTH, ...fixture.options }
+      const options = { maxWidth: FIXTURE_WIDTH, ...fixture.options }
 
       // When
       const output = format(fixture.input, options)
@@ -29,9 +29,9 @@ describe("format options", () => {
   })
 
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
-    "rejects maxLineWidth %s",
-    (maxLineWidth) => {
-      expect(() => format("SELECT 1", { maxLineWidth })).toThrow(TypeError)
+    "rejects maxWidth %s",
+    (maxWidth) => {
+      expect(() => format("SELECT 1", { maxWidth })).toThrow(TypeError)
     },
   )
 

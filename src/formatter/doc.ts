@@ -25,7 +25,7 @@ export const asLine = (leading: Doc): Doc =>
 
 export type PrintOptions = {
   indent: string
-  maxLineWidth: number
+  maxWidth: number
 }
 
 type Mode = "flat" | "break"
@@ -152,7 +152,7 @@ export const printDoc = (doc: Doc, options: PrintOptions): string => {
           break
         }
         const flat: Command = { level, mode: "flat", doc: current.doc }
-        const width = options.maxLineWidth - column - pendingGap.length
+        const width = options.maxWidth - column - pendingGap.length
         commands.push(
           fits(flat, commands, width)
             ? flat

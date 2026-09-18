@@ -2,21 +2,17 @@ import { describe, expect, it } from "vitest"
 import * as fs from "fs"
 import * as path from "path"
 
-const bundlePath = path.join(
-  __dirname,
-  "..",
-  "..",
-  "dist",
-  "formatter",
-  "index.js",
-)
+const distFormatter = path.join(__dirname, "..", "..", "dist", "formatter")
+const bundlePath = path.join(distFormatter, "index.js")
+
 const built = fs.existsSync(bundlePath)
 
 describe("formatter bundle", () => {
-  it.skipIf(!built)("does not include the parser", () => {
+  it.skipIf(!built)("carries the parser but not the AST layer", () => {
     const bundle = fs.readFileSync(bundlePath, "utf-8")
-    expect(bundle).not.toContain("CstParser")
+    // The capitalize option needs the grammar to tell syntax from names.
+    expect(bundle).toContain("performSelfAnalysis")
+    // Nothing needs the CST-to-AST visitor or its serializer.
     expect(bundle).not.toContain("toSql")
-    expect(bundle).not.toContain("performSelfAnalysis")
   })
 })
