@@ -129,6 +129,7 @@ export type SimpleSelectCstChildren = {
   pivotBody?: PivotBodyCstNode[];
   RParen?: IToken[];
   windowClause?: WindowClauseCstNode[];
+  subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
 };
@@ -256,6 +257,7 @@ export type ImplicitSelectBodyCstChildren = {
   sampleByClause?: SampleByClauseCstNode[];
   latestOnClause?: LatestOnClauseCstNode[];
   groupByClause?: GroupByClauseCstNode[];
+  subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
 };
@@ -508,6 +510,20 @@ export type LatestOnClauseCstChildren = {
   Partition?: IToken[];
   By?: (IToken)[];
   Comma?: (IToken)[];
+};
+
+export interface SubsampleClauseCstNode extends CstNode {
+  name: "subsampleClause";
+  children: SubsampleClauseCstChildren;
+}
+
+export type SubsampleClauseCstChildren = {
+  Subsample: IToken[];
+  identifier: IdentifierCstNode[];
+  LParen: IToken[];
+  expression: (ExpressionCstNode)[];
+  Comma?: IToken[];
+  RParen: IToken[];
 };
 
 export interface FillClauseCstNode extends CstNode {
@@ -2974,6 +2990,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   whereClause(children: WhereClauseCstChildren, param?: IN): OUT;
   sampleByClause(children: SampleByClauseCstChildren, param?: IN): OUT;
   latestOnClause(children: LatestOnClauseCstChildren, param?: IN): OUT;
+  subsampleClause(children: SubsampleClauseCstChildren, param?: IN): OUT;
   fillClause(children: FillClauseCstChildren, param?: IN): OUT;
   fillValue(children: FillValueCstChildren, param?: IN): OUT;
   alignToClause(children: AlignToClauseCstChildren, param?: IN): OUT;

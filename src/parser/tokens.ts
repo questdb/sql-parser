@@ -349,6 +349,12 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Pgwire",
   "Storage",
   "Policy",
+  "Cadence",
+  "Lttb",
+  "M4",
+  "Minmax",
+  "Sdt",
+  "Uniform",
   // Window frame keywords
   "Row",
   "Rows",
@@ -704,6 +710,7 @@ export const Lzo = getToken("Lzo")
 
 // Storage policy keywords / constants
 export const Storage = getToken("Storage")
+export const Subsample = getToken("Subsample")
 export const Policy = getToken("Policy")
 export const Local = getToken("Local")
 export const Remote = getToken("Remote")

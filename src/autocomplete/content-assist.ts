@@ -110,6 +110,12 @@ export interface ContentAssistResult {
    * clauses can be autocompleted. See `contextKeywordSuggestions`.
    */
   contextKeywords: string[]
+  /**
+   * Function names the grammar accepts only through `identifier` at the cursor,
+   * such as the SUBSAMPLE methods. Rendered as functions, not keywords.
+   * See `contextFunctionSuggestions`.
+   */
+  contextFunctions: string[]
 }
 
 // =============================================================================
@@ -841,6 +847,29 @@ interface ComputeResult extends CategoryFlags {
   nextTokenTypes: TokenType[]
   isConditionContext: boolean
   contextKeywords: string[]
+  contextFunctions: string[]
+}
+
+// SUBSAMPLE methods (questdb/questdb#7013). The grammar reads the method
+// through `identifier` so the names stay non-reserved; suggest them here.
+const SUBSAMPLE_METHODS = ["uniform", "cadence", "m4", "minmax", "lttb", "sdt"]
+
+/**
+ * Function names to suggest where the grammar only accepts them through the
+ * generic `identifier` sub-rule. Today that is the method after SUBSAMPLE.
+ */
+function contextFunctionSuggestions(
+  tokens: IToken[],
+  suggestions: ContentAssistSuggestion[],
+): string[] {
+  const last = tokens[tokens.length - 1]?.tokenType.name
+  if (last !== "Subsample") return []
+  const inSubsample = suggestions.some(
+    (s) =>
+      s.nextTokenType.name === "IdentifierKeyword" &&
+      s.ruleStack.includes("subsampleClause"),
+  )
+  return inSubsample ? [...SUBSAMPLE_METHODS] : []
 }
 
 // Category names valid inside SHOW CREATE DATABASE (INCLUDE|EXCLUDE) ( ... ).
@@ -999,12 +1028,14 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   )
 
   const contextKeywords = contextKeywordSuggestions(tokens, suggestions)
+  const contextFunctions = contextFunctionSuggestions(tokens, suggestions)
 
   return {
     nextTokenTypes: result,
     ...flags,
     isConditionContext,
     contextKeywords,
+    contextFunctions,
   }
 }
 
@@ -1146,6 +1177,7 @@ export function getContentAssist(
         referencedColumns: new Set(),
         isConditionContext: false,
         contextKeywords: [],
+        contextFunctions: [],
       }
     }
   }
@@ -1180,6 +1212,7 @@ export function getContentAssist(
   let suggestTableValuedFunctions = false
   let isConditionContext = false
   let contextKeywords: string[] = []
+  let contextFunctions: string[] = []
   try {
     const computed = computeSuggestions(tokensForAssist)
     nextTokenTypes = computed.nextTokenTypes
@@ -1191,6 +1224,7 @@ export function getContentAssist(
     suggestTableValuedFunctions = computed.suggestTableValuedFunctions
     isConditionContext = computed.isConditionContext
     contextKeywords = computed.contextKeywords
+    contextFunctions = computed.contextFunctions
   } catch (e) {
     // If content assist fails, return empty suggestions
     // This can happen with malformed input
@@ -1283,6 +1317,7 @@ export function getContentAssist(
     referencedColumns,
     isConditionContext,
     contextKeywords,
+    contextFunctions,
   }
 }
 

@@ -263,6 +263,12 @@ function selectToSql(stmt: AST.SelectStatement): string {
     parts.push(stmt.namedWindows.map(namedWindowToSql).join(", "))
   }
 
+  // SUBSAMPLE method(args)
+  if (stmt.subsample) {
+    const args = stmt.subsample.args.map(expressionToSql).join(", ")
+    parts.push(`SUBSAMPLE ${escapeIdentifier(stmt.subsample.method)}(${args})`)
+  }
+
   // ORDER BY
   if (stmt.orderBy && stmt.orderBy.length > 0) {
     parts.push("ORDER BY")

@@ -36,6 +36,41 @@ export const fixtures: Fixture[] = [
     expected: ["SELECT *", "FROM trades", "LATEST BY symbol"].join("\n"),
   },
   {
+    name: "SUBSAMPLE starts a line between WHERE and ORDER BY",
+    input:
+      "SELECT ts, price FROM trades WHERE symbol = 'BTC-USD' SUBSAMPLE lttb(price, 2000, '1h') ORDER BY ts DESC LIMIT 100",
+    expected: [
+      "SELECT ts, price",
+      "FROM trades",
+      "WHERE symbol = 'BTC-USD'",
+      "SUBSAMPLE lttb(price, 2000, '1h')",
+      "ORDER BY ts DESC",
+      "LIMIT 100",
+    ].join("\n"),
+  },
+  {
+    name: "SUBSAMPLE follows SAMPLE BY on its own line",
+    input:
+      "SELECT ts, avg(price) avg FROM trades SAMPLE BY 1h SUBSAMPLE lttb(avg, 500)",
+    expected: [
+      "SELECT ts, avg(price) avg",
+      "FROM trades",
+      "SAMPLE BY 1h",
+      "SUBSAMPLE lttb(avg, 500)",
+    ].join("\n"),
+  },
+  {
+    name: "SUBSAMPLE in the implicit-select shorthand opens a block",
+    input: "SELECT v, ts FROM (t SUBSAMPLE uniform(4)) x",
+    expected: [
+      "SELECT v, ts",
+      "FROM (",
+      "  t",
+      "  SUBSAMPLE uniform(4)",
+      ") x",
+    ].join("\n"),
+  },
+  {
     name: "ALTER TABLE WAL and storage policy actions start a line",
     input: "ALTER TABLE t SUSPEND WAL",
     expected: ["ALTER TABLE t", "SUSPEND WAL"].join("\n"),

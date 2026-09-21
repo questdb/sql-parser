@@ -193,6 +193,7 @@ export const keywords: string[] = [
   "status",
   "step",
   "storage",
+  "subsample",
   "suspend",
   "switch",
   "system",

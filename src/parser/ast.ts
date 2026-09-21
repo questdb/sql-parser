@@ -78,6 +78,8 @@ export interface SelectStatement extends AstNode {
   pivot?: PivotClause
   /** Named window definitions: SELECT ... WINDOW w AS (...) [, w2 AS (...)] */
   namedWindows?: NamedWindow[]
+  /** SUBSAMPLE method(args): server-side downsampling, before ORDER BY */
+  subsample?: SubsampleClause
   orderBy?: OrderByItem[]
   limit?: LimitClause
   setOperations?: SetOperation[]
@@ -1170,6 +1172,20 @@ export interface LatestOnClause extends AstNode {
   type: "latestOn"
   timestamp?: QualifiedName
   partitionBy: QualifiedName[]
+}
+
+/**
+ * SUBSAMPLE clause: `SELECT ... SUBSAMPLE lttb(price, 2000)`.
+ * Reduces the result to a representative subset of its original rows.
+ * Methods as of QuestDB Sep 2026: uniform(points), cadence(stride[, seed]),
+ * m4(column, points), minmax(column, points), lttb(column, points[, gap]),
+ * sdt(column, compdev). The parser accepts any method name; the server
+ * validates it.
+ */
+export interface SubsampleClause extends AstNode {
+  type: "subsample"
+  method: string
+  args: Expression[]
 }
 
 export interface OrderByItem extends AstNode {

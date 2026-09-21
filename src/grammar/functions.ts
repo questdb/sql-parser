@@ -286,17 +286,23 @@ export const aggregateFunctions: string[] = [
 ]
 
 export const windowFunctions: string[] = [
+  "cadence",
   "cume_dist",
   "dense_rank",
   "first_value",
   "lag",
   "last_value",
   "lead",
+  "lttb",
+  "m4",
+  "minmax",
   "nth_value",
   "ntile",
   "percent_rank",
   "rank",
   "row_number",
+  "sdt",
+  "uniform",
 ]
 
 export const tableValuedFunctions: string[] = [
