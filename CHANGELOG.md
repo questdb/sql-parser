@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.18 - 2026.09.21
+### Added
+- Add SUBSAMPLE keyword and algorithm constants [#25](https://github.com/questdb/sql-parser/pull/25)
+- add sql formatter and fix parser gaps [#34](https://github.com/questdb/sql-parser/pull/34)
+- Add resource group keywords, constants and functions [#33](https://github.com/questdb/sql-parser/pull/33)
+- add support for SWITCH COLD STORAGE role and status commands [#32](https://github.com/questdb/sql-parser/pull/32)
+
 ## 0.1.17 - 2026.08.18
 ### Changed
 - `isOrdered` removed from the aggregate function list, so it no longer appears in autocomplete. [#29](https://github.com/questdb/sql-parser/pull/29)
