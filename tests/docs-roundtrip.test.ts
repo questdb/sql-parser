@@ -66,10 +66,12 @@ function normalizeSql(sql: string): string {
   s = s.replace(/\s+\]/g, "]")
   // N2: Normalize arithmetic operator spacing: a+b, a + b → a + b
   s = s.replace(/\s*([+\-*/%])\s*/g, " $1 ")
+  // N2b: Normalize DECLARE assignment spacing: @x:=1, @x := 1 → @x := 1
+  s = s.replace(/\s*:=\s*/g, " := ")
   // N3: Normalize VALUES spacing: VALUES( → VALUES (
   s = s.replace(/VALUES\s*\(/g, "VALUES (")
-  // N4: Normalize keyword-paren spacing: KEYS( → KEYS (, JOIN( → JOIN (
-  s = s.replace(/([A-Z])\(/g, "$1 (")
+  // N4: Normalize keyword-paren spacing: KEYS( → KEYS (, JOIN( → JOIN (, T1( → T1 (
+  s = s.replace(/([A-Z0-9_])\(/g, "$1 (")
   // N5: Normalize quoted identifiers: "FOO" → FOO, 'FOO' → FOO (quoting is stylistic)
   // QuestDB accepts both single and double quotes for identifiers.
   s = s.replace(/"([^"]+)"/g, "$1")
@@ -94,6 +96,14 @@ function normalizeSql(sql: string): string {
   s = s.replace(/\bPASSWORD\s+'([^']+)'/g, "PASSWORD $1")
   // N9: Normalize TTL 0 — "TTL 0" and "TTL 0 DAYS" are the same (0 means disabled)
   s = s.replace(/\bTTL 0 [A-Z]+\b/g, "TTL 0")
+  // N9b: DROP EXPIRE and DROP EXPIRE ROWS are the same
+  s = s.replace(/\bDROP EXPIRE ROWS\b/g, "DROP EXPIRE")
+  // N9c: CREATE TABLE accepts FORMAT in any position among the trailing options;
+  // compare with FORMAT moved to the end of the statement
+  s = s.replace(
+    /^(CREATE TABLE\b.*?) FORMAT (PARQUET|NATIVE)\b(.*)$/,
+    "$1$3 FORMAT $2",
+  )
   // N10: Normalize singular/plural time units: HOUR → HOURS, DAY → DAYS, etc.
   s = s.replace(/\b(\d+)\s+(HOUR|DAY|WEEK|MONTH|YEAR)\b/g, "$1 $2S")
   // N11: Normalize FORMAT/CODEC value quoting: FORMAT 'PARQUET' → FORMAT PARQUET

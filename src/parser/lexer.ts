@@ -28,6 +28,8 @@ import {
   Binary,
   Boolean,
   BloomFilter,
+  BloomFilterColumns,
+  BloomFilterFpp,
   By,
   Bypass,
   Byte,
@@ -184,6 +186,7 @@ import {
   Owned,
   Param,
   Parameters,
+  Native,
   Parquet,
   ParquetVersion,
   PartitionBy,
@@ -264,6 +267,7 @@ import {
   Unbounded,
   Union,
   Unlock,
+  Unlimited,
   Unnest,
   Unpivot,
   Update,
@@ -298,6 +302,37 @@ import {
   Lz4Raw,
   Brotli,
   Lzo,
+  Storage,
+  Policy,
+  Local,
+  Remote,
+  Rebase,
+  Stats,
+  Switch,
+  Role,
+  Status,
+  Replica,
+  Timeout,
+  Expire,
+  Cleanup,
+  Cold,
+  Force,
+  Manager,
+  Refresher,
+  Highest,
+  Lowest,
+  Live,
+  Flush,
+  Anchor,
+  Beginning,
+  Now,
+  Memory,
+  Daily,
+  Expression,
+  Posting,
+  Delta,
+  Ef,
+  Bitmap,
 } from "./tokens"
 
 // Re-export all keyword tokens for parser and external use
@@ -326,6 +361,8 @@ export {
   Binary,
   Boolean,
   BloomFilter,
+  BloomFilterColumns,
+  BloomFilterFpp,
   By,
   Bypass,
   Byte,
@@ -482,6 +519,7 @@ export {
   Owned,
   Param,
   Parameters,
+  Native,
   Parquet,
   ParquetVersion,
   PartitionBy,
@@ -562,6 +600,7 @@ export {
   Unbounded,
   Union,
   Unlock,
+  Unlimited,
   Unnest,
   Unpivot,
   Update,
@@ -596,6 +635,37 @@ export {
   Lz4Raw,
   Brotli,
   Lzo,
+  Storage,
+  Policy,
+  Local,
+  Remote,
+  Rebase,
+  Stats,
+  Switch,
+  Role,
+  Status,
+  Replica,
+  Timeout,
+  Expire,
+  Cleanup,
+  Cold,
+  Force,
+  Manager,
+  Refresher,
+  Highest,
+  Lowest,
+  Live,
+  Flush,
+  Anchor,
+  Beginning,
+  Now,
+  Memory,
+  Daily,
+  Expression,
+  Posting,
+  Delta,
+  Ef,
+  Bitmap,
 }
 
 // =============================================================================
@@ -727,12 +797,21 @@ export const DecimalLiteral = createToken({
 })
 
 // QuestDB time units for SAMPLE BY (e.g., 1h, 5m, 30s, 1d, 1M, 1y, 100T, 1U, 1.5d)
-// Units: n=nanos, u/U=micros, T=millis, ms=millis, s=seconds, m=minutes, h/H=hours, d=days, w=weeks, M=months, y=years
-// Supports decimal values like 1.5d, 0.5h
-// Multi-char units (ms, us) must appear before single-char alternatives to avoid prefix match
+// and storage policy / TTL DDL (e.g., 2Y, 2W, 2D, 1M).
+// SAMPLE BY units: n=nanos, u/U=micros, T=millis, ms=millis, s=seconds,
+//   m=minutes, h/H=hours, d=days, w=weeks, M=months, y=years.
+// Storage policy / TTL docs additionally use the uppercase canonical forms
+//   H, D, W, M, Y for hour/day/week/month/year — QuestDB's TTL parser is
+//   case-insensitive on the unit suffix (LowerCaseCharSequenceIntHashMap in
+//   PartitionBy.ttlUnitToIndexMap), so we accept D/W/Y here too. Semantic
+//   disambiguation (e.g. rejecting nanos in storage policy) is enforced by
+//   per-context grammar rules.
+// Supports decimal values like 1.5d, 0.5h.
+// Multi-char units (ms, us) must appear before single-char alternatives to
+// avoid prefix match.
 export const DurationLiteral = createToken({
   name: "DurationLiteral",
-  pattern: /\d[\d_]*(\.\d[\d_]*)?(ms|us|[smhdMyNnTUuHw])/,
+  pattern: /\d[\d_]*(\.\d[\d_]*)?(ms|us|[smhdwyMDWYNnTUuH])/,
 })
 
 // Numbers (negation is handled as unary minus in the parser, not in the lexer)
@@ -869,7 +948,7 @@ export const allTokens: TokenType[] = [
 // Lexer Instance
 // =============================================================================
 
-export const QuestDBLexer = new Lexer(allTokens)
+export const QuestDBLexer = new Lexer(allTokens, { positionTracking: "full" })
 
 export function tokenize(input: string) {
   const result = QuestDBLexer.tokenize(input)

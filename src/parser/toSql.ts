@@ -23,6 +23,10 @@ const RESERVED_KEYWORDS = new Set(
     .map((k) => k.toLowerCase()),
 )
 
+function formatTimeUnit(value: number, unit: string): string {
+  return `${value} ${value === 1 ? unit.replace(/S$/, "") : unit}`
+}
+
 export function toSql(node: AST.Statement | AST.Statement[]): string {
   if (Array.isArray(node)) {
     return node.map((s) => statementToSql(s)).join(";\n")
@@ -42,14 +46,20 @@ function statementToSql(stmt: AST.Statement): string {
       return createTableToSql(stmt)
     case "createView":
       return createViewToSql(stmt)
+    case "createLiveView":
+      return createLiveViewToSql(stmt)
     case "alterTable":
       return alterTableToSql(stmt)
     case "alterView":
       return alterViewToSql(stmt)
+    case "alterLiveView":
+      return alterLiveViewToSql(stmt)
     case "dropTable":
       return dropTableToSql(stmt)
     case "dropView":
       return dropViewToSql(stmt)
+    case "dropLiveView":
+      return dropLiveViewToSql(stmt)
     case "truncateTable":
       return truncateTableToSql(stmt)
     case "renameTable":
@@ -119,12 +129,16 @@ function statementToSql(stmt: AST.Statement): string {
       return reindexTableToSql(stmt)
     case "copyCancel":
       return `COPY ${escapeString(stmt.id)} CANCEL`
+    case "copyPermissions":
+      return `COPY PERMISSIONS FROM ${qualifiedNameToSql(stmt.from)} TO ${qualifiedNameToSql(stmt.to)}`
     case "copyFrom":
       return copyFromToSql(stmt)
     case "copyTo":
       return copyToToSql(stmt)
     case "backup":
       return backupToSql(stmt)
+    case "switch":
+      return switchToSql(stmt)
     case "alterGroup":
       return alterGroupToSql(stmt)
     case "compileView":
@@ -348,9 +362,11 @@ function tableRefToSql(ref: AST.TableRef): string {
     sql = "LATERAL " + sql
   }
 
-  if (ref.timestampDesignation) {
-    sql += ` TIMESTAMP(${escapeIdentifier(ref.timestampDesignation)})`
-  }
+  const designation = ref.timestampDesignation
+    ? ` TIMESTAMP(${escapeIdentifier(ref.timestampDesignation)})`
+    : ""
+
+  if (!ref.timestampAfterAlias) sql += designation
 
   if (ref.alias) {
     sql += ` AS ${escapeIdentifier(ref.alias)}`
@@ -359,6 +375,8 @@ function tableRefToSql(ref: AST.TableRef): string {
   if (ref.columnAliases && ref.columnAliases.length > 0) {
     sql += `(${ref.columnAliases.map(escapeIdentifier).join(", ")})`
   }
+
+  if (ref.timestampAfterAlias) sql += designation
 
   if (ref.joins) {
     for (const join of ref.joins) {
@@ -439,7 +457,12 @@ function windowJoinBoundToSql(bound: AST.WindowJoinBound): string {
     }
     return "CURRENT ROW"
   }
-  return `${bound.duration} ${bound.direction!.toUpperCase()}`
+  const dir = bound.direction!.toUpperCase()
+  if (bound.boundExpr) {
+    const e = expressionToSql(bound.boundExpr)
+    return bound.unit ? `${e} ${bound.unit} ${dir}` : `${e} ${dir}`
+  }
+  return `${bound.duration} ${dir}`
 }
 
 function orderByItemToSql(item: AST.OrderByItem): string {
@@ -545,6 +568,42 @@ function updateToSql(stmt: AST.UpdateStatement): string {
 // CREATE TABLE
 // =============================================================================
 
+function indexTypeToSql(
+  t: NonNullable<AST.ColumnDefinition["indexType"]>,
+): string {
+  switch (t) {
+    case "posting":
+      return "POSTING"
+    case "posting_delta":
+      return "POSTING DELTA"
+    case "posting_ef":
+      return "POSTING EF"
+    case "bitmap":
+      return "BITMAP"
+    case "none":
+      return "NONE"
+  }
+}
+
+// [TYPE (POSTING [DELTA|EF] | BITMAP | NONE)] [INCLUDE(cols)] [CAPACITY n]
+function indexOptionsToSql(
+  indexType: AST.ColumnDefinition["indexType"],
+  include: string[] | undefined,
+  capacity: number | undefined,
+): string {
+  let s = ""
+  if (indexType) s += ` TYPE ${indexTypeToSql(indexType)}`
+  if (include && include.length > 0) {
+    s += ` INCLUDE(${include.map(escapeIdentifier).join(", ")})`
+  }
+  if (capacity != null) s += ` CAPACITY ${capacity}`
+  return s
+}
+
+function indexDefToSql(idx: AST.IndexDefinition): string {
+  return `INDEX(${qualifiedNameToSql(idx.column)}${indexOptionsToSql(idx.indexType, idx.include, idx.capacity)})`
+}
+
 function columnDefToSql(c: AST.ColumnDefinition): string {
   let sql = `${escapeIdentifier(c.name)} ${c.dataType}`
   if (c.symbolCapacity != null) {
@@ -557,9 +616,7 @@ function columnDefToSql(c: AST.ColumnDefinition): string {
   }
   if (c.indexed) {
     sql += " INDEX"
-    if (c.indexCapacity != null) {
-      sql += ` CAPACITY ${c.indexCapacity}`
-    }
+    sql += indexOptionsToSql(c.indexType, c.indexInclude, c.indexCapacity)
   }
   if (c.parquetConfig) {
     sql += " " + parquetConfigToSql(c.parquetConfig)
@@ -583,6 +640,31 @@ function parquetConfigToSql(config: AST.ParquetConfig): string {
     parts.push("bloom_filter")
   }
   return `PARQUET(${parts.join(", ")})`
+}
+
+function storagePolicyToSql(sp: AST.StoragePolicy): string {
+  const clauses: string[] = []
+  if (sp.toParquet) {
+    clauses.push(
+      `TO PARQUET ${formatTimeUnit(sp.toParquet.value, sp.toParquet.unit)}`,
+    )
+  }
+  if (sp.toRemote) {
+    clauses.push(
+      `TO REMOTE ${formatTimeUnit(sp.toRemote.value, sp.toRemote.unit)}`,
+    )
+  }
+  if (sp.dropLocal) {
+    clauses.push(
+      `DROP LOCAL ${formatTimeUnit(sp.dropLocal.value, sp.dropLocal.unit)}`,
+    )
+  }
+  if (sp.dropRemote) {
+    clauses.push(
+      `DROP REMOTE ${formatTimeUnit(sp.dropRemote.value, sp.dropRemote.unit)}`,
+    )
+  }
+  return `STORAGE POLICY(${clauses.join(", ")})`
 }
 
 function createTableToSql(stmt: AST.CreateTableStatement): string {
@@ -616,11 +698,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     }
     if (stmt.indexes && stmt.indexes.length > 0) {
       for (const idx of stmt.indexes) {
-        asSql += `, INDEX(${qualifiedNameToSql(idx.column)}`
-        if (idx.capacity != null) {
-          asSql += ` CAPACITY ${idx.capacity}`
-        }
-        asSql += ")"
+        asSql += ", " + indexDefToSql(idx)
       }
     }
     parts.push(asSql)
@@ -628,11 +706,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     let colSql = `(${stmt.columns.map(columnDefToSql).join(", ")})`
     if (stmt.indexes && stmt.indexes.length > 0) {
       for (const idx of stmt.indexes) {
-        colSql += `, INDEX(${qualifiedNameToSql(idx.column)}`
-        if (idx.capacity != null) {
-          colSql += ` CAPACITY ${idx.capacity}`
-        }
-        colSql += ")"
+        colSql += ", " + indexDefToSql(idx)
       }
     }
     parts.push(colSql)
@@ -647,13 +721,21 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
   }
 
   if (stmt.ttl) {
-    parts.push(`TTL ${stmt.ttl.value} ${stmt.ttl.unit}`)
+    parts.push(`TTL ${formatTimeUnit(stmt.ttl.value, stmt.ttl.unit)}`)
+  }
+
+  if (stmt.storagePolicy) {
+    parts.push(storagePolicyToSql(stmt.storagePolicy))
   }
 
   if (stmt.bypassWal) {
     parts.push("BYPASS WAL")
   } else if (stmt.wal) {
     parts.push("WAL")
+  }
+
+  if (stmt.tableFormat) {
+    parts.push(`FORMAT ${stmt.tableFormat.toUpperCase()}`)
   }
 
   if (stmt.withParams && stmt.withParams.length > 0) {
@@ -719,6 +801,61 @@ function dropViewToSql(stmt: AST.DropViewStatement): string {
   return parts.join(" ")
 }
 
+function createLiveViewToSql(stmt: AST.CreateLiveViewStatement): string {
+  const parts: string[] = ["CREATE LIVE VIEW"]
+  if (stmt.ifNotExists) parts.push("IF NOT EXISTS")
+  parts.push(qualifiedNameToSql(stmt.view))
+  parts.push(`FLUSH EVERY ${stmt.flushEvery}`)
+  if (stmt.inMemory) parts.push(`IN MEMORY ${stmt.inMemory}`)
+  if (stmt.partitionBy) parts.push(`PARTITION BY ${stmt.partitionBy}`)
+  if (stmt.startFrom) {
+    if (stmt.startFrom.kind === "now") parts.push("START FROM NOW")
+    else if (stmt.startFrom.kind === "beginning")
+      parts.push("START FROM BEGINNING")
+    else parts.push(`START FROM ${escapeString(stmt.startFrom.value!)}`)
+  }
+  parts.push(
+    stmt.asParens
+      ? `AS (${selectToSql(stmt.query)})`
+      : `AS ${selectToSql(stmt.query)}`,
+  )
+  if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
+  return parts.join(" ")
+}
+
+function dropLiveViewToSql(stmt: AST.DropLiveViewStatement): string {
+  const parts: string[] = ["DROP LIVE VIEW"]
+  if (stmt.ifExists) parts.push("IF EXISTS")
+  parts.push(qualifiedNameToSql(stmt.view))
+  return parts.join(" ")
+}
+
+function alterLiveViewToSql(stmt: AST.AlterLiveViewStatement): string {
+  const parts = [`ALTER LIVE VIEW ${qualifiedNameToSql(stmt.view)}`]
+  if (stmt.action === "suspendWal") {
+    parts.push("SUSPEND WAL")
+    if (stmt.code != null || stmt.message) {
+      const w: string[] = []
+      if (stmt.code != null) {
+        w.push(
+          typeof stmt.code === "number"
+            ? String(stmt.code)
+            : escapeString(stmt.code),
+        )
+      }
+      if (stmt.message) w.push(escapeString(stmt.message))
+      parts.push(`WITH ${w.join(", ")}`)
+    }
+  } else {
+    parts.push("RESUME WAL")
+    if (stmt.fromTxn !== undefined) parts.push(`FROM TXN ${stmt.fromTxn}`)
+    else if (stmt.fromTransaction !== undefined) {
+      parts.push(`FROM TRANSACTION ${stmt.fromTransaction}`)
+    }
+  }
+  return parts.join(" ")
+}
+
 // =============================================================================
 // ALTER TABLE
 // =============================================================================
@@ -762,7 +899,14 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
           parts.push("NOCACHE")
         }
       } else if (action.alterType === "addIndex") {
-        parts.push("ADD INDEX")
+        parts.push(
+          "ADD INDEX" +
+            indexOptionsToSql(
+              action.indexType,
+              action.indexInclude,
+              action.capacity,
+            ),
+        )
       } else if (action.alterType === "dropIndex") {
         parts.push("DROP INDEX")
       } else if (
@@ -828,7 +972,10 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       break
     case "setTtl":
       parts.push("SET TTL")
-      parts.push(`${action.ttl.value} ${action.ttl.unit}`)
+      parts.push(formatTimeUnit(action.ttl.value, action.ttl.unit))
+      break
+    case "setTableFormat":
+      parts.push(`SET FORMAT ${action.format.toUpperCase()}`)
       break
     case "dedupDisable":
       parts.push("DEDUP DISABLE")
@@ -867,6 +1014,13 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       }
       break
     }
+    case "rebaseWal": {
+      parts.push("REBASE WAL")
+      if (action.targetDir != null) {
+        parts.push(`INTO ${escapeString(action.targetDir)}`)
+      }
+      break
+    }
     case "convertPartition": {
       parts.push("CONVERT PARTITION")
       if (action.partitions && action.partitions.length > 0) {
@@ -881,8 +1035,27 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
         parts.push("WHERE")
         parts.push(expressionToSql(action.where))
       }
+      if (action.withParams && action.withParams.length > 0) {
+        const params = action.withParams.map((p) =>
+          p.value ? `${p.name} = ${expressionToSql(p.value)}` : p.name,
+        )
+        parts.push(`WITH (${params.join(", ")})`)
+      }
       break
     }
+    case "setStoragePolicy":
+      parts.push("SET")
+      parts.push(storagePolicyToSql(action.policy))
+      break
+    case "dropStoragePolicy":
+      parts.push("DROP STORAGE POLICY")
+      break
+    case "enableStoragePolicy":
+      parts.push("ENABLE STORAGE POLICY")
+      break
+    case "disableStoragePolicy":
+      parts.push("DISABLE STORAGE POLICY")
+      break
   }
 
   return parts.join(" ")
@@ -960,6 +1133,17 @@ function showToSql(stmt: AST.ShowStatement): string {
       return `SHOW CREATE VIEW ${qualifiedNameToSql(stmt.table!)}`
     case "createMaterializedView":
       return `SHOW CREATE MATERIALIZED VIEW ${qualifiedNameToSql(stmt.table!)}`
+    case "createLiveView":
+      return `SHOW CREATE LIVE VIEW ${qualifiedNameToSql(stmt.table!)}`
+    case "createDatabase": {
+      let s = "SHOW CREATE DATABASE"
+      const inc = stmt.databaseInclude
+      if (inc) {
+        s += inc.mode === "include" ? " INCLUDE" : " EXCLUDE"
+        s += inc.all ? " ALL" : ` (${(inc.categories ?? []).join(", ")})`
+      }
+      return s
+    }
     case "serverVersion":
       return "SHOW SERVER_VERSION"
     case "parameters":
@@ -1053,6 +1237,31 @@ function materializedViewPeriodToSql(
   return `PERIOD (${inner.join(" ")})`
 }
 
+function expireRowsClauseToSql(clause: AST.ExpireRowsClause): string {
+  const parts = ["EXPIRE ROWS"]
+  if (clause.mode === "when") {
+    parts.push("WHEN", expressionToSql(clause.predicate!))
+  } else if (clause.mode === "keepLatest") {
+    parts.push("KEEP LATEST")
+    if (clause.on) parts.push("ON", escapeIdentifier(clause.on))
+    parts.push(
+      `PARTITION BY ${(clause.partitionBy ?? []).map(escapeIdentifier).join(", ")}`,
+    )
+  } else {
+    parts.push("KEEP")
+    if (clause.keepCount !== undefined) parts.push(String(clause.keepCount))
+    parts.push(clause.extremum === "lowest" ? "LOWEST" : "HIGHEST")
+    parts.push(escapeIdentifier(clause.column!))
+    if (clause.partitionBy && clause.partitionBy.length > 0) {
+      parts.push(
+        `PARTITION BY ${clause.partitionBy.map(escapeIdentifier).join(", ")}`,
+      )
+    }
+  }
+  if (clause.cleanupEvery) parts.push("CLEANUP EVERY", clause.cleanupEvery)
+  return parts.join(" ")
+}
+
 function createMaterializedViewToSql(
   stmt: AST.CreateMaterializedViewStatement,
 ): string {
@@ -1063,15 +1272,22 @@ function createMaterializedViewToSql(
     parts.push(`WITH BASE ${qualifiedNameToSql(stmt.baseTable)}`)
   if (stmt.refresh) parts.push(materializedViewRefreshToSql(stmt.refresh))
   if (stmt.period) parts.push(materializedViewPeriodToSql(stmt.period))
-  if (stmt.asParens) {
-    parts.push(`AS (${selectToSql(stmt.query)})`)
-  } else {
-    parts.push(`AS ${selectToSql(stmt.query)}`)
+  let asSql = stmt.asParens
+    ? `AS (${selectToSql(stmt.query)})`
+    : `AS ${selectToSql(stmt.query)}`
+  if (stmt.indexes && stmt.indexes.length > 0) {
+    for (const idx of stmt.indexes) {
+      asSql += ", " + indexDefToSql(idx)
+    }
   }
+  parts.push(asSql)
   if (stmt.timestamp)
     parts.push(`TIMESTAMP(${qualifiedNameToSql(stmt.timestamp)})`)
   if (stmt.partitionBy) parts.push(`PARTITION BY ${stmt.partitionBy}`)
-  if (stmt.ttl) parts.push(`TTL ${stmt.ttl.value} ${stmt.ttl.unit}`)
+  if (stmt.ttl)
+    parts.push(`TTL ${formatTimeUnit(stmt.ttl.value, stmt.ttl.unit)}`)
+  if (stmt.storagePolicy) parts.push(storagePolicyToSql(stmt.storagePolicy))
+  if (stmt.expireRows) parts.push(expireRowsClauseToSql(stmt.expireRows))
   if (stmt.volume) parts.push(`IN VOLUME ${escapeIdentifier(stmt.volume)}`)
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
@@ -1085,22 +1301,35 @@ function alterMaterializedViewToSql(
   ]
   const action = stmt.action
   switch (action.actionType) {
-    case "addIndex": {
-      let s = `ALTER COLUMN ${escapeIdentifier(action.column)} ADD INDEX`
-      if (action.capacity) s += ` CAPACITY ${action.capacity}`
-      parts.push(s)
+    case "addIndex":
+      parts.push(
+        `ALTER COLUMN ${escapeIdentifier(action.column)} ADD INDEX` +
+          indexOptionsToSql(
+            action.indexType,
+            action.indexInclude,
+            action.capacity,
+          ),
+      )
       break
-    }
     case "symbolCapacity":
       parts.push(
         `ALTER COLUMN ${escapeIdentifier(action.column)} SYMBOL CAPACITY ${action.capacity}`,
       )
       break
     case "setTtl":
-      parts.push(`SET TTL ${action.ttl.value} ${action.ttl.unit}`)
+      parts.push(`SET TTL ${formatTimeUnit(action.ttl.value, action.ttl.unit)}`)
+      break
+    case "setExpireRows":
+      parts.push("SET")
+      parts.push(expireRowsClauseToSql(action.expireRows))
+      break
+    case "dropExpire":
+      parts.push("DROP EXPIRE ROWS")
       break
     case "setRefreshLimit":
-      parts.push(`SET REFRESH LIMIT ${action.limit.value} ${action.limit.unit}`)
+      parts.push(
+        `SET REFRESH LIMIT ${formatTimeUnit(action.limit.value, action.limit.unit)}`,
+      )
       break
     case "setRefresh": {
       const refreshParts: string[] = ["SET"]
@@ -1125,6 +1354,26 @@ function alterMaterializedViewToSql(
     case "suspendWal":
       parts.push("SUSPEND WAL")
       break
+    case "rebaseWal": {
+      parts.push("REBASE WAL")
+      if (action.targetDir != null) {
+        parts.push(`INTO ${escapeString(action.targetDir)}`)
+      }
+      break
+    }
+    case "setStoragePolicy":
+      parts.push("SET")
+      parts.push(storagePolicyToSql(action.policy))
+      break
+    case "dropStoragePolicy":
+      parts.push("DROP STORAGE POLICY")
+      break
+    case "enableStoragePolicy":
+      parts.push("ENABLE STORAGE POLICY")
+      break
+    case "disableStoragePolicy":
+      parts.push("DISABLE STORAGE POLICY")
+      break
   }
   return parts.join(" ")
 }
@@ -1147,6 +1396,7 @@ function refreshMaterializedViewToSql(
   ]
   if (stmt.mode === "full") parts.push("FULL")
   else if (stmt.mode === "incremental") parts.push("INCREMENTAL")
+  else if (stmt.mode === "stats") parts.push("STATS")
   else if (stmt.mode === "range") {
     parts.push(
       `RANGE FROM ${escapeString(stmt.from!)} TO ${escapeString(stmt.to!)}`,
@@ -1192,10 +1442,12 @@ function createGroupToSql(stmt: AST.CreateGroupStatement): string {
 
 function alterGroupToSql(stmt: AST.AlterGroupStatement): string {
   const parts: string[] = ["ALTER GROUP", qualifiedNameToSql(stmt.group)]
-  if (stmt.action === "setAlias") {
-    parts.push(`WITH EXTERNAL ALIAS ${escapeString(stmt.externalAlias)}`)
+  if (stmt.action === "setMemoryLimit") {
+    parts.push(`SET MEMORY LIMIT ${stmt.memoryLimit}`)
+  } else if (stmt.action === "setAlias") {
+    parts.push(`WITH EXTERNAL ALIAS ${escapeString(stmt.externalAlias!)}`)
   } else {
-    parts.push(`DROP EXTERNAL ALIAS ${escapeString(stmt.externalAlias)}`)
+    parts.push(`DROP EXTERNAL ALIAS ${escapeString(stmt.externalAlias!)}`)
   }
   return parts.join(" ")
 }
@@ -1204,6 +1456,18 @@ function backupToSql(stmt: AST.BackupStatement): string {
   if (stmt.action === "database") return "BACKUP DATABASE"
   if (stmt.action === "abort") return "BACKUP ABORT"
   return `BACKUP TABLE ${qualifiedNameToSql(stmt.table!)}`
+}
+
+function switchToSql(stmt: AST.SwitchStatement): string {
+  if (stmt.action === "status") return "SWITCH STATUS"
+  if (stmt.action === "coldStorageStatus") return "SWITCH COLD STORAGE STATUS"
+  const coldStorage = stmt.action === "coldStorageRole"
+  let s = coldStorage
+    ? `SWITCH COLD STORAGE ROLE TO ${stmt.role}`
+    : `SWITCH ROLE TO ${stmt.role}`
+  if (coldStorage && stmt.force) s += " FORCE"
+  if (stmt.timeout !== undefined) s += ` TIMEOUT ${stmt.timeout}`
+  return s
 }
 
 function createServiceAccountToSql(
@@ -1228,6 +1492,8 @@ function alterUserActionToSql(action: AST.AlterUserAction): string {
     case "password":
       if (action.noPassword) return "WITH NO PASSWORD"
       return `WITH PASSWORD ${escapeString(action.password!)}`
+    case "setMemoryLimit":
+      return `SET MEMORY LIMIT ${action.limit}`
     case "createToken": {
       const parts = [`CREATE TOKEN TYPE ${action.tokenType}`]
       if (action.publicKeyX != null && action.publicKeyY != null) {
@@ -1294,7 +1560,12 @@ function grantOnTargetToSql(on: AST.GrantOnTarget): string {
   if (on.tables) {
     const tableParts = on.tables.map((t) => {
       let sql = qualifiedNameToSql(t.table)
-      if (t.columns && t.columns.length > 0) {
+      if (t.allColumns) {
+        sql +=
+          t.excludeColumns && t.excludeColumns.length > 0
+            ? ` (* EXCLUDE(${t.excludeColumns.map(escapeIdentifier).join(", ")}))`
+            : " (*)"
+      } else if (t.columns && t.columns.length > 0) {
         sql += ` (${t.columns.map(escapeIdentifier).join(", ")})`
       }
       return sql
@@ -1724,7 +1995,20 @@ function windowSpecToSql(spec: AST.WindowSpecification): string {
     parts.push(windowFrameToSql(spec.frame))
   }
 
+  if (spec.anchor) {
+    parts.push(anchorClauseToSql(spec.anchor))
+  }
+
   return parts.join(" ")
+}
+
+function anchorClauseToSql(a: AST.AnchorClause): string {
+  if (a.kind === "expression") {
+    return `ANCHOR EXPRESSION ${expressionToSql(a.expr!)}`
+  }
+  let s = `ANCHOR DAILY ${escapeString(a.time!)}`
+  if (a.timezone) s += ` ${escapeString(a.timezone)}`
+  return s
 }
 
 function namedWindowToSql(w: AST.NamedWindow): string {
@@ -1738,6 +2022,9 @@ function namedWindowToSql(w: AST.NamedWindow): string {
   }
   if (w.frame) {
     inner.push(windowFrameToSql(w.frame))
+  }
+  if (w.anchor) {
+    inner.push(anchorClauseToSql(w.anchor))
   }
   return `${w.name} AS (${inner.join(" ")})`
 }

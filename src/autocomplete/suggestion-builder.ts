@@ -120,6 +120,8 @@ export function buildSuggestions(
     includeWindowFunctions?: boolean
     includeTableValuedFunctions?: boolean
     isMidWord?: boolean
+    /** Lowercased text the user is currently typing (the mid-word token). */
+    partialPrefix?: string
   },
 ): Suggestion[] {
   const suggestions: Suggestion[] = []
@@ -136,6 +138,10 @@ export function buildSuggestions(
   const includeTableValuedFunctions =
     options?.includeTableValuedFunctions ?? false
   const isMidWord = options?.isMidWord ?? false
+  const partialPrefix = options?.partialPrefix ?? ""
+
+  const showPgCatalog = partialPrefix.startsWith("pg")
+  const isPgCatalogName = (name: string): boolean => name.startsWith("pg_")
 
   // Detect join context: when "Join" is a valid next token, join prefix
   // keywords (LEFT, RIGHT, ASOF, etc.) should be suggested as compounds.
@@ -316,6 +322,7 @@ export function buildSuggestions(
     if (isMidWord) {
       const emitFn = (name: string) => {
         if (seenKeywords.has(name.toUpperCase())) return
+        if (isPgCatalogName(name) && !showPgCatalog) return
         suggestions.push({
           label: name,
           kind: SuggestionKind.Function,

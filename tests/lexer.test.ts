@@ -76,6 +76,25 @@ describe("QuestDB Lexer", () => {
     expect(result3.tokens[0].tokenType.name).toBe("Select")
   })
 
+  it("should tokenize cold storage switch keywords", () => {
+    const result = tokenize(
+      "SWITCH COLD STORAGE ROLE TO MANAGER FORCE TIMEOUT 10000",
+    )
+
+    expect(result.errors).toHaveLength(0)
+    expect(result.tokens.map((token) => token.tokenType.name)).toEqual([
+      "Switch",
+      "Cold",
+      "Storage",
+      "Role",
+      "To",
+      "Manager",
+      "Force",
+      "Timeout",
+      "NumberLiteral",
+    ])
+  })
+
   it("should skip whitespace and comments", () => {
     const result = tokenize(`
       -- This is a comment

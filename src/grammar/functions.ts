@@ -5,14 +5,19 @@
 // and verified against source code in questdb/ and questdb-enterprise/.
 //
 // Categories used for context-aware autocomplete:
-// - scalarFunctions     — single-row functions (FROM functions() type=STANDARD)
-// - aggregateFunctions  — collapse rows (type=GROUP_BY); also valid as windows
-// - windowFunctions     — pure ranking/offset (type=WINDOW, no GROUP_BY overload)
+// - scalarFunctions      — single-row functions (FROM functions() type=STANDARD)
+// - aggregateFunctions   — collapse rows (type=GROUP_BY); also valid as windows
+// - windowFunctions      — pure ranking/offset (type=WINDOW, no GROUP_BY overload)
 // - tableValuedFunctions — return rows (type=CURSOR, or STANDARD that succeeds
-//   in `SELECT * FROM <name>()` — meta pseudo-tables like `materialized_views`)
+//   in `SELECT * FROM <name>()` — meta pseudo-tables like `materialized_views`,
+//   plus PostgreSQL-compat catalog entries like `pg_class` and `pg_catalog.*`.
+//   The pg_-prefixed entries are gated at emission time by the suggestion-
+//   builder: they only surface when the user has typed a "pg" prefix, so the
+//   letter "p" alone doesn't bury real schema results in JOIN positions.
+//   `information_schema.*` is NOT gated — those names are SQL-standard.
 //
-// Removed from earlier flat list: 17 entries absent from QuestDB runtime AND
-// docs (e.g. `array_agg`, `lcase`, `len`, `nvl`, `headers`, `show`,
+// Removed from earlier flat list: entries absent from QuestDB runtime AND
+// docs (e.g. `lcase`, `len`, `nvl`, `headers`, `show`,
 // `commitLag`, `batch`); 11 SQL operators / syntactic keywords (e.g. `and`,
 // `or`, `between`, `case`, `cast`) — they exist as factories internally but
 // users always write them as syntax, and the parser keyword path covers them.
@@ -47,6 +52,7 @@ export const scalarFunctions: string[] = [
   "cot",
   "current_catalog",
   "current_database",
+  "current_resource_group",
   "current_schema",
   "current_schemas",
   "current_setting",
@@ -79,6 +85,7 @@ export const scalarFunctions: string[] = [
   "insertion_point",
   "interval_end",
   "interval_start",
+  "is_end_of_month",
   "is_leap_year",
   "json_extract",
   "l2price",
@@ -181,7 +188,6 @@ export const scalarFunctions: string[] = [
   "sysdate",
   "systimestamp",
   "systimestamp_ns",
-  "table_columns",
   "tan",
   "timestamp_ceil",
   "timestamp_floor",
@@ -210,7 +216,6 @@ export const scalarFunctions: string[] = [
   "typeOf",
   "upper",
   "version",
-  "wal_transactions",
   "week_of_year",
   "within",
   "within_box",
@@ -226,6 +231,7 @@ export const aggregateFunctions: string[] = [
   "approx_percentile",
   "arg_max",
   "arg_min",
+  "array_agg",
   "array_elem_avg",
   "array_elem_max",
   "array_elem_min",
@@ -245,8 +251,10 @@ export const aggregateFunctions: string[] = [
   "first_not_null",
   "geomean",
   "haversine_dist_deg",
-  "isOrdered",
   "ksum",
+  "kurtosis",
+  "kurtosis_pop",
+  "kurtosis_samp",
   "last",
   "last_not_null",
   "max",
@@ -254,7 +262,11 @@ export const aggregateFunctions: string[] = [
   "mode",
   "nsum",
   "regr_intercept",
+  "regr_r2",
   "regr_slope",
+  "skewness",
+  "skewness_pop",
+  "skewness_samp",
   "sparkline",
   "stddev",
   "stddev_pop",
@@ -274,11 +286,14 @@ export const aggregateFunctions: string[] = [
 ]
 
 export const windowFunctions: string[] = [
+  "cume_dist",
   "dense_rank",
   "first_value",
   "lag",
   "last_value",
   "lead",
+  "nth_value",
+  "ntile",
   "percent_rank",
   "rank",
   "row_number",
@@ -287,6 +302,7 @@ export const windowFunctions: string[] = [
 export const tableValuedFunctions: string[] = [
   // CURSOR type — explicitly row-returning
   "all_permissions",
+  "backups",
   "generate_series",
   "information_schema._pg_expandarray",
   "long_sequence",
@@ -310,6 +326,7 @@ export const tableValuedFunctions: string[] = [
   "pg_roles",
   "pg_type",
   "read_parquet",
+  "sleep",
   "table_partitions",
   // STANDARD type but succeed as `SELECT * FROM <name>()` — meta pseudo-tables
   "all_tables",
@@ -317,6 +334,7 @@ export const tableValuedFunctions: string[] = [
   "functions",
   "import_files",
   "keywords",
+  "live_views",
   "materialized_views",
   "memory_metrics",
   "permissions",
@@ -332,11 +350,15 @@ export const tableValuedFunctions: string[] = [
   "pg_proc",
   "query_activity",
   "reader_pool",
+  "resource_groups",
+  "storage_policies",
+  "table_columns",
   "table_storage",
   "table_writer_metrics",
   "tables",
   "views",
   "wal_tables",
+  "wal_transactions",
   "writer_pool",
 ]
 

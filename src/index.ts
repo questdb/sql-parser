@@ -61,6 +61,8 @@ export {
   functions,
   operators,
 } from "./grammar/index"
+export { format } from "./formatter/index"
+export type { FormatOptions } from "./formatter/index"
 
 /**
  * Parse SQL string to AST

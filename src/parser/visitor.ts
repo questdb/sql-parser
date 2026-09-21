@@ -22,7 +22,9 @@ import type {
   AlterTableStatementCstChildren,
   AlterUserActionCstChildren,
   AlterUserStatementCstChildren,
+  AlterLiveViewStatementCstChildren,
   AlterViewStatementCstChildren,
+  AnchorClauseCstChildren,
   AndExpressionCstChildren,
   ArrayBracketBodyCstChildren,
   ArrayElementCstChildren,
@@ -48,12 +50,14 @@ import type {
   Ipv4ContainmentExpressionCstChildren,
   ConvertPartitionTargetCstChildren,
   CopyCancelCstChildren,
+  CopyPermissionsCstChildren,
   CopyFromCstChildren,
   CopyOptionCstChildren,
   CopyOptionsCstChildren,
   CopyStatementCstChildren,
   CopyToCstChildren,
   CreateGroupStatementCstChildren,
+  CreateLiveViewBodyCstChildren,
   CreateMaterializedViewBodyCstChildren,
   CreateServiceAccountStatementCstChildren,
   CreateStatementCstChildren,
@@ -71,14 +75,18 @@ import type {
   DropStatementCstChildren,
   DropTableStatementCstChildren,
   DropUserStatementCstChildren,
+  DropLiveViewStatementCstChildren,
   DropViewStatementCstChildren,
   DurationExpressionCstChildren,
   EqualityExpressionCstChildren,
   ExitServiceAccountStatementCstChildren,
+  ExpireRowsClauseCstChildren,
   ExplainStatementCstChildren,
   ExpressionCstChildren,
   FillClauseCstChildren,
   FillValueCstChildren,
+  AliasTimestampDesignationCstChildren,
+  MemoryLimitCstChildren,
   FromClauseCstChildren,
   FromSourceCstChildren,
   FromToClauseCstChildren,
@@ -94,6 +102,7 @@ import type {
   ImplicitSelectBodyCstChildren,
   ImplicitSelectStatementCstChildren,
   IndexDefinitionCstChildren,
+  IndexTypeOptionsCstChildren,
   InsertStatementCstChildren,
   IntervalValueCstChildren,
   JoinClauseCstChildren,
@@ -109,6 +118,9 @@ import type {
   OrderByClauseCstChildren,
   OrderByItemCstChildren,
   OverClauseCstChildren,
+  OptionalExpireRowsCstChildren,
+  OptionalStoragePolicyCstChildren,
+  OptionalTableFormatCstChildren,
   ParquetCompressionCstChildren,
   ParquetConfigCstChildren,
   ParquetEncodingCstChildren,
@@ -140,10 +152,15 @@ import type {
   SetExpressionCstChildren,
   SetOperationCstChildren,
   SetTypeStatementCstChildren,
+  ShowCreateDatabaseCategoryCstChildren,
   ShowStatementCstChildren,
   SimpleSelectCstChildren,
   SnapshotStatementCstChildren,
   SpliceJoinCstChildren,
+  StoragePolicyClauseCstChildren,
+  StoragePolicyCstChildren,
+  StoragePolicyTimeUnitCstChildren,
+  StoragePolicyTtlCstChildren,
   HorizonJoinCstChildren,
   HorizonOffsetCstChildren,
   StandardJoinCstChildren,
@@ -153,6 +170,8 @@ import type {
   StringOrQualifiedNameCstChildren,
   TableFunctionCallCstChildren,
   TableFunctionNameCstChildren,
+  SwitchStatementCstChildren,
+  TableFormatKindCstChildren,
   TableNameCstChildren,
   TableNameOrStringCstChildren,
   TableParamCstChildren,
@@ -189,12 +208,28 @@ type ConvertPartitionTargetResult = {
   partitions?: string[]
   target: string
   where?: AST.Expression
+  withParams?: AST.TableParam[]
 }
 type PivotBodyResult = {
   aggregations: AST.PivotAggregation[]
   pivots: AST.PivotForClause[]
   groupBy?: AST.Expression[]
 }
+
+// QuestDB allows `_` as a digit separator in numeric literals (e.g. `1_000_000`).
+// JavaScript's parseInt stops at the first `_`, so `parseInt("1_000", 10)` is 1.
+// Strip separators before parsing whenever the input is a token image.
+function tokenInt(image: string): number {
+  return parseInt(image.replace(/_/g, ""), 10)
+}
+
+// parseFloat keeps fractional and exponent literals faithful — parseInt would
+// silently read "1e9" as 1 and ".5" as NaN. The server validates the value.
+function tokenFloat(image: string): number {
+  return parseFloat(image.replace(/_/g, ""))
+}
+
+type StoragePolicyKind = "toParquet" | "toRemote" | "dropLocal" | "dropRemote"
 
 // Get the base visitor class from the parser
 const BaseVisitor = parser.getBaseCstVisitorConstructor()
@@ -332,6 +367,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.backupStatement) {
       return this.visit(ctx.backupStatement) as AST.BackupStatement
+    }
+    if (ctx.switchStatement) {
+      return this.visit(ctx.switchStatement) as AST.SwitchStatement
     }
     if (ctx.compileViewStatement) {
       return this.visit(ctx.compileViewStatement) as AST.CompileViewStatement
@@ -718,7 +756,19 @@ class QuestDBVisitor extends BaseVisitor {
       result.timestampDesignation = colRef.name.parts.join(".")
     }
 
+    if (ctx.aliasTimestampDesignation) {
+      result.timestampDesignation = this.visit(
+        ctx.aliasTimestampDesignation,
+      ) as string
+      result.timestampAfterAlias = true
+    }
+
     return result
+  }
+
+  aliasTimestampDesignation(ctx: AliasTimestampDesignationCstChildren): string {
+    const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
+    return colRef.name.parts.join(".")
   }
 
   tableFunctionCall(ctx: TableFunctionCallCstChildren): AST.TableFunctionCall {
@@ -820,8 +870,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Identifier) {
       // Implicit alias (bare identifier, not a keyword)
       tableRef.alias = ctx.Identifier[0].image
-    } else if (ctx.identifier && ctx.identifier.length > 1) {
-      // Explicit alias (AS <id>): first identifier is table alias, last is horizon alias
+    } else if (ctx.identifier && ctx.identifier.length > 0) {
+      // Explicit alias (AS <id>): the FIRST identifier is the table alias.
+      // (The horizon alias, when present, is the last identifier.)
       tableRef.alias = (
         this.visit(ctx.identifier[0]) as AST.QualifiedName
       ).parts[0]
@@ -849,8 +900,9 @@ class QuestDBVisitor extends BaseVisitor {
         (o) => this.visit(o) as string,
       )
     }
-    // Horizon alias is always the last identifier
-    if (ctx.identifier) {
+    // Horizon alias (the trailing `AS <x>`) exists only with a RANGE/LIST clause,
+    // and is the LAST identifier. Non-last joins in a chain have none (#6881).
+    if ((ctx.Range || ctx.List) && ctx.identifier) {
       const lastId = ctx.identifier[ctx.identifier.length - 1]
       result.horizonAlias = (this.visit(lastId) as AST.QualifiedName).parts[0]
     }
@@ -868,10 +920,12 @@ class QuestDBVisitor extends BaseVisitor {
   standardJoin(ctx: StandardJoinCstChildren): AST.JoinClause {
     const result: AST.JoinClause = {
       type: "join",
-      table: this.visit(ctx.tableRef) as AST.TableRef,
+      table: this.visit(ctx.fromSource) as AST.TableRef,
     }
     if (ctx.Inner) result.joinType = "inner"
     else if (ctx.Left) result.joinType = "left"
+    else if (ctx.Right) result.joinType = "right"
+    else if (ctx.Full) result.joinType = "full"
     else if (ctx.Cross) result.joinType = "cross"
     if (ctx.Outer) result.outer = true
     if (ctx.Lateral) result.lateral = true
@@ -893,6 +947,11 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.durationExpression) {
       result.duration = this.visit(ctx.durationExpression) as string
+    } else if (ctx.expression) {
+      result.boundExpr = this.visit(ctx.expression[0]) as AST.Expression
+      if (ctx.timeUnit) {
+        result.unit = this.visit(ctx.timeUnit[0]) as string
+      }
     }
     return result
   }
@@ -925,7 +984,9 @@ class QuestDBVisitor extends BaseVisitor {
       type: "sampleBy",
       duration: ctx.DurationLiteral
         ? this.tokenImage(ctx.DurationLiteral[0])
-        : this.tokenImage(ctx.VariableReference![0]),
+        : ctx.VariableReference
+          ? this.tokenImage(ctx.VariableReference[0])
+          : this.tokenImage(ctx.Identifier![0]),
     }
     if (ctx.fillClause) {
       result.fill = this.visit(ctx.fillClause) as string[]
@@ -949,8 +1010,14 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Null) return "NULL"
     if (ctx.NumberLiteral) return this.tokenImage(ctx.NumberLiteral[0])
     if (ctx.identifier) {
-      const name = this.extractIdentifierName(ctx.identifier[0].children)
-      return name.toUpperCase()
+      const name = this.extractIdentifierName(
+        ctx.identifier[0].children,
+      ).toUpperCase()
+      if (ctx.LParen && ctx.identifier[1]) {
+        const column = this.extractIdentifierName(ctx.identifier[1].children)
+        return `${name}(${column})`
+      }
+      return name
     }
     return ""
   }
@@ -1097,7 +1164,7 @@ class QuestDBVisitor extends BaseVisitor {
         ? ctx.StringLiteral[0].image.slice(1, -1)
         : undefined)
     return {
-      size: parseInt(ctx.NumberLiteral[0].image, 10),
+      size: tokenInt(ctx.NumberLiteral[0].image),
       o3MaxLag,
     }
   }
@@ -1179,6 +1246,9 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(
         ctx.createMaterializedViewBody,
       ) as AST.CreateMaterializedViewStatement
+    }
+    if (ctx.createLiveViewBody) {
+      return this.visit(ctx.createLiveViewBody) as AST.CreateLiveViewStatement
     }
     if (ctx.createViewBody) {
       return this.visit(ctx.createViewBody) as AST.CreateViewStatement
@@ -1273,6 +1343,17 @@ class QuestDBVisitor extends BaseVisitor {
       result.ttl = this.extractTtl(ctx)
     }
 
+    if (ctx.optionalStoragePolicy) {
+      const sp = this.visit(ctx.optionalStoragePolicy) as
+        | AST.StoragePolicy
+        | undefined
+      if (sp) result.storagePolicy = sp
+    }
+
+    if (result.ttl && result.storagePolicy) {
+      throw new Error("Cannot set storage policy, please, remove TTL settings")
+    }
+
     if (ctx.tableParam) {
       result.withParams = ctx.tableParam.map(
         (p: CstNode) => this.visit(p) as AST.TableParam,
@@ -1299,7 +1380,31 @@ class QuestDBVisitor extends BaseVisitor {
       result.dedupKeys = this.visit(ctx.dedupClause) as string[]
     }
 
+    // FORMAT { PARQUET | NATIVE } — accepted in three positions; take the
+    // first one that carried a value.
+    if (ctx.optionalTableFormat) {
+      for (const node of ctx.optionalTableFormat) {
+        const fmt = this.visit(node) as "parquet" | "native" | undefined
+        if (fmt) {
+          result.tableFormat = fmt
+          break
+        }
+      }
+    }
+
     return result
+  }
+
+  tableFormatKind(ctx: TableFormatKindCstChildren): "parquet" | "native" {
+    return ctx.Native ? "native" : "parquet"
+  }
+
+  optionalTableFormat(
+    ctx: OptionalTableFormatCstChildren,
+  ): "parquet" | "native" | undefined {
+    return ctx.tableFormatKind
+      ? (this.visit(ctx.tableFormatKind) as "parquet" | "native")
+      : undefined
   }
 
   columnDefinition(ctx: ColumnDefinitionCstChildren): AST.ColumnDefinition {
@@ -1322,15 +1427,15 @@ class QuestDBVisitor extends BaseVisitor {
           const capOffset = capacityTokens[i].startOffset
           if (capOffset < indexOffset) {
             // Symbol CAPACITY (before INDEX)
-            result.symbolCapacity = parseInt(numberTokens[i].image, 10)
+            result.symbolCapacity = tokenInt(numberTokens[i].image)
           } else {
             // INDEX CAPACITY (after INDEX)
-            result.indexCapacity = parseInt(numberTokens[i].image, 10)
+            result.indexCapacity = tokenInt(numberTokens[i].image)
           }
         }
       } else {
         // No INDEX, so this is symbol CAPACITY
-        result.symbolCapacity = parseInt(numberTokens[0].image, 10)
+        result.symbolCapacity = tokenInt(numberTokens[0].image)
       }
     }
 
@@ -1344,6 +1449,16 @@ class QuestDBVisitor extends BaseVisitor {
     // INDEX
     if (indexToken) {
       result.indexed = true
+      if (ctx.indexTypeOptions) {
+        const opts = this.visit(ctx.indexTypeOptions[0]) as {
+          capacity?: number
+          indexType?: AST.ColumnDefinition["indexType"]
+          include?: string[]
+        }
+        if (opts.capacity !== undefined) result.indexCapacity = opts.capacity
+        if (opts.indexType) result.indexType = opts.indexType
+        if (opts.include) result.indexInclude = opts.include
+      }
     }
 
     // PARQUET config
@@ -1367,7 +1482,7 @@ class QuestDBVisitor extends BaseVisitor {
       ).toUpperCase()
     }
     if (ctx.NumberLiteral) {
-      result.compressionLevel = parseInt(ctx.NumberLiteral[0].image)
+      result.compressionLevel = tokenInt(ctx.NumberLiteral[0].image)
     }
     if (ctx.BloomFilter) {
       result.bloomFilter = true
@@ -1381,6 +1496,75 @@ class QuestDBVisitor extends BaseVisitor {
 
   parquetCompression(ctx: ParquetCompressionCstChildren): string {
     return this.firstTokenImage(ctx)?.toUpperCase() ?? ""
+  }
+
+  optionalStoragePolicy(
+    ctx: OptionalStoragePolicyCstChildren,
+  ): AST.StoragePolicy | undefined {
+    if (!ctx.storagePolicy) return undefined
+    return this.visit(ctx.storagePolicy) as AST.StoragePolicy
+  }
+
+  storagePolicy(ctx: StoragePolicyCstChildren): AST.StoragePolicy {
+    if (!ctx.storagePolicyClause || ctx.storagePolicyClause.length === 0) {
+      throw new Error("at least one storage policy clause is required")
+    }
+    const KIND_DISPLAY: Record<StoragePolicyKind, string> = {
+      toParquet: "TO PARQUET",
+      toRemote: "TO REMOTE",
+      dropLocal: "DROP LOCAL",
+      dropRemote: "DROP REMOTE",
+    }
+    const result: AST.StoragePolicy = { type: "storagePolicy" }
+    for (const clauseNode of ctx.storagePolicyClause) {
+      const clause = this.visit(clauseNode) as {
+        kind: StoragePolicyKind
+        ttl: {
+          value: number
+          unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+        }
+      }
+      if (result[clause.kind] !== undefined) {
+        throw new Error(
+          `duplicate '${KIND_DISPLAY[clause.kind]}' in storage policy`,
+        )
+      }
+      result[clause.kind] = clause.ttl
+    }
+    return result
+  }
+
+  storagePolicyClause(ctx: StoragePolicyClauseCstChildren): {
+    kind: StoragePolicyKind
+    ttl: {
+      value: number
+      unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+    }
+  } {
+    let kind: StoragePolicyKind
+    if (ctx.To && ctx.Parquet) {
+      kind = "toParquet"
+    } else if (ctx.To && ctx.Remote) {
+      kind = "toRemote"
+    } else if (ctx.Drop && ctx.Local) {
+      kind = "dropLocal"
+    } else if (ctx.Drop && ctx.Remote) {
+      kind = "dropRemote"
+    } else {
+      throw new Error("Unknown storage policy clause")
+    }
+    const ttl = this.visit(ctx.storagePolicyTtl!) as {
+      value: number
+      unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+    }
+    return { kind, ttl }
+  }
+
+  storagePolicyTtl(ctx: StoragePolicyTtlCstChildren): {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  } {
+    return this.extractTtl(ctx)
   }
 
   castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
@@ -1398,10 +1582,51 @@ class QuestDBVisitor extends BaseVisitor {
       type: "indexDefinition",
       column: colRef.name ?? colRef,
     }
-    if (ctx.Capacity && ctx.NumberLiteral) {
-      result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+    if (ctx.indexTypeOptions) {
+      const opts = this.visit(ctx.indexTypeOptions[0]) as {
+        capacity?: number
+        indexType?: AST.IndexDefinition["indexType"]
+        include?: string[]
+      }
+      if (opts.capacity !== undefined) result.capacity = opts.capacity
+      if (opts.indexType) result.indexType = opts.indexType
+      if (opts.include) result.include = opts.include
     }
     return result
+  }
+
+  indexTypeOptions(ctx: IndexTypeOptionsCstChildren): {
+    capacity?: number
+    indexType?: AST.ColumnDefinition["indexType"]
+    include?: string[]
+  } {
+    const r: {
+      capacity?: number
+      indexType?: AST.ColumnDefinition["indexType"]
+      include?: string[]
+    } = {}
+    if (ctx.Type) {
+      if (ctx.Posting) {
+        r.indexType = ctx.Delta
+          ? "posting_delta"
+          : ctx.Ef
+            ? "posting_ef"
+            : "posting"
+      } else if (ctx.Bitmap) {
+        r.indexType = "bitmap"
+      } else if (ctx.None) {
+        r.indexType = "none"
+      }
+    }
+    if (ctx.Include && ctx.identifier) {
+      r.include = ctx.identifier.map(
+        (id) => (this.visit(id) as AST.QualifiedName).parts[0],
+      )
+    }
+    if (ctx.Capacity && ctx.NumberLiteral) {
+      r.capacity = tokenInt(ctx.NumberLiteral[0].image)
+    }
+    return r
   }
 
   tableParamName(ctx: TableParamNameCstChildren): string {
@@ -1524,6 +1749,11 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.If) {
       result.ifNotExists = true
     }
+    if (ctx.indexDefinition) {
+      result.indexes = ctx.indexDefinition.map(
+        (i) => this.visit(i) as AST.IndexDefinition,
+      )
+    }
     if (ctx.Base && ctx.stringOrQualifiedName?.length > 1) {
       result.baseTable = this.visit(
         ctx.stringOrQualifiedName[1],
@@ -1553,6 +1783,15 @@ class QuestDBVisitor extends BaseVisitor {
       if (partition.partitionBy) result.partitionBy = partition.partitionBy
       if (partition.ttl) result.ttl = partition.ttl
     }
+    if (ctx.optionalStoragePolicy) {
+      const sp = this.visit(ctx.optionalStoragePolicy) as
+        | AST.StoragePolicy
+        | undefined
+      if (sp) result.storagePolicy = sp
+    }
+    if (result.ttl && result.storagePolicy) {
+      throw new Error("Cannot set storage policy, please, remove TTL settings")
+    }
     if (ctx.Volume) {
       const volumeOffset = ctx.Volume[0].startOffset
       const volumeStr = ctx.StringLiteral?.find(
@@ -1569,7 +1808,54 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Owned && ctx.stringOrIdentifier) {
       result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
+    if (ctx.optionalExpireRows) {
+      const er = this.visit(ctx.optionalExpireRows) as
+        | AST.ExpireRowsClause
+        | undefined
+      if (er) result.expireRows = er
+    }
     return result
+  }
+
+  expireRowsClause(ctx: ExpireRowsClauseCstChildren): AST.ExpireRowsClause {
+    const idents = (ctx.identifier ?? []).map((id: IdentifierCstNode) =>
+      this.extractIdentifierName(id.children),
+    )
+    let clause: AST.ExpireRowsClause
+    if (ctx.When) {
+      clause = {
+        mode: "when",
+        predicate: this.visit(ctx.expression!) as AST.Expression,
+      }
+    } else if (ctx.Latest) {
+      let i = 0
+      const on = ctx.On ? idents[i++] : undefined
+      clause = { mode: "keepLatest", partitionBy: idents.slice(i) }
+      if (on) clause.on = on
+    } else {
+      clause = {
+        mode: "keepExtremum",
+        extremum: ctx.Highest ? "highest" : "lowest",
+        column: idents[0],
+      }
+      const partitionBy = idents.slice(1)
+      if (partitionBy.length > 0) clause.partitionBy = partitionBy
+      if (ctx.NumberLiteral) {
+        clause.keepCount = tokenInt(ctx.NumberLiteral[0].image)
+      }
+    }
+    if (ctx.Cleanup && ctx.DurationLiteral) {
+      clause.cleanupEvery = ctx.DurationLiteral[0].image
+    }
+    return clause
+  }
+
+  optionalExpireRows(
+    ctx: OptionalExpireRowsCstChildren,
+  ): AST.ExpireRowsClause | undefined {
+    return ctx.expireRowsClause
+      ? (this.visit(ctx.expireRowsClause) as AST.ExpireRowsClause)
+      : undefined
   }
 
   materializedViewRefresh(
@@ -1630,8 +1916,98 @@ class QuestDBVisitor extends BaseVisitor {
         | "DAY"
         | "HOUR"
     }
-    if (ctx.Ttl && ctx.NumberLiteral) {
+    if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
       result.ttl = this.extractTtl(ctx)
+    }
+    return result
+  }
+
+  createLiveViewBody(
+    ctx: CreateLiveViewBodyCstChildren,
+  ): AST.CreateLiveViewStatement {
+    const durations = (ctx.DurationLiteral ?? []).map((t) => t.image)
+    const result: AST.CreateLiveViewStatement = {
+      type: "createLiveView",
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      flushEvery: durations[0],
+      query: this.visit(ctx.selectStatement![0]) as AST.SelectStatement,
+    }
+    if (ctx.If) result.ifNotExists = true
+    if (ctx.Memory && durations.length > 1) result.inMemory = durations[1]
+    if (ctx.partitionPeriod) {
+      result.partitionBy = this.visit(
+        ctx.partitionPeriod,
+      ) as AST.CreateLiveViewStatement["partitionBy"]
+    }
+    if (ctx.Start) {
+      if (ctx.Beginning) {
+        result.startFrom = { kind: "beginning" }
+      } else if (ctx.StringLiteral) {
+        result.startFrom = {
+          kind: "timestamp",
+          value: ctx.StringLiteral[0].image.slice(1, -1),
+        }
+      } else {
+        result.startFrom = { kind: "now" }
+      }
+    }
+    if (ctx.Owned && ctx.stringOrIdentifier) {
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
+    }
+    if (ctx.LParen) result.asParens = true
+    return result
+  }
+
+  dropLiveViewStatement(
+    ctx: DropLiveViewStatementCstChildren,
+  ): AST.DropLiveViewStatement {
+    return {
+      type: "dropLiveView",
+      view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
+      ifExists: !!ctx.If,
+    }
+  }
+
+  alterLiveViewStatement(
+    ctx: AlterLiveViewStatementCstChildren,
+  ): AST.AlterLiveViewStatement {
+    const result: AST.AlterLiveViewStatement = {
+      type: "alterLiveView",
+      view: this.visit(ctx.tableName) as AST.QualifiedName,
+      action: ctx.Suspend ? "suspendWal" : "resumeWal",
+    }
+    if (ctx.Resume && ctx.NumberLiteral) {
+      const n = tokenInt(ctx.NumberLiteral[0].image)
+      if (ctx.Txn) result.fromTxn = n
+      else if (ctx.Transaction) result.fromTransaction = n
+    }
+    if (ctx.Suspend && ctx.With) {
+      if (ctx.NumberLiteral) {
+        result.code = tokenInt(ctx.NumberLiteral[0].image)
+      } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
+        result.code = ctx.StringLiteral[0].image.slice(1, -1)
+      }
+      const strings = ctx.StringLiteral || []
+      if (strings.length > 0) {
+        result.message = strings[strings.length - 1].image.slice(1, -1)
+      }
+    }
+    return result
+  }
+
+  anchorClause(ctx: AnchorClauseCstChildren): AST.AnchorClause {
+    if (ctx.Expression) {
+      return {
+        kind: "expression",
+        expr: this.visit(ctx.expression!) as AST.Expression,
+      }
+    }
+    const result: AST.AnchorClause = {
+      kind: "daily",
+      time: ctx.StringLiteral![0].image.slice(1, -1),
+    }
+    if (ctx.StringLiteral && ctx.StringLiteral.length > 1) {
+      result.timezone = ctx.StringLiteral[1].image.slice(1, -1)
     }
     return result
   }
@@ -1672,6 +2048,17 @@ class QuestDBVisitor extends BaseVisitor {
     return "DAYS"
   }
 
+  storagePolicyTimeUnit(
+    ctx: StoragePolicyTimeUnitCstChildren,
+  ): "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" {
+    if (ctx.Hours || ctx.Hour) return "HOURS"
+    if (ctx.Days || ctx.Day) return "DAYS"
+    if (ctx.Weeks || ctx.Week) return "WEEKS"
+    if (ctx.Months || ctx.Month) return "MONTHS"
+    if (ctx.Years || ctx.Year) return "YEARS"
+    return "DAYS"
+  }
+
   dedupClause(ctx: DedupClauseCstChildren): string[] {
     return ctx.identifier.map((id: IdentifierCstNode) =>
       this.extractIdentifierName(id.children),
@@ -1690,6 +2077,11 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(
         ctx.alterMaterializedViewStatement,
       ) as AST.AlterMaterializedViewStatement
+    }
+    if (ctx.alterLiveViewStatement) {
+      return this.visit(
+        ctx.alterLiveViewStatement,
+      ) as AST.AlterLiveViewStatement
     }
     if (ctx.alterViewStatement) {
       return this.visit(ctx.alterViewStatement) as AST.AlterViewStatement
@@ -1721,19 +2113,20 @@ class QuestDBVisitor extends BaseVisitor {
   alterGroupStatement(
     ctx: AlterGroupStatementCstChildren,
   ): AST.AlterGroupStatement {
-    const alias = ctx.StringLiteral![0].image.slice(1, -1)
-    if (ctx.With) {
+    const group = this.visit(ctx.qualifiedName) as AST.QualifiedName
+    if (ctx.memoryLimit) {
       return {
         type: "alterGroup",
-        group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
-        action: "setAlias",
-        externalAlias: alias,
+        group,
+        action: "setMemoryLimit",
+        memoryLimit: this.visit(ctx.memoryLimit) as string,
       }
     }
+    const alias = ctx.StringLiteral![0].image.slice(1, -1)
     return {
       type: "alterGroup",
-      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
-      action: "dropAlias",
+      group,
+      action: ctx.With ? "setAlias" : "dropAlias",
       externalAlias: alias,
     }
   }
@@ -1764,14 +2157,52 @@ class QuestDBVisitor extends BaseVisitor {
   alterMaterializedViewAction(
     ctx: AlterMaterializedViewActionCstChildren,
   ): AST.AlterMaterializedViewAction {
+    // SET STORAGE POLICY(...) — must come before generic SET branches below
+    if (ctx.Set && ctx.storagePolicy) {
+      return {
+        actionType: "setStoragePolicy",
+        policy: this.visit(ctx.storagePolicy) as AST.StoragePolicy,
+      }
+    }
+    // SET EXPIRE ROWS ...
+    if (ctx.Set && ctx.expireRowsClause) {
+      return {
+        actionType: "setExpireRows",
+        expireRows: this.visit(ctx.expireRowsClause) as AST.ExpireRowsClause,
+      }
+    }
+    // DROP EXPIRE [ROWS]
+    if (ctx.Drop && ctx.Expire) {
+      return { actionType: "dropExpire" }
+    }
+    // DROP STORAGE POLICY
+    if (ctx.Drop && ctx.Storage && ctx.Policy && !ctx.Alter) {
+      return { actionType: "dropStoragePolicy" }
+    }
+    // ENABLE STORAGE POLICY
+    if (ctx.Enable && ctx.Storage && ctx.Policy) {
+      return { actionType: "enableStoragePolicy" }
+    }
+    // DISABLE STORAGE POLICY
+    if (ctx.Disable && ctx.Storage && ctx.Policy) {
+      return { actionType: "disableStoragePolicy" }
+    }
+
     if (ctx.Add && ctx.Index) {
       const colRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       const result: AST.AlterMaterializedViewAddIndex = {
         actionType: "addIndex",
         column: colRef.name.parts[colRef.name.parts.length - 1],
       }
-      if (ctx.Capacity && ctx.NumberLiteral) {
-        result.capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+      if (ctx.indexTypeOptions) {
+        const opts = this.visit(ctx.indexTypeOptions[0]) as {
+          capacity?: number
+          indexType?: AST.AlterMaterializedViewAddIndex["indexType"]
+          include?: string[]
+        }
+        if (opts.capacity !== undefined) result.capacity = opts.capacity
+        if (opts.indexType) result.indexType = opts.indexType
+        if (opts.include) result.indexInclude = opts.include
       }
       return result
     }
@@ -1781,7 +2212,7 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         actionType: "symbolCapacity",
         column: colRef.name.parts[colRef.name.parts.length - 1],
-        capacity: parseInt(ctx.NumberLiteral![0].image, 10),
+        capacity: tokenInt(ctx.NumberLiteral![0].image),
       }
     }
 
@@ -1812,7 +2243,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Resume) {
       const result: AST.ResumeWalAction = { actionType: "resumeWal" }
       if (ctx.NumberLiteral) {
-        result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10)
+        result.fromTxn = tokenInt(ctx.NumberLiteral[0].image)
       }
       return result
     }
@@ -1820,6 +2251,17 @@ class QuestDBVisitor extends BaseVisitor {
     // SUSPEND WAL
     if (ctx.Suspend) {
       return { actionType: "suspendWal" }
+    }
+
+    // REBASE WAL [INTO '<targetDir>']
+    if (ctx.Rebase) {
+      const result: AST.AlterMaterializedViewRebaseWal = {
+        actionType: "rebaseWal",
+      }
+      if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
+        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+      }
+      return result
     }
 
     return {
@@ -1856,6 +2298,12 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   alterUserAction(ctx: AlterUserActionCstChildren): AST.AlterUserAction {
+    if (ctx.memoryLimit) {
+      return {
+        actionType: "setMemoryLimit",
+        limit: this.visit(ctx.memoryLimit) as string,
+      }
+    }
     if (ctx.Enable) {
       return { actionType: "enable" }
     }
@@ -1902,7 +2350,33 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
+  memoryLimit(ctx: MemoryLimitCstChildren): string {
+    if (ctx.Unlimited) return "UNLIMITED"
+    if (ctx.DurationLiteral) return ctx.DurationLiteral[0].image
+    return ctx.NumberLiteral![0].image + (ctx.Identifier?.[0]?.image ?? "")
+  }
+
   alterTableAction(ctx: AlterTableActionCstChildren): AST.AlterTableAction {
+    // SET STORAGE POLICY(...) — must come before generic SET branches below
+    if (ctx.Set && ctx.storagePolicy) {
+      return {
+        actionType: "setStoragePolicy",
+        policy: this.visit(ctx.storagePolicy) as AST.StoragePolicy,
+      }
+    }
+    // DROP STORAGE POLICY — must come before generic DROP branches below
+    if (ctx.Drop && ctx.Storage && ctx.Policy) {
+      return { actionType: "dropStoragePolicy" }
+    }
+    // ENABLE STORAGE POLICY
+    if (ctx.Enable && ctx.Storage && ctx.Policy) {
+      return { actionType: "enableStoragePolicy" }
+    }
+    // DISABLE STORAGE POLICY
+    if (ctx.Disable && ctx.Storage && ctx.Policy) {
+      return { actionType: "disableStoragePolicy" }
+    }
+
     // ADD COLUMN
     if (ctx.Add && ctx.columnDefinition) {
       const result: AST.AddColumnAction = {
@@ -1963,20 +2437,32 @@ class QuestDBVisitor extends BaseVisitor {
         | "symbolCapacity" = "type"
       let newType: string | undefined
       let capacity: number | undefined
+      let indexType: AST.AlterColumnAction["indexType"]
+      let indexInclude: string[] | undefined
 
       if (ctx.Type) {
         alterType = "type"
         newType = this.visit(ctx.dataType!) as string
         if (ctx.Capacity && ctx.NumberLiteral) {
-          capacity = parseInt(ctx.NumberLiteral[0].image, 10)
+          capacity = tokenInt(ctx.NumberLiteral[0].image)
         }
       } else if (ctx.Add && ctx.Index) {
         alterType = "addIndex"
+        if (ctx.indexTypeOptions) {
+          const opts = this.visit(ctx.indexTypeOptions[0]) as {
+            capacity?: number
+            indexType?: AST.AlterColumnAction["indexType"]
+            include?: string[]
+          }
+          if (opts.capacity !== undefined) capacity = opts.capacity
+          if (opts.indexType) indexType = opts.indexType
+          if (opts.include) indexInclude = opts.include
+        }
       } else if (ctx.Drop && ctx.Index) {
         alterType = "dropIndex"
       } else if (ctx.Symbol && ctx.Capacity) {
         alterType = "symbolCapacity"
-        capacity = parseInt(ctx.NumberLiteral![0].image, 10)
+        capacity = tokenInt(ctx.NumberLiteral![0].image)
       } else if (ctx.Cache) {
         alterType = "cache"
       } else if (ctx.Nocache) {
@@ -1994,6 +2480,8 @@ class QuestDBVisitor extends BaseVisitor {
       if (capacity !== undefined) {
         result.capacity = capacity
       }
+      if (indexType) result.indexType = indexType
+      if (indexInclude) result.indexInclude = indexInclude
       if (alterType === "type") {
         if (ctx.Cache) result.cache = true
         else if (ctx.Nocache) result.cache = false
@@ -2064,6 +2552,13 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
+    if (ctx.Set && ctx.tableFormatKind) {
+      return {
+        actionType: "setTableFormat",
+        format: this.visit(ctx.tableFormatKind) as "parquet" | "native",
+      }
+    }
+
     if (ctx.Dedup && ctx.Disable) {
       return {
         actionType: "dedupDisable",
@@ -2085,7 +2580,7 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.With) {
         // Code can be a NumberLiteral or StringLiteral
         if (ctx.NumberLiteral) {
-          result.code = parseInt(ctx.NumberLiteral[0].image, 10)
+          result.code = tokenInt(ctx.NumberLiteral[0].image)
         } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
           result.code = ctx.StringLiteral[0].image.slice(1, -1)
         }
@@ -2102,12 +2597,21 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Resume) {
       const result: AST.ResumeWalAction = { actionType: "resumeWal" }
       if (ctx.NumberLiteral) {
-        const num = parseInt(ctx.NumberLiteral[0].image, 10)
+        const num = tokenInt(ctx.NumberLiteral[0].image)
         if (ctx.Txn) {
           result.fromTxn = num
         } else if (ctx.Transaction) {
           result.fromTransaction = num
         }
+      }
+      return result
+    }
+
+    // REBASE WAL [INTO '<targetDir>']
+    if (ctx.Rebase) {
+      const result: AST.RebaseWalAction = { actionType: "rebaseWal" }
+      if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
+        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
       }
       return result
     }
@@ -2146,6 +2650,9 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(
         ctx.dropMaterializedViewStatement,
       ) as AST.DropMaterializedViewStatement
+    }
+    if (ctx.dropLiveViewStatement) {
+      return this.visit(ctx.dropLiveViewStatement) as AST.DropLiveViewStatement
     }
     if (ctx.dropViewStatement) {
       return this.visit(ctx.dropViewStatement) as AST.DropViewStatement
@@ -2332,6 +2839,14 @@ class QuestDBVisitor extends BaseVisitor {
   // SHOW Statement
   // ==========================================================================
 
+  showCreateDatabaseCategory(
+    ctx: ShowCreateDatabaseCategoryCstChildren,
+  ): string {
+    return ctx.All
+      ? "all"
+      : (this.visit(ctx.identifier![0]) as AST.QualifiedName).parts[0]
+  }
+
   showStatement(ctx: ShowStatementCstChildren): AST.ShowStatement {
     if (ctx.Tables) {
       return {
@@ -2364,12 +2879,39 @@ class QuestDBVisitor extends BaseVisitor {
           table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
         }
       }
+      if (ctx.Live) {
+        return {
+          type: "show",
+          showType: "createLiveView",
+          table: this.visit(ctx.tableName!) as AST.QualifiedName,
+        }
+      }
       if (ctx.View) {
         return {
           type: "show",
           showType: "createView",
           table: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
         }
+      }
+      if (ctx.Database) {
+        const result: AST.ShowStatement = {
+          type: "show",
+          showType: "createDatabase",
+        }
+        if (ctx.Include || ctx.Exclude) {
+          const mode = ctx.Include ? "include" : "exclude"
+          if (ctx.All) {
+            result.databaseInclude = { mode, all: true }
+          } else {
+            result.databaseInclude = {
+              mode,
+              categories: (ctx.showCreateDatabaseCategory ?? []).map(
+                (n) => this.visit(n) as string,
+              ),
+            }
+          }
+        }
+        return result
       }
       return {
         type: "show",
@@ -2503,6 +3045,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.copyCancel) {
       return this.visit(ctx.copyCancel) as AST.CopyCancelStatement
     }
+    if (ctx.copyPermissions) {
+      return this.visit(ctx.copyPermissions) as AST.CopyPermissionsStatement
+    }
     if (ctx.copyFrom) {
       return this.visit(ctx.copyFrom) as AST.CopyFromStatement
     }
@@ -2521,6 +3066,16 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "copyCancel",
       id,
+    }
+  }
+
+  copyPermissions(
+    ctx: CopyPermissionsCstChildren,
+  ): AST.CopyPermissionsStatement {
+    return {
+      type: "copyPermissions",
+      from: this.visit(ctx.identifier[0]) as AST.QualifiedName,
+      to: this.visit(ctx.identifier[1]) as AST.QualifiedName,
     }
   }
 
@@ -2570,6 +3125,8 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.StatisticsEnabled?.[0] ??
       ctx.ParquetVersion?.[0] ??
       ctx.RawArrayEncoding?.[0] ??
+      ctx.BloomFilterColumns?.[0] ??
+      ctx.BloomFilterFpp?.[0] ??
       (ctx.On ? ctx.On[0] : undefined)
 
     let key = keyToken?.image ?? "OPTION"
@@ -2584,7 +3141,7 @@ class QuestDBVisitor extends BaseVisitor {
       result.value = this.visit(ctx.booleanLiteral) as boolean
     } else if (ctx.NumberLiteral) {
       // PARQUET_VERSION with bare number literal (e.g., PARQUET_VERSION 2)
-      result.value = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.value = tokenInt(ctx.NumberLiteral[0].image)
     } else if (ctx.stringOrIdentifier) {
       result.value = this.extractMaybeString(ctx.stringOrIdentifier[0])
       // Mark as quoted when the stringOrIdentifier resolved to a string literal
@@ -2678,6 +3235,38 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
+  switchStatement(ctx: SwitchStatementCstChildren): AST.SwitchStatement {
+    if (ctx.Cold) {
+      if (ctx.Status) {
+        return { type: "switch", action: "coldStorageStatus" }
+      }
+      const result: AST.SwitchStatement = {
+        type: "switch",
+        action: "coldStorageRole",
+        role: ctx.Refresher ? "REFRESHER" : "MANAGER",
+      }
+      if (ctx.Force) {
+        result.force = true
+      }
+      if (ctx.Timeout && ctx.NumberLiteral) {
+        result.timeout = tokenInt(ctx.NumberLiteral[0].image)
+      }
+      return result
+    }
+    if (ctx.Status) {
+      return { type: "switch", action: "status" }
+    }
+    const result: AST.SwitchStatement = {
+      type: "switch",
+      action: "role",
+      role: ctx.Replica ? "REPLICA" : "PRIMARY",
+    }
+    if (ctx.Timeout && ctx.NumberLiteral) {
+      result.timeout = tokenInt(ctx.NumberLiteral[0].image)
+    }
+    return result
+  }
+
   compileViewStatement(
     ctx: CompileViewStatementCstChildren,
   ): AST.CompileViewStatement {
@@ -2687,16 +3276,10 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
-  convertPartitionTarget(ctx: ConvertPartitionTargetCstChildren): {
-    partitions?: string[]
-    target: string
-    where?: AST.Expression
-  } {
-    const result: {
-      partitions?: string[]
-      target: string
-      where?: AST.Expression
-    } = {
+  convertPartitionTarget(
+    ctx: ConvertPartitionTargetCstChildren,
+  ): ConvertPartitionTargetResult {
+    const result: ConvertPartitionTargetResult = {
       target: "TABLE",
     }
 
@@ -2719,6 +3302,12 @@ class QuestDBVisitor extends BaseVisitor {
     // Optional WHERE clause
     if (ctx.expression) {
       result.where = this.visit(ctx.expression[0]) as AST.Expression
+    }
+
+    if (ctx.tableParam) {
+      result.withParams = ctx.tableParam.map(
+        (p: CstNode) => this.visit(p) as AST.TableParam,
+      )
     }
 
     return result
@@ -2814,10 +3403,16 @@ class QuestDBVisitor extends BaseVisitor {
       type: "grantTableTarget",
       table: this.visit(ctx.tableName) as AST.QualifiedName,
     }
-    if (ctx.identifier && ctx.identifier.length > 0) {
-      result.columns = ctx.identifier.map((id: IdentifierCstNode) =>
-        this.extractIdentifierName(id.children),
-      )
+    const cols = (ctx.identifier ?? []).map((id: IdentifierCstNode) =>
+      this.extractIdentifierName(id.children),
+    )
+    if (ctx.Star) {
+      result.allColumns = true
+      if (ctx.Exclude && cols.length > 0) {
+        result.excludeColumns = cols
+      }
+    } else if (cols.length > 0) {
+      result.columns = cols
     }
     return result
   }
@@ -2863,10 +3458,10 @@ class QuestDBVisitor extends BaseVisitor {
       type: "resumeWal",
     }
     if (ctx.Transaction && ctx.NumberLiteral) {
-      result.fromTransaction = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.fromTransaction = tokenInt(ctx.NumberLiteral[0].image)
     }
     if (ctx.Txn && ctx.NumberLiteral) {
-      result.fromTxn = parseInt(ctx.NumberLiteral[0].image, 10)
+      result.fromTxn = tokenInt(ctx.NumberLiteral[0].image)
     }
     return result
   }
@@ -2911,6 +3506,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Full) result.mode = "full"
     if (ctx.Incremental) result.mode = "incremental"
+    if (ctx.Stats) result.mode = "stats"
     if (ctx.Range) {
       result.mode = "range"
       if (ctx.stringOrIdentifier) {
@@ -3787,6 +4383,10 @@ class QuestDBVisitor extends BaseVisitor {
       result.frame = this.visit(ctx.windowFrameClause) as AST.WindowFrame
     }
 
+    if (ctx.anchorClause) {
+      result.anchor = this.visit(ctx.anchorClause) as AST.AnchorClause
+    }
+
     return result
   }
 
@@ -3828,6 +4428,10 @@ class QuestDBVisitor extends BaseVisitor {
 
     if (ctx.windowFrameClause) {
       result.frame = this.visit(ctx.windowFrameClause) as AST.WindowFrame
+    }
+
+    if (ctx.anchorClause) {
+      result.anchor = this.visit(ctx.anchorClause) as AST.AnchorClause
     }
 
     return result
@@ -4089,41 +4693,54 @@ class QuestDBVisitor extends BaseVisitor {
     value: number
     unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
   } {
-    // Handle DurationLiteral (e.g., "2w", "12h", "30d")
+    // Handle DurationLiteral (e.g., "2w", "12h", "30d", "1_000d", "1.5d")
     if (ctx.DurationLiteral) {
       const img = (ctx.DurationLiteral[0] as IToken).image
-      const match = img.match(/^(\d+)(.+)$/)
+      // Digit run + optional decimal part, both with `_` digit separators
+      // — matches the lexer DurationLiteral pattern. Without the decimal
+      // alternative, `1.5d` would split as ("1", ".5d") and surface a
+      // misleading "Invalid TTL duration unit '.5d'".
+      const match = img.match(/^([\d_]+(?:\.[\d_]+)?)(.+)$/)
       if (match) {
+        // Unit suffixes match QuestDB's case-insensitive ttlUnitToIndexMap in
+        // PartitionBy.java: both `m` and `M` mean MONTHS (not minutes).
         const DURATION_UNIT_MAP: Record<
           string,
           "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
         > = {
           h: "HOURS",
+          H: "HOURS",
           d: "DAYS",
+          D: "DAYS",
           w: "WEEKS",
+          W: "WEEKS",
+          m: "MONTHS",
           M: "MONTHS",
           y: "YEARS",
+          Y: "YEARS",
         }
         const unit = DURATION_UNIT_MAP[match[2]]
         if (!unit) {
           throw new Error(
-            `Invalid TTL duration unit '${match[2]}' in '${img}'. Valid units: h (HOURS), d (DAYS), w (WEEKS), M (MONTHS), y (YEARS)`,
+            `Invalid TTL duration unit '${match[2]}' in '${img}'. Valid units: h/H (HOURS), d/D (DAYS), w/W (WEEKS), m/M (MONTHS), y/Y (YEARS)`,
           )
         }
+        // parseFloat handles both integer ("30") and decimal ("1.5") prefixes.
         return {
-          value: parseInt(match[1], 10),
+          value: parseFloat(match[1].replace(/_/g, "")),
           unit,
         }
       }
     }
-    // Handle NumberLiteral + optional timeUnit (e.g., "2 WEEKS")
-    const value = parseInt(
+    // Handle NumberLiteral + optional timeUnit (e.g., "2 WEEKS", "1_000 DAYS")
+    const value = tokenFloat(
       (ctx.NumberLiteral?.[0] as IToken | undefined)?.image ?? "0",
-      10,
     )
     let unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS" = "DAYS"
     if (ctx.timeUnit) {
       unit = this.visit(ctx.timeUnit as CstNode[]) as typeof unit
+    } else if (ctx.storagePolicyTimeUnit) {
+      unit = this.visit(ctx.storagePolicyTimeUnit as CstNode[]) as typeof unit
       // Check plural forms first (TTL units) before singular (which may be PARTITION BY units)
     } else if (ctx.Hours) unit = "HOURS"
     else if (ctx.Days) unit = "DAYS"
