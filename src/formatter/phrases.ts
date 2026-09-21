@@ -34,6 +34,7 @@ const selectPhrases: Phrase[] = [
     ["Latest", "By"],
     ["Sample", "By"],
     ["Group", "By"],
+    ["Subsample"],
     ["Order", "By"],
     ["Limit"],
     ["Window"],

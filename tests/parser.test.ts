@@ -8779,3 +8779,199 @@ describe("Docs gaps (2026-09): memory limits, outer joins, unnest joins, fill pr
     })
   })
 })
+
+describe("SUBSAMPLE clause (questdb/questdb#7013)", () => {
+  const roundtrip = (sql: string) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toHaveLength(0)
+    const regenerated = toSql(result.ast[0])
+    const reparsed = parseToAst(regenerated)
+    expect(reparsed.errors).toHaveLength(0)
+    expect(toSql(reparsed.ast[0])).toBe(regenerated)
+    return { ast: result.ast[0], regenerated }
+  }
+
+  const subsampleOf = (ast: AST.Statement): AST.SubsampleClause => {
+    expect(ast.type).toBe("select")
+    const clause = (ast as AST.SelectStatement).subsample
+    expect(clause).toBeDefined()
+    return clause!
+  }
+
+  it.each([
+    ["SELECT * FROM sensors SUBSAMPLE uniform(500)", "uniform", 1],
+    ["SELECT * FROM sensors SUBSAMPLE cadence(10)", "cadence", 1],
+    ["SELECT * FROM sensors SUBSAMPLE cadence(10, 42)", "cadence", 2],
+    ["SELECT * FROM sensors SUBSAMPLE cadence(10, NULL)", "cadence", 2],
+    ["SELECT ts, price FROM trades SUBSAMPLE m4(price, 4000)", "m4", 2],
+    ["SELECT ts, price FROM trades SUBSAMPLE minmax(price, 2000)", "minmax", 2],
+    ["SELECT ts, price FROM trades SUBSAMPLE lttb(price, 2000)", "lttb", 2],
+    [
+      "SELECT ts, price FROM trades SUBSAMPLE lttb(price, 2000, '1h')",
+      "lttb",
+      3,
+    ],
+    [
+      "SELECT ts, temperature FROM sensors SUBSAMPLE sdt(temperature, 0.5)",
+      "sdt",
+      2,
+    ],
+  ])("parses and round-trips %s", (sql, method, argCount) => {
+    const { ast, regenerated } = roundtrip(sql)
+    const clause = subsampleOf(ast)
+    expect(clause.type).toBe("subsample")
+    expect(clause.method).toBe(method)
+    expect(clause.args).toHaveLength(argCount)
+    expect(regenerated).toBe(sql)
+  })
+
+  it("keeps the method name case as written", () => {
+    const { ast, regenerated } = roundtrip(
+      "SELECT * FROM trades SUBSAMPLE LTTB(price, 2000)",
+    )
+    expect(subsampleOf(ast).method).toBe("LTTB")
+    expect(regenerated).toBe("SELECT * FROM trades SUBSAMPLE LTTB(price, 2000)")
+  })
+
+  it("accepts any method name and leaves validation to the server", () => {
+    const { ast } = roundtrip("SELECT * FROM trades SUBSAMPLE whatever(1)")
+    expect(subsampleOf(ast).method).toBe("whatever")
+  })
+
+  it("sits after WHERE, and before ORDER BY and LIMIT", () => {
+    const { ast, regenerated } = roundtrip(
+      "SELECT ts, price FROM trades WHERE ts IN '2024-06' SUBSAMPLE m4(price, 4000) ORDER BY ts DESC LIMIT 100",
+    )
+    expect(regenerated).toBe(
+      "SELECT ts, price FROM trades WHERE ts IN '2024-06' SUBSAMPLE m4(price, 4000) ORDER BY ts DESC LIMIT 100",
+    )
+    if (ast.type === "select") {
+      expect(ast.where).toBeDefined()
+      expect(ast.orderBy).toHaveLength(1)
+      expect(ast.limit).toBeDefined()
+    }
+  })
+
+  it("follows SAMPLE BY and reads the projected alias", () => {
+    const { ast } = roundtrip(
+      "SELECT ts, avg(price) avg FROM trades SAMPLE BY 1h SUBSAMPLE lttb(avg, 500)",
+    )
+    if (ast.type === "select") {
+      expect(ast.sampleBy).toBeDefined()
+      expect(ast.subsample?.args[0]).toMatchObject({
+        type: "column",
+        name: { type: "qualifiedName", parts: ["avg"] },
+      })
+    }
+  })
+
+  it("follows LATEST ON, GROUP BY and a named WINDOW clause", () => {
+    roundtrip(
+      "SELECT * FROM trades LATEST ON ts PARTITION BY symbol SUBSAMPLE uniform(10)",
+    )
+    roundtrip(
+      "SELECT symbol, max(price) FROM trades GROUP BY symbol SUBSAMPLE uniform(10)",
+    )
+    const { ast } = roundtrip(
+      "SELECT ts, avg(price) OVER w FROM trades WINDOW w AS (ORDER BY ts) SUBSAMPLE minmax(price, 10)",
+    )
+    if (ast.type === "select") {
+      expect(ast.namedWindows).toHaveLength(1)
+      expect(ast.subsample?.method).toBe("minmax")
+    }
+  })
+
+  it("takes DECLARE variables as arguments", () => {
+    const { regenerated } = roundtrip(
+      "DECLARE @points := 2000 SELECT price, ts FROM trades SUBSAMPLE lttb(price, @points)",
+    )
+    expect(regenerated).toBe(
+      "DECLARE @points := 2000 SELECT price, ts FROM trades SUBSAMPLE lttb(price, @points)",
+    )
+  })
+
+  it("parses the parenthesised implicit-select shorthand", () => {
+    const { ast, regenerated } = roundtrip(
+      "SELECT v, ts FROM (t SUBSAMPLE uniform(4)) x",
+    )
+    expect(regenerated).toBe("SELECT v, ts FROM (t SUBSAMPLE uniform(4)) AS x")
+    if (ast.type === "select") {
+      const source = ast.from![0].table
+      expect(source.type).toBe("select")
+      if (source.type === "select") {
+        expect(source.implicit).toBe(true)
+        expect(source.subsample?.method).toBe("uniform")
+      }
+    }
+    roundtrip("SELECT v, ts FROM (SELECT * FROM t SUBSAMPLE m4(v, 4))")
+  })
+
+  it("composes with CTEs, joins and UNION", () => {
+    roundtrip(
+      "WITH c AS (SELECT * FROM trades SUBSAMPLE lttb(price, 100)) SELECT * FROM c",
+    )
+    roundtrip(
+      "SELECT t.ts, t.price FROM trades t ASOF JOIN quotes q SUBSAMPLE lttb(price, 100)",
+    )
+    roundtrip(
+      "SELECT * FROM a SUBSAMPLE uniform(10) UNION SELECT * FROM b SUBSAMPLE uniform(10)",
+    )
+  })
+
+  it("rejects SUBSAMPLE after ORDER BY or LIMIT", () => {
+    expect(
+      parseToAst("SELECT * FROM trades ORDER BY ts SUBSAMPLE uniform(4)")
+        .errors,
+    ).not.toHaveLength(0)
+    expect(
+      parseToAst("SELECT * FROM trades LIMIT 10 SUBSAMPLE uniform(4)").errors,
+    ).not.toHaveLength(0)
+  })
+
+  it("rejects a duplicate SUBSAMPLE clause and a missing argument list", () => {
+    expect(
+      parseToAst(
+        "SELECT * FROM trades SUBSAMPLE uniform(4) SUBSAMPLE uniform(4)",
+      ).errors,
+    ).not.toHaveLength(0)
+    expect(
+      parseToAst("SELECT * FROM trades SUBSAMPLE uniform").errors,
+    ).not.toHaveLength(0)
+    expect(
+      parseToAst("SELECT * FROM trades SUBSAMPLE").errors,
+    ).not.toHaveLength(0)
+  })
+
+  it("treats subsample as a reserved word, quoted names still work", () => {
+    expect(parseToAst("SELECT subsample FROM t").errors).not.toHaveLength(0)
+    expect(parseToAst("SELECT * FROM t subsample").errors).not.toHaveLength(0)
+    const { regenerated } = roundtrip('SELECT "subsample", ts FROM readings')
+    expect(regenerated).toBe('SELECT "subsample", ts FROM readings')
+    roundtrip('SELECT * FROM "subsample"')
+  })
+
+  it.each([
+    "SELECT ts, price, m4(ts, price, 8) OVER (ORDER BY ts) AS keep FROM trades",
+    "SELECT ts, minmax(ts, price, 8) OVER (ORDER BY ts) keep FROM trades",
+    "SELECT ts, lttb(ts, price, 2000, '1h') OVER (ORDER BY ts) keep FROM trades",
+    "SELECT ts, sdt(ts, value, 0.5) OVER (PARTITION BY sensor ORDER BY ts) AS keep FROM readings",
+    "SELECT uniform(500) OVER (ORDER BY ts), cadence(10, 42) OVER (ORDER BY ts) FROM t",
+  ])("still parses the method as a window function: %s", (sql) => {
+    const { ast } = roundtrip(sql)
+    if (ast.type === "select") {
+      expect(ast.subsample).toBeUndefined()
+      const windowed = ast.columns.find(
+        (c) =>
+          c.type === "selectItem" &&
+          c.expression.type === "function" &&
+          c.expression.over !== undefined,
+      )
+      expect(windowed).toBeDefined()
+    }
+  })
+
+  it("still accepts the method names as identifiers", () => {
+    roundtrip("SELECT uniform, cadence, m4, minmax, lttb, sdt FROM t")
+    roundtrip("SELECT * FROM lttb")
+  })
+})

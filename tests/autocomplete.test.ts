@@ -4843,3 +4843,64 @@ describe("Position-typed suggestions — by statement type", () => {
     })
   })
 })
+
+// =============================================================================
+// SUBSAMPLE clause (questdb/questdb#7013)
+// =============================================================================
+describe("SUBSAMPLE autocomplete", () => {
+  const methods = ["uniform", "cadence", "m4", "minmax", "lttb", "sdt"]
+
+  it("offers SUBSAMPLE after the FROM source and after WHERE", () => {
+    expect(getLabelsAt(provider, "SELECT * FROM trades ")).toContain(
+      "SUBSAMPLE",
+    )
+    expect(
+      getLabelsAt(provider, "SELECT * FROM trades WHERE price > 1 "),
+    ).toContain("SUBSAMPLE")
+    expect(
+      getLabelsAt(provider, "SELECT avg(price) FROM trades SAMPLE BY 1h "),
+    ).toContain("SUBSAMPLE")
+  })
+
+  it("offers the six methods as functions after SUBSAMPLE, and no columns", () => {
+    const suggestions = provider.getSuggestions(
+      "SELECT * FROM trades SUBSAMPLE ",
+      "SELECT * FROM trades SUBSAMPLE ".length,
+    )
+    const functions = suggestions
+      .filter((s) => s.kind === SuggestionKind.Function)
+      .map((s) => s.label)
+    for (const method of methods) expect(functions).toContain(method)
+    const labels = suggestions.map((s) => s.label)
+    expect(labels).not.toContain("price")
+    expect(labels).not.toContain("trades")
+  })
+
+  it("filters the methods by the typed prefix", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM trades SUBSAMPLE lt")
+    expect(labels).toContain("lttb")
+    expect(labels).not.toContain("uniform")
+    expect(labels).not.toContain("m4")
+  })
+
+  it("suggests columns inside the method arguments", () => {
+    const labels = getLabelsAt(provider, "SELECT * FROM trades SUBSAMPLE lttb(")
+    expect(labels).toContain("price")
+    expect(labels).toContain("timestamp")
+  })
+
+  it("continues with ORDER BY and LIMIT after the clause, never a second SUBSAMPLE", () => {
+    assertSuggestionsWalkthrough(provider, [
+      {
+        typed: "SELECT * FROM trades SUBSAMPLE lttb(price, 2000) ",
+        expects: ["ORDER", "LIMIT"],
+        rejects: ["SUBSAMPLE", "WHERE", "SAMPLE"],
+      },
+      {
+        typed: "SELECT * FROM trades ORDER BY timestamp ",
+        expects: ["LIMIT"],
+        rejects: ["SUBSAMPLE"],
+      },
+    ])
+  })
+})

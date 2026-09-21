@@ -135,6 +135,30 @@ describe("QuestDB Lexer", () => {
     expect(identTokens).toHaveLength(1)
   })
 
+  it("should tokenize the SUBSAMPLE clause with its method as a name", () => {
+    const result = tokenize("SUBSAMPLE lttb(price, 2000, '1h')")
+
+    expect(result.errors).toHaveLength(0)
+    expect(result.tokens.map((token) => token.tokenType.name)).toEqual([
+      "Subsample",
+      "Lttb",
+      "LParen",
+      "Identifier",
+      "Comma",
+      "NumberLiteral",
+      "Comma",
+      "StringLiteral",
+      "RParen",
+    ])
+    // subsample is reserved; the six methods stay usable as identifiers
+    const subsample = result.tokens[0].tokenType
+    const lttb = result.tokens[1].tokenType
+    const categories = (t: typeof lttb) =>
+      (t.CATEGORIES ?? []).map((c) => c.name)
+    expect(categories(subsample)).not.toContain("IdentifierKeyword")
+    expect(categories(lttb)).toContain("IdentifierKeyword")
+  })
+
   it("should tokenize duration literals for SAMPLE BY", () => {
     const durations = ["1s", "5m", "1h", "1d", "1M", "1y"]
 

@@ -29,6 +29,17 @@ describe("format with capitalize", () => {
       ].join("\n"),
     ],
     [
+      "raises SUBSAMPLE but not its method, which the grammar reads as a name",
+      "select ts, price from trades where ts in '2024-06' subsample m4(price, 4000) order by ts",
+      [
+        "SELECT ts, price",
+        "FROM trades",
+        "WHERE ts IN '2024-06'",
+        "SUBSAMPLE m4(price, 4000)",
+        "ORDER BY ts",
+      ].join("\n"),
+    ],
+    [
       "leaves columns alone where a keyword names one",
       "select symbol, avg(price) from trades where ts in today() latest on ts partition by symbol",
       [

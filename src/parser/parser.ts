@@ -370,6 +370,7 @@ import {
   Default,
   // Storage policy tokens
   Storage,
+  Subsample,
   Policy,
   Local,
   Remote,
@@ -661,6 +662,9 @@ class QuestDBParser extends CstParser {
           this.LA(1).tokenType === Window && this.LA(2).tokenType !== Join,
         DEF: () => this.SUBRULE(this.windowClause),
       })
+      // SUBSAMPLE method(args): after WHERE / LATEST ON / SAMPLE BY / GROUP BY /
+      // WINDOW and before ORDER BY / LIMIT (questdb/questdb#7013).
+      this.OPTION8(() => this.SUBRULE(this.subsampleClause))
       this.OPTION6(() => this.SUBRULE(this.orderByClause))
       this.OPTION7(() => this.SUBRULE(this.limitClause))
     })
@@ -859,6 +863,7 @@ class QuestDBParser extends CstParser {
     this.OPTION1(() => this.SUBRULE(this.sampleByClause))
     this.OPTION2(() => this.SUBRULE(this.latestOnClause))
     this.OPTION3(() => this.SUBRULE(this.groupByClause))
+    this.OPTION6(() => this.SUBRULE(this.subsampleClause))
     this.OPTION4(() => this.SUBRULE(this.orderByClause))
     this.OPTION5(() => this.SUBRULE(this.limitClause))
   })
@@ -1290,6 +1295,23 @@ class QuestDBParser extends CstParser {
         },
       },
     ])
+  })
+
+  // SUBSAMPLE method(arg, ...): server-side downsampling that returns original
+  // rows (uniform, cadence, m4, minmax, lttb, sdt). The method name goes
+  // through `identifier`, as QuestDB's parser reads any word here and the
+  // optimiser rejects unknown methods, so the six names stay usable as plain
+  // identifiers and window functions elsewhere.
+  private subsampleClause = this.RULE("subsampleClause", () => {
+    this.CONSUME(Subsample)
+    this.SUBRULE(this.identifier)
+    this.CONSUME(LParen)
+    this.SUBRULE(this.expression)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.expression)
+    })
+    this.CONSUME(RParen)
   })
 
   private fillClause = this.RULE("fillClause", () => {

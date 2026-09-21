@@ -78,6 +78,7 @@ export const constants: string[] = [
   "rest",
   "rle_dictionary",
   "schema",
+  "sdt",
   "search_path",
   "second",
   "seconds",

@@ -144,6 +144,7 @@ import type {
   RevokeAssumeServiceAccountStatementCstChildren,
   RevokeStatementCstChildren,
   SampleByClauseCstChildren,
+  SubsampleClauseCstChildren,
   SelectItemCstChildren,
   SelectListCstChildren,
   SelectBodyCstChildren,
@@ -491,6 +492,10 @@ class QuestDBVisitor extends BaseVisitor {
       result.namedWindows = this.visit(ctx.windowClause) as AST.NamedWindow[]
     }
 
+    if (ctx.subsampleClause) {
+      result.subsample = this.visit(ctx.subsampleClause) as AST.SubsampleClause
+    }
+
     if (ctx.orderByClause) {
       result.orderBy = this.visit(ctx.orderByClause) as AST.OrderByItem[]
     }
@@ -696,6 +701,11 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.groupByClause) {
       result.groupBy = this.visitSafe(ctx.groupByClause) as AST.Expression[]
+    }
+    if (ctx.subsampleClause) {
+      result.subsample = this.visitSafe(
+        ctx.subsampleClause,
+      ) as AST.SubsampleClause
     }
     if (ctx.orderByClause) {
       result.orderBy = this.visitSafe(ctx.orderByClause) as AST.OrderByItem[]
@@ -1065,6 +1075,14 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "latestOn",
       partitionBy: columnRefs.map((c: AST.ColumnRef) => c.name),
+    }
+  }
+
+  subsampleClause(ctx: SubsampleClauseCstChildren): AST.SubsampleClause {
+    return {
+      type: "subsample",
+      method: (this.visit(ctx.identifier) as AST.QualifiedName).parts[0],
+      args: ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression),
     }
   }
 
