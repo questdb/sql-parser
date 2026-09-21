@@ -20,6 +20,8 @@ export const keywords: string[] = [
   "batch",
   "between",
   "bloom_filter",
+  "bloom_filter_columns",
+  "bloom_filter_fpp",
   "by",
   "bypass",
   "cache",

@@ -4082,10 +4082,10 @@
     "query": "CREATE VIEW mixed_params AS (\n  DECLARE @fixed := 5, OVERRIDABLE @adjustable := 10\n  SELECT * FROM data WHERE a >= @fixed AND b <= @adjustable\n)"
   },
   {
-    "query": "CREATE VIEW \u65e5\u672c\u8a9e\u30d3\u30e5\u30fc AS (SELECT * FROM trades)"
+    "query": "CREATE VIEW 日本語ビュー AS (SELECT * FROM trades)"
   },
   {
-    "query": "CREATE VIEW R\u00e9szv\u00e9ny_\u00e1rak AS (SELECT * FROM prices)"
+    "query": "CREATE VIEW Részvény_árak AS (SELECT * FROM prices)"
   },
   {
     "query": "CREATE VIEW with_timestamp AS (\n  (SELECT ts, value FROM my_view ORDER BY ts) timestamp(ts)\n)"
@@ -4436,7 +4436,7 @@
     "skipAutocomplete": true
   },
   {
-    "query": "-- This would fail if combinations \u00d7 aggregates > 5000\ntrades PIVOT (\n    avg(price)\n    FOR symbol IN (SELECT DISTINCT symbol FROM trades)  -- many symbols\n        side IN ('buy', 'sell')                         -- \u00d7 2\n)",
+    "query": "-- This would fail if combinations × aggregates > 5000\ntrades PIVOT (\n    avg(price)\n    FOR symbol IN (SELECT DISTINCT symbol FROM trades)  -- many symbols\n        side IN ('buy', 'sell')                         -- × 2\n)",
     "skipAutocomplete": true
   },
   {
@@ -5458,5 +5458,2525 @@
   },
   {
     "query": "GRANT CONVERT PARTITION TO PARQUET ON trades TO alice"
+  },
+  {
+    "query": "CREATE TABLE prices (\n    ts TIMESTAMP,\n    ticker SYMBOL,\n    price DOUBLE\n) TIMESTAMP(ts) PARTITION BY DAY\nDEDUP UPSERT KEYS(ts, ticker)"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    timestamp TIMESTAMP,\n    symbol SYMBOL INDEX TYPE POSTING,\n    exchange SYMBOL,\n    price DOUBLE,\n    quantity DOUBLE\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    timestamp TIMESTAMP,\n    symbol SYMBOL,\n    exchange SYMBOL,\n    price DOUBLE,\n    quantity DOUBLE\n), INDEX(symbol TYPE POSTING)\nTIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    timestamp TIMESTAMP,\n    symbol SYMBOL INDEX TYPE POSTING INCLUDE (exchange, price),\n    exchange SYMBOL,\n    price DOUBLE,\n    quantity DOUBLE\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "ALTER TABLE trades\n  ALTER COLUMN symbol ADD INDEX TYPE POSTING INCLUDE (exchange, price)"
+  },
+  {
+    "query": "-- Default adaptive encoding (recommended for most workloads)\nCREATE TABLE t1 (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING)\n    TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "-- Force Elias-Fano only (benchmarking)\nCREATE TABLE t2 (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING EF)\n    TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "-- Force delta + Frame-of-Reference only (benchmarking)\nCREATE TABLE t3 (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING DELTA)\n    TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "-- If your typical queries look like this:\nSELECT timestamp, price, quantity FROM trades WHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "-- Then include those columns (timestamp is auto-included as designated timestamp):\nCREATE TABLE trades (\n    timestamp TIMESTAMP,\n    symbol SYMBOL INDEX TYPE POSTING INCLUDE (price, quantity),\n    exchange SYMBOL,\n    price DOUBLE,\n    quantity DOUBLE,\n    -- other columns not needed in hot queries\n    raw_data VARCHAR,\n    metadata VARCHAR\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "EXPLAIN SELECT timestamp, price FROM trades WHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "-- Reads from sidecar if price is in INCLUDE\nSELECT price FROM trades WHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "-- Covering index + filter on covered column\nSELECT price FROM trades WHERE symbol = 'AAPL' AND price > 100"
+  },
+  {
+    "query": "-- Multiple keys, still uses covering index\nSELECT price FROM trades WHERE symbol IN ('AAPL', 'GOOGL', 'MSFT')"
+  },
+  {
+    "query": "-- Latest row per symbol, reads from sidecar\nSELECT timestamp, symbol, price\nFROM trades\nWHERE symbol = 'AAPL'\nLATEST ON timestamp PARTITION BY symbol"
+  },
+  {
+    "query": "-- Enumerates keys from index metadata, O(keys x partitions) instead of full scan\nSELECT DISTINCT symbol FROM trades"
+  },
+  {
+    "query": "-- Also works with timestamp filters\nSELECT DISTINCT symbol FROM trades WHERE timestamp > '2024-01-01'"
+  },
+  {
+    "query": "-- Plan: Count over CoveringIndex, no column data read\nSELECT COUNT(*) FROM trades WHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "-- Aggregates over a covered column read from the sidecar instead of\n-- the column file\nSELECT count(*), min(price), max(price)\nFROM trades\nWHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "SELECT timestamp, symbol, avg(price)\nFROM trades\nWHERE timestamp IN '$today'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '$now - 1h..$now'"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '[2025-01]#XNYS'"
+  },
+  {
+    "query": "SELECT t.timestamp, t.symbol, t.price, p.bid_price, p.ask_price\nFROM fx_trades AS t\nASOF JOIN core_price AS p ON (symbol)\nWHERE t.timestamp IN '$now-1h..$now'"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1_000_000_000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2 - t.price) AS avg_markout\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nLIST (0, 5s, 30s, 1m) AS h\nWHERE t.timestamp IN '$now-1h..$now'\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT symbol, side, sum(price)\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "(\n    SELECT symbol, side, sum(price) AS total_price\n    FROM trades WHERE timestamp IN '$today'\n)\nWHERE total_price > 10_000_000"
+  },
+  {
+    "query": "DECLARE\n    @symbol := 'BTC-USDT',\n    @window := '$now - 1d..$now'\nSELECT timestamp, price FROM trades\nWHERE symbol = @symbol AND timestamp IN @window"
+  },
+  {
+    "query": "CREATE VIEW expensive_trades AS (\n    DECLARE OVERRIDABLE @min_price := 100\n    SELECT * FROM trades WHERE price >= @min_price\n)"
+  },
+  {
+    "query": "-- Override at query time\nDECLARE @min_price := 500 SELECT * FROM expensive_trades"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    ts TIMESTAMP,\n    symbol SYMBOL INDEX TYPE POSTING INCLUDE (price, amount),\n    price DOUBLE,\n    amount DOUBLE\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "SELECT value FROM UNNEST(ARRAY[1.0, 2.0, 3.0])"
+  },
+  {
+    "query": "SELECT u.trade_id, u.price, u.size, u.side, u.time\nFROM UNNEST(\n    '[{\"trade_id\":994619709,\"side\":\"sell\",\"size\":\"0.00000100\",\"price\":\"69839.36\",\"time\":\"2026-04-06T10:32:55.517183Z\"},\n      {\"trade_id\":994619708,\"side\":\"buy\",\"size\":\"0.00000006\",\"price\":\"69839.35\",\"time\":\"2026-04-06T10:32:55.418434Z\"}]'::VARCHAR\n    COLUMNS(trade_id LONG, price DOUBLE, size DOUBLE, side VARCHAR, time TIMESTAMP)\n) u"
+  },
+  {
+    "query": "SELECT id, order_ts, sym, price, sec_offs, order_ts + usec_offs AS ts\nFROM orders CROSS JOIN offsets\nORDER BY order_ts + usec_offs"
+  },
+  {
+    "query": "SELECT /*+ markout_horizon(orders offsets) */ sum(price)\nFROM (SELECT * FROM (\n    SELECT price, ts + usec_offs AS timestamp\n    FROM orders CROSS JOIN offsets\n    ORDER BY ts + usec_offs\n) TIMESTAMP(timestamp))"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    ts TIMESTAMP,\n    symbol SYMBOL,\n    side SYMBOL,\n    price DOUBLE,\n    qty DOUBLE\n) TIMESTAMP(ts) PARTITION BY DAY\nDEDUP UPSERT KEYS(ts, symbol, side)"
+  },
+  {
+    "query": "-- NYSE trading hours on workdays for January (22 intervals, one query)\nSELECT * FROM trades\nWHERE ts IN '[2024-01]T09:30@America/New_York#workday;6h30m'"
+  },
+  {
+    "query": "-- Subquery loses designated timestamp\n-- Solution: Apply TIMESTAMP() to the subquery result\nWITH recent AS (\n    (SELECT * FROM trades WHERE timestamp > dateadd('d', -7, now()))\n    TIMESTAMP(timestamp)\n)\nSELECT * FROM recent SAMPLE BY 1h"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma\nFLUSH EVERY 1s\nIN MEMORY 5s\nSTART FROM NOW\nAS\nSELECT\n  timestamp,\n  symbol,\n  price,\n  avg(price) OVER (\n    PARTITION BY symbol\n    ORDER BY timestamp\n    ROWS 300 PRECEDING\n  ) AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "SELECT * FROM trades_ma"
+  },
+  {
+    "query": "SHOW CREATE LIVE VIEW trades_ma"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_daily_volume\nFLUSH EVERY 1s\nSTART FROM NOW\nAS\nSELECT\n  timestamp,\n  symbol,\n  sum(amount) OVER w AS cumulative_volume\nFROM trades\nWINDOW w AS (\n  PARTITION BY symbol\n  ORDER BY timestamp\n  ANCHOR DAILY '00:00'\n)"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma\nFLUSH EVERY 1s\nSTART FROM BEGINNING\nAS\nSELECT\n  timestamp,\n  symbol,\n  avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING)\n    AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "SELECT view_name, base_table_name, view_status, lag_seqtxn, lag_micros\nFROM live_views()"
+  },
+  {
+    "query": "REFRESH MATERIALIZED VIEW my_view"
+  },
+  {
+    "query": "CREATE TABLE trades (\n  timestamp TIMESTAMP,\n  symbol SYMBOL,\n  price DOUBLE,\n  amount DOUBLE\n) TIMESTAMP(timestamp)\nPARTITION BY DAY\nFORMAT PARQUET"
+  },
+  {
+    "query": "ALTER TABLE market_data SET STORAGE POLICY(TO PARQUET 1h)"
+  },
+  {
+    "query": "ALTER TABLE trades CONVERT PARTITION TO PARQUET\nWHERE timestamp < '2025-08-31'\nWITH (bloom_filter_columns = 'symbol,side', bloom_filter_fpp = 0.01)"
+  },
+  {
+    "query": "COPY market_data TO 'market_data_single' WITH FORMAT PARQUET PARTITION_BY NONE"
+  },
+  {
+    "query": "COPY market_data TO 'market_data_monthly' WITH FORMAT PARQUET PARTITION_BY MONTH"
+  },
+  {
+    "query": "COPY (SELECT * FROM market_data WHERE timestamp IN '2024')\nTO 'market_data_2024'\nWITH FORMAT PARQUET PARTITION_BY MONTH"
+  },
+  {
+    "query": "-- Instead of:\n-- ALTER TABLE trades SET TTL 30 DAYS;\n\n-- Use:\nALTER TABLE trades SET STORAGE POLICY(DROP LOCAL 30d)"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    ts TIMESTAMP,\n    symbol SYMBOL,\n    price DOUBLE\n) TIMESTAMP(ts) PARTITION BY DAY\n    STORAGE POLICY(TO PARQUET 3d, DROP LOCAL 1M)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(\n    TO PARQUET 3 DAYS,\n    DROP LOCAL 1 MONTH\n)"
+  },
+  {
+    "query": "SELECT * FROM storage_policies"
+  },
+  {
+    "query": "GRANT SET STORAGE POLICY ON trades TO analyst"
+  },
+  {
+    "query": "GRANT REMOVE STORAGE POLICY ON trades TO admin"
+  },
+  {
+    "query": "SELECT table_dir_name, to_parquet, drop_local, status\nFROM storage_policies\nWHERE table_dir_name LIKE 'trades%'"
+  },
+  {
+    "query": "CREATE TABLE 'trades' (\n    ts TIMESTAMP,\n    symbol SYMBOL CAPACITY 256 CACHE,\n    price DOUBLE\n) timestamp(ts) PARTITION BY DAY\nSTORAGE POLICY(TO PARQUET 1 DAY) WAL"
+  },
+  {
+    "query": "-- Posting index with covering columns — reads from compact sidecar files\nCREATE TABLE trades (\n    timestamp TIMESTAMP,\n    symbol SYMBOL INDEX TYPE POSTING INCLUDE (price),\n    price DOUBLE\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "-- London business hours (09:00-17:00) for January workdays\nSELECT * FROM trades\nWHERE ts IN '[2024-01]T09:00@Europe/London#wd;8h'"
+  },
+  {
+    "query": "-- NYSE trading hours (09:30-16:00 Eastern)\nSELECT * FROM trades\nWHERE ts IN '[2024-01]T09:30@America/New_York#wd;6h30m'"
+  },
+  {
+    "query": "-- On an existing view\nALTER MATERIALIZED VIEW trades_hourly SET TTL 7 DAYS"
+  },
+  {
+    "query": "ALTER TABLE trades SET TTL 0h"
+  },
+  {
+    "query": "SELECT * FROM my_view"
+  },
+  {
+    "query": "SELECT ts, price FROM my_view WHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "SELECT v1.ts, v2.value\nFROM view1 v1\nJOIN view2 v2 ON v1.id = v2.id"
+  },
+  {
+    "query": "-- View definition\nCREATE VIEW trades_view AS (\n  SELECT ts, symbol, price, quantity FROM trades WHERE price > 0\n)"
+  },
+  {
+    "query": "-- This query is optimized as if written inline\nSELECT ts, price FROM trades_view WHERE symbol = 'AAPL' ORDER BY ts\n-- Optimizer sees: SELECT ts, price FROM trades WHERE price > 0 AND symbol = 'AAPL' ORDER BY ts\n-- Only ts and price columns are read, filters applied at scan, ordering uses index"
+  },
+  {
+    "query": "CREATE VIEW price_range AS (\n  DECLARE OVERRIDABLE @lo := 100, OVERRIDABLE @hi := 1000\n  SELECT ts, symbol, price FROM trades WHERE price >= @lo AND price <= @hi\n)"
+  },
+  {
+    "query": "-- Query with custom range\nDECLARE @lo := 50, @hi := 200 SELECT * FROM price_range"
+  },
+  {
+    "query": "CREATE VIEW mixed_params AS (\n  DECLARE @fixed_filter := 'active', OVERRIDABLE @limit := 100\n  SELECT * FROM data WHERE status = @fixed_filter LIMIT @limit\n)"
+  },
+  {
+    "query": "-- @limit can be overridden, @fixed_filter cannot\nDECLARE @limit := 50 SELECT * FROM mixed_params"
+  },
+  {
+    "query": "-- Level 1: Raw data filtering\nCREATE VIEW valid_trades AS (\n  SELECT * FROM trades WHERE price > 0 AND quantity > 0\n)"
+  },
+  {
+    "query": "-- Level 2: Aggregation\nCREATE VIEW hourly_stats AS (\n  SELECT ts, symbol, sum(quantity) as volume\n  FROM valid_trades\n  SAMPLE BY 1h\n)"
+  },
+  {
+    "query": "-- Level 3: Derived metrics\nCREATE VIEW hourly_vwap AS (\n  SELECT ts, symbol, volume, turnover / volume as vwap\n  FROM hourly_stats\n  WHERE volume > 0\n)"
+  },
+  {
+    "query": "DROP VIEW my_view"
+  },
+  {
+    "query": "-- Or safely:\nDROP VIEW IF EXISTS my_view"
+  },
+  {
+    "query": "SELECT symbol, avg(price) AS avg_price\nFROM trades\nWHERE timestamp IN '2026-09-14'\nSAMPLE BY 1m"
+  },
+  {
+    "query": "SELECT query_id, memory_used, memory_limit, query\nFROM query_activity()\nWHERE query LIKE 'SELECT symbol, avg(price)%'"
+  },
+  {
+    "query": "-- List all tables\nSHOW TABLES"
+  },
+  {
+    "query": "-- Meta-query: full table metadata including designated timestamp\nSELECT * FROM tables()"
+  },
+  {
+    "query": "CREATE TABLE IF NOT EXISTS 'trades' (\n  symbol SYMBOL capacity 256 CACHE,\n  side SYMBOL capacity 256 CACHE,\n  price DOUBLE,\n  amount DOUBLE,\n  my_ts TIMESTAMP\n) timestamp (my_ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    timestamp TIMESTAMP,\n    trade_id LONG,\n    symbol SYMBOL,\n    price DOUBLE,\n    volume LONG\n) TIMESTAMP(timestamp) PARTITION BY DAY\nDEDUP UPSERT KEYS(timestamp, trade_id)"
+  },
+  {
+    "query": "SELECT count() AS out_of_order_rows\nFROM (\n  SELECT price AS current_price,\n         lag(price) OVER (ORDER BY amount) AS previous_price\n  FROM trades\n  WHERE symbol = 'BTC-USDT' AND timestamp IN '$today'\n)\nWHERE current_price < previous_price"
+  },
+  {
+    "query": "WITH column_and_prev AS (\n  SELECT row_number() OVER (ORDER BY amount) AS rownum,\n         amount,\n         price AS current_price,\n         lag(price) OVER (ORDER BY amount) AS previous_price\n  FROM trades\n  WHERE symbol = 'BTC-USDT' AND timestamp IN '$today'\n)\nSELECT rownum, amount, current_price, previous_price\nFROM column_and_prev\nWHERE current_price < previous_price\nORDER BY rownum\nLIMIT 1"
+  },
+  {
+    "query": "WITH\nmax_min AS (\nSELECT max(price), avg(price), min(price)\nFROM trades WHERE timestamp IN '2024-12-08'\n)\nSELECT max(count_sec), max_min.* FROM (\n  SELECT count() as count_sec FROM trades\n  WHERE timestamp IN '2024-12-08'\n  SAMPLE BY 1s\n) CROSS JOIN max_min"
+  },
+  {
+    "query": "CREATE VIEW lmax_trades AS (\n  SELECT timestamp, symbol, side, price, quantity, counterparty\n  FROM fx_trades\n  WHERE ecn = 'LMAX'\n)"
+  },
+  {
+    "query": "CREATE GROUP lmax_desk"
+  },
+  {
+    "query": "GRANT SELECT ON lmax_trades TO lmax_desk"
+  },
+  {
+    "query": "SELECT * FROM lmax_trades"
+  },
+  {
+    "query": "-- works, LMAX rows only\nSELECT * FROM fx_trades"
+  },
+  {
+    "query": "CREATE VIEW desk_trades AS (\n  DECLARE OVERRIDABLE @ecn := ''\n  SELECT timestamp, symbol, side, price, quantity, counterparty\n  FROM fx_trades\n  WHERE ecn = @ecn\n)"
+  },
+  {
+    "query": "CREATE VIEW lmax_trades AS (\n  DECLARE @ecn := 'LMAX'\n  SELECT * FROM desk_trades\n)"
+  },
+  {
+    "query": "CREATE VIEW ebs_trades AS (\n  DECLARE @ecn := 'EBS'\n  SELECT * FROM desk_trades\n)"
+  },
+  {
+    "query": "CREATE GROUP ebs_desk"
+  },
+  {
+    "query": "GRANT SELECT ON ebs_trades TO ebs_desk"
+  },
+  {
+    "query": "ADD USER trader_jane TO lmax_desk"
+  },
+  {
+    "query": "CREATE SERVICE ACCOUNT lmax_dashboard OWNED BY lmax_desk"
+  },
+  {
+    "query": "GRANT SELECT ON lmax_trades TO lmax_dashboard"
+  },
+  {
+    "query": "ALTER TABLE fx_trades\n  ALTER COLUMN ecn ADD INDEX TYPE POSTING\n  INCLUDE (symbol, side, price, quantity, counterparty)"
+  },
+  {
+    "query": "CREATE TABLE events (\n    visitor_id SYMBOL,\n    pathname SYMBOL,\n    timestamp TIMESTAMP,\n    metric_name SYMBOL\n) TIMESTAMP(timestamp) PARTITION BY MONTH"
+  },
+  {
+    "query": "WITH PrevEvents AS (\n  SELECT\n    visitor_id,\n    pathname,\n    timestamp,\n    lag(timestamp) OVER (PARTITION BY visitor_id ORDER BY timestamp) AS prev_ts\n  FROM\n    events WHERE timestamp IN '$now - 7d..$now'\n    AND metric_name = 'page_view'\n), VisitorSessions AS (\n  SELECT *,\n    SUM(CASE WHEN datediff('h', timestamp, prev_ts) > 1 THEN 1 END)\n    OVER(\n      PARTITION BY visitor_id\n      ORDER BY timestamp\n    ) as local_session_id FROM PrevEvents\n\n), GlobalSessions AS (\n  SELECT visitor_id, pathname, timestamp, prev_ts,\n    concat(visitor_id, '#', coalesce(local_session_id,0)::int) AS session_id\n  FROM VisitorSessions\n), EventSequences AS (\n  SELECT *, row_number() OVER (\n      PARTITION BY session_id ORDER BY timestamp\n    ) as session_sequence,\n    row_number() OVER (\n      PARTITION BY session_id ORDER BY timestamp DESC\n    ) as reverse_session_sequence,\n    first_value(timestamp::long) OVER (\n      PARTITION BY session_id ORDER BY timestamp\n    ) as session_ts\n  FROM GlobalSessions\n), EventsFullInfo AS (\n  SELECT e1.session_id, e1.session_ts::timestamp as session_ts, e1.visitor_id,\n    e1.timestamp, e1.pathname, e1.session_sequence,\n    CASE WHEN e1.session_sequence = 1 THEN true END is_entry_page,\n    e2.pathname as next_pathname, datediff('T', e1.timestamp, e1.prev_ts)::double as elapsed,\n    e2.reverse_session_sequence,\n    CASE WHEN e2.reverse_session_sequence = 1 THEN true END is_exit_page\n  FROM EventSequences e1\n  LEFT JOIN EventSequences e2 ON (e1.session_id = e2.session_id)\n  WHERE e2.session_sequence - e1.session_sequence = 1\n)\nSELECT * FROM EventsFullInfo"
+  },
+  {
+    "query": "WITH pivoted AS (\n  SELECT\n    timestamp,\n    symbol,\n    CASE WHEN side = 'buy' THEN price END as buy,\n    CASE WHEN side = 'sell' THEN price END as sell\n  FROM trades\n  WHERE timestamp IN '$now - 5m..$now'\n    AND symbol = 'ETH-USDT'\n),\nunpivoted AS (\n  SELECT timestamp, symbol, 'buy' as side, buy as price\n  FROM pivoted\n\n  UNION ALL\n\n  SELECT timestamp, symbol, 'sell' as side, sell as price\n  FROM pivoted\n)\nSELECT * FROM unpivoted\nWHERE price IS NOT NULL\nORDER BY timestamp"
+  },
+  {
+    "query": "WITH sensor_data AS (\n  SELECT\n    timestamp,\n    sensor_id,\n    temperature,\n    humidity,\n    pressure\n  FROM sensors\n  WHERE timestamp IN '$now - 1h..$now'\n)\nSELECT timestamp, sensor_id, 'temperature' as metric, temperature as value FROM sensor_data\nWHERE temperature IS NOT NULL\n\nUNION ALL\n\nSELECT timestamp, sensor_id, 'humidity' as metric, humidity as value FROM sensor_data\nWHERE humidity IS NOT NULL\n\nUNION ALL\n\nSELECT timestamp, sensor_id, 'pressure' as metric, pressure as value FROM sensor_data\nWHERE pressure IS NOT NULL\n\nORDER BY timestamp, sensor_id, metric"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH with_prev AS (\n  SELECT\n    timestamp,\n    symbol,\n    high,\n    low,\n    close,\n    lag(close) OVER (PARTITION BY symbol ORDER BY timestamp) AS prev_close\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n),\ntrue_range AS (\n  SELECT\n    timestamp,\n    symbol,\n    high,\n    low,\n    close,\n    greatest(\n      high - low,\n      abs(high - prev_close),\n      abs(low - prev_close)\n    ) AS tr\n  FROM with_prev\n  WHERE prev_close IS NOT NULL\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(tr, 6) AS true_range,\n  round(avg(tr, 'period', 14) OVER (PARTITION BY symbol ORDER BY timestamp), 6) AS atr\nFROM true_range\nORDER BY timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1h..$now'\n\nSELECT\n  timestamp,\n  symbol,\n  round(bid_price, 5) AS bid,\n  round(ask_price, 5) AS ask,\n  round(ask_price - bid_price, 6) AS spread_absolute,\n  round((ask_price - bid_price) / ((bid_price + ask_price) / 2) * 10000, 2) AS spread_bps,\n  round((bid_price + ask_price) / 2, 5) AS mid_price\nFROM core_price\nWHERE symbol = @symbol\n  AND timestamp IN @lookback\nORDER BY timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1d..$now'\n\nSELECT\n  timestamp,\n  symbol,\n  round(avg((ask_price - bid_price) / ((bid_price + ask_price) / 2) * 10000), 2) AS avg_spread_bps,\n  round(min((ask_price - bid_price) / ((bid_price + ask_price) / 2) * 10000), 2) AS min_spread_bps,\n  round(max((ask_price - bid_price) / ((bid_price + ask_price) / 2) * 10000), 2) AS max_spread_bps,\n  count() AS quote_count\nFROM core_price\nWHERE symbol = @symbol\n  AND timestamp IN @lookback\nSAMPLE BY 1h\nORDER BY timestamp"
+  },
+  {
+    "query": "WITH OHLC AS (\n  SELECT\n    timestamp, symbol,\n      first(price) AS open,\n      max(price) as high,\n      min(price) as low,\n      last(price) AS close,\n      sum(quantity) AS volume\n FROM fx_trades\n WHERE symbol = 'EURUSD' AND timestamp IN '$yesterday'\n SAMPLE BY 15m\n), stats AS (\n  SELECT\n    timestamp,\n    close,\n    AVG(close) OVER w AS sma20,\n    AVG(close * close) OVER w AS avg_close_sq\n  FROM OHLC\n  WINDOW w AS (ORDER BY timestamp ROWS 19 PRECEDING)\n)\nSELECT\n  timestamp,\n  close,\n  sma20,\n  sqrt(avg_close_sq - (sma20 * sma20)) as stdev20,\n  sma20 + 2 * sqrt(avg_close_sq - (sma20 * sma20)) as upper_band,\n  sma20 - 2 * sqrt(avg_close_sq - (sma20 * sma20)) as lower_band\nFROM stats\nORDER BY timestamp"
+  },
+  {
+    "query": "WITH OHLC AS (\n  SELECT\n    timestamp, symbol,\n      first(price) AS open,\n      last(price) AS close,\n      sum(quantity) AS volume\n FROM fx_trades\n WHERE symbol IN ('EURUSD', 'GBPUSD')\n   AND timestamp IN '$yesterday'\n SAMPLE BY 15m\n), stats AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    AVG(close) OVER w AS sma20,\n    AVG(close * close) OVER w AS avg_close_sq\n  FROM OHLC\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp ROWS 19 PRECEDING)\n)\nSELECT\n  timestamp,\n  symbol,\n  close,\n  sma20,\n  sma20 + 2 * sqrt(avg_close_sq - (sma20 * sma20)) as upper_band,\n  sma20 - 2 * sqrt(avg_close_sq - (sma20 * sma20)) as lower_band\nFROM stats\nORDER BY symbol, timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'BTC-USDT',\n  @history := '$now - 6M..$now',\n  @display := '$now - 1M..$now'\n\nWITH daily_ohlc AS (\n  SELECT\n    timestamp,\n    symbol,\n    first(open) AS open,\n    max(high) AS high,\n    min(low) AS low,\n    last(close) AS close\n  FROM trades_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @history\n  SAMPLE BY 1d\n),\nbands AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    AVG(close) OVER w AS sma20,\n    AVG(close * close) OVER w AS avg_close_sq\n  FROM daily_ohlc\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp ROWS 19 PRECEDING)\n),\nbollinger AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    sma20,\n    sma20 + 2 * sqrt(avg_close_sq - (sma20 * sma20)) AS upper_band,\n    sma20 - 2 * sqrt(avg_close_sq - (sma20 * sma20)) AS lower_band\n  FROM bands\n),\nwith_bandwidth AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    sma20,\n    upper_band,\n    lower_band,\n    (upper_band - lower_band) / sma20 * 100 AS bandwidth\n  FROM bollinger\n),\nwith_range AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    sma20,\n    upper_band,\n    lower_band,\n    bandwidth,\n    min(bandwidth) OVER w AS min_bw,\n    max(bandwidth) OVER w AS max_bw\n  FROM with_bandwidth\n  WINDOW w AS (PARTITION BY symbol)\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 2) AS close,\n  round(sma20, 2) AS sma20,\n  round(upper_band, 2) AS upper_band,\n  round(lower_band, 2) AS lower_band,\n  round(bandwidth, 4) AS bandwidth,\n  round((bandwidth - min_bw) / (max_bw - min_bw) * 100, 1) AS range_position\nFROM with_range\nWHERE timestamp IN @display\nORDER BY timestamp"
+  },
+  {
+    "query": "WITH\nyear_series AS (\n    DECLARE @year:=2000,\n            @rate := 0.1,\n            @principal := 1000.0\n    SELECT @year as start_year, @year + (x - 1) AS timestamp,\n    @rate AS interest_rate, @principal as initial_principal\n    FROM long_sequence(5) -- number of years\n),\ncompounded_values AS (\n    SELECT\n        timestamp,\n        initial_principal,\n        interest_rate,\n        initial_principal *\n            POWER(\n                  1 + interest_rate,\n                  timestamp - start_year + 1\n                  ) AS compounding\n    FROM\n        year_series\n), compounding_year_before AS (\nSELECT\n    timestamp,\n    initial_principal,\n    interest_rate,\n    LAG(cv.compounding) OVER (ORDER BY timestamp) AS year_principal,\n    cv.compounding as compounding_amount\nFROM\n    compounded_values cv\nORDER BY\n    timestamp\n    )\nselect timestamp, initial_principal, interest_rate,\ncoalesce(year_principal, initial_principal) as year_principal,\ncompounding_amount\nfrom compounding_year_before"
+  },
+  {
+    "query": "-- For hourly returns\nWITH ln_values AS (\n    SELECT\n        timestamp,\n        return,\n        SUM(ln(1 + return)) OVER (ORDER BY timestamp) AS ln_value\n    FROM hourly_returns\n)\nSELECT timestamp, 100 * exp(ln_value) AS price FROM ln_values"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH channels AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    max(high) OVER w AS upper_channel,\n    min(low) OVER w AS lower_channel\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  WINDOW w AS (\n    PARTITION BY symbol ORDER BY timestamp\n    ROWS BETWEEN 19 PRECEDING AND CURRENT ROW\n  )\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(upper_channel, 5) AS upper_channel,\n  round(lower_channel, 5) AS lower_channel,\n  round((upper_channel + lower_channel) / 2, 5) AS middle_channel\nFROM channels\nORDER BY timestamp"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    count() AS fill_count,\n    sum(t.quantity) AS total_volume,\n    avg(t.quantity) AS avg_fill_size,\n    avg((m.best_ask - m.best_bid)\n        / ((m.best_bid + m.best_ask) / 2) * 10000) AS avg_spread_bps,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS avg_slippage_bps,\n    avg((m.best_ask - t.price)\n        / t.price * 10000) AS avg_slippage_vs_ask_bps,\n    avg(CASE WHEN t.passive THEN 1.0 ELSE 0.0 END) AS passive_ratio\nFROM fx_trades t\nASOF JOIN market_data m ON (symbol)\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn\nORDER BY t.symbol, avg_slippage_bps"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS avg_markout_bps,\n    sum(((m.best_bid + m.best_ask) / 2 - t.price)\n        * t.quantity) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 5m STEP 5s AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, horizon_sec\nORDER BY t.symbol, t.ecn, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    hour(t.timestamp) AS hour_utc,\n    h.offset,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS markout_5s_bps,\n    avg((m.best_ask - m.best_bid)\n        / ((m.best_bid + m.best_ask) / 2) * 10000) AS avg_spread_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (5s) AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, hour(t.timestamp), h.offset\nORDER BY t.symbol, t.ecn, hour_utc"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (0, 1s, 5s, 10s, 1m) AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, t.passive, horizon_sec\nORDER BY t.symbol, t.ecn, t.passive, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    h.offset,\n    count() AS fill_count,\n    sum(t.quantity) AS total_volume,\n    sum(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000 * t.quantity)\n        / sum(t.quantity) AS vw_markout_5s_bps,\n    avg(CASE\n        WHEN (m.best_bid + m.best_ask) / 2 < t.price THEN 1.0\n        ELSE 0.0\n    END) AS adverse_fill_ratio\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (5s) AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, h.offset\nORDER BY t.symbol, vw_markout_5s_bps"
+  },
+  {
+    "query": "WITH markouts AS (\n    SELECT\n        t.symbol,\n        t.ecn,\n        t.price,\n        t.quantity,\n        h.offset,\n        m.best_bid,\n        m.best_ask\n    FROM fx_trades t\n    HORIZON JOIN market_data m ON (symbol)\n        LIST (0, 5s, 1m) AS h\n    WHERE t.side = 'buy'\n        AND t.timestamp IN '$yesterday'\n)\nSELECT * FROM markouts\nPIVOT (\n    count() AS fills,\n    avg(quantity) AS avg_size,\n    sum(quantity) AS volume,\n    avg(((best_bid + best_ask) / 2 - price) / price * 10000) AS markout_bps\n    FOR offset IN (0 AS at_fill, 5000000000 AS t_5s, 60000000000 AS t_1m)\n    GROUP BY symbol, ecn\n)\nORDER BY t_5s_markout_bps"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1d..$now'\n\nWITH sampled AS (\n  SELECT\n    timestamp,\n    symbol,\n    last((bid_price + ask_price) / 2) AS close_mid,\n    avg((ask_price - bid_price) /\n        ((bid_price + ask_price) / 2)) AS avg_rel_spread\n  FROM core_price\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  SAMPLE BY 1m ALIGN TO CALENDAR\n),\nreturns AS (\n  SELECT\n    timestamp,\n    symbol,\n    close_mid,\n    avg_rel_spread,\n    LN(close_mid / LAG(close_mid)\n        OVER (PARTITION BY symbol ORDER BY timestamp))\n        AS log_ret\n  FROM sampled\n)\nSELECT\n  timestamp,\n  symbol,\n  round(AVG(avg_rel_spread) OVER w * 10000, 2)\n      AS rel_spread_1h_bps,\n  round(SQRT(\n    (AVG(log_ret * log_ret) OVER w -\n        AVG(log_ret) OVER w * AVG(log_ret) OVER w) * 1440 * 365\n  ) * 100, 2) AS realized_vol_1h_ann,\n  CASE\n    WHEN AVG(avg_rel_spread) OVER w > 0 THEN\n      round(SQRT(\n        (AVG(log_ret * log_ret) OVER w -\n            AVG(log_ret) OVER w\n            * AVG(log_ret) OVER w) * 1440\n      ) / AVG(avg_rel_spread) OVER w, 2)\n    ELSE NULL\n  END AS vol_spread_ratio\nFROM returns\nWHERE log_ret IS NOT NULL\nWINDOW w AS (\n  PARTITION BY symbol ORDER BY timestamp ROWS 59 PRECEDING\n)"
+  },
+  {
+    "query": "WITH fills_enriched AS (\n    SELECT\n        f.order_id,\n        f.symbol,\n        f.side,\n        f.price,\n        f.quantity,\n        f.timestamp,\n        (m.best_bid + m.best_ask) / 2 AS mid_at_fill\n    FROM fx_trades f\n    ASOF JOIN market_data m ON (symbol)\n    WHERE f.timestamp IN '$yesterday'\n),\norder_summary AS (\n    SELECT\n        order_id,\n        symbol,\n        side,\n        first(mid_at_fill) AS arrival_mid,\n        sum(price * quantity) / sum(quantity) AS avg_exec_price,\n        sum(quantity) AS total_qty,\n        count() AS n_fills,\n        min(timestamp) AS first_fill_ts,\n        max(timestamp) AS last_fill_ts\n    FROM fills_enriched\n    GROUP BY order_id, symbol, side\n)\nSELECT\n    order_id,\n    symbol,\n    side,\n    n_fills,\n    total_qty,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (avg_exec_price - arrival_mid)\n        / arrival_mid * 10000 AS total_is_bps\nFROM order_summary\nORDER BY total_is_bps DESC"
+  },
+  {
+    "query": "WITH fills_enriched AS (\n    SELECT\n        f.order_id,\n        f.symbol,\n        f.side,\n        f.price,\n        f.quantity,\n        f.timestamp,\n        (m.best_bid + m.best_ask) / 2 AS mid_at_fill\n    FROM fx_trades f\n    ASOF JOIN market_data m ON (symbol)\n    WHERE f.timestamp IN '$yesterday'\n),\norder_bounds AS (\n    SELECT\n        order_id,\n        symbol,\n        side,\n        first(mid_at_fill) AS arrival_mid,\n        last(mid_at_fill) AS mid_at_last_fill,\n        min(timestamp) AS first_fill_ts,\n        max(timestamp) AS last_fill_ts\n    FROM fills_enriched\n    GROUP BY order_id, symbol, side\n)\nSELECT\n    order_id,\n    symbol,\n    side,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (mid_at_last_fill - arrival_mid)\n        / arrival_mid * 10000 AS execution_drift_bps,\n    last_fill_ts - first_fill_ts AS execution_duration\nFROM order_bounds\nORDER BY execution_drift_bps DESC"
+  },
+  {
+    "query": "WITH fills_enriched AS (\n    SELECT\n        f.order_id,\n        f.symbol,\n        f.side,\n        f.price,\n        f.quantity,\n        m.best_ask - m.best_bid AS spread_at_fill\n    FROM fx_trades f\n    ASOF JOIN market_data m ON (symbol)\n    WHERE f.timestamp IN '$yesterday'\n)\nSELECT\n    order_id,\n    symbol,\n    sum(0.5 * spread_at_fill * quantity)\n        / sum(quantity) AS avg_halfspread,\n    sum(0.5 * spread_at_fill / price * 10000 * quantity)\n        / sum(quantity) AS spread_cost_bps,\n    sum(quantity) AS total_qty\nFROM fills_enriched\nGROUP BY order_id, symbol\nORDER BY spread_cost_bps DESC"
+  },
+  {
+    "query": "WITH order_markouts AS (\n    SELECT\n        f.order_id,\n        f.symbol,\n        f.side,\n        h.offset,\n        sum((m.best_bid + m.best_ask) / 2 * f.quantity)\n            / sum(f.quantity) AS weighted_mid,\n        sum(f.price * f.quantity) / sum(f.quantity) AS avg_exec_price,\n        sum(f.quantity) AS total_qty\n    FROM fx_trades f\n    HORIZON JOIN market_data m ON (f.symbol = m.symbol)\n        LIST (0s, 30m) AS h\n    WHERE f.timestamp IN '$yesterday'\n),\npivoted AS (\n    SELECT * FROM order_markouts\n    PIVOT (\n        first(weighted_mid) AS mid\n        FOR offset IN (\n            0               AS at_fill,\n            1800000000000   AS at_30m\n        )\n        GROUP BY order_id, symbol, side, avg_exec_price, total_qty\n    )\n)\nSELECT\n    order_id,\n    symbol,\n    side,\n    total_qty,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (avg_exec_price - at_fill_mid)\n        / at_fill_mid * 10000 AS total_is_bps,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (at_30m_mid - at_fill_mid)\n        / at_fill_mid * 10000 AS permanent_bps,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (avg_exec_price - at_30m_mid)\n        / at_fill_mid * 10000 AS temporary_bps\nFROM pivoted\nORDER BY total_is_bps DESC"
+  },
+  {
+    "query": "WITH markouts AS (\n    SELECT\n        f.symbol,\n        f.price,\n        f.quantity,\n        f.side,\n        h.offset,\n        (m.best_bid + m.best_ask) / 2 AS mid\n    FROM fx_trades f\n    HORIZON JOIN market_data m ON (f.symbol = m.symbol)\n        LIST (0, 1800s) AS h\n    WHERE f.timestamp IN '$yesterday'\n),\npivoted AS (\n    SELECT * FROM markouts\n    PIVOT (\n        avg(mid) AS mid,\n        avg(price) AS px,\n        sum(quantity) AS vol\n        FOR offset IN (\n            0          AS at_fill,\n            1800000000000 AS at_30m\n        )\n        GROUP BY symbol, side\n    )\n)\nSELECT\n    symbol,\n    side,\n    at_fill_vol AS total_volume,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (at_fill_px - at_fill_mid) / at_fill_mid * 10000   AS effective_spread_bps,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (at_30m_mid - at_fill_mid) / at_fill_mid * 10000   AS permanent_bps,\n    CASE WHEN side = 'buy' THEN 1 ELSE -1 END\n        * (at_fill_px - at_30m_mid) / at_fill_mid * 10000    AS temporary_bps\nFROM pivoted\nORDER BY symbol, side"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH with_prev AS (\n  SELECT\n    timestamp,\n    symbol,\n    high,\n    low,\n    close,\n    lag(close) OVER (PARTITION BY symbol ORDER BY timestamp) AS prev_close\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n),\nwith_tr AS (\n  SELECT\n    timestamp,\n    symbol,\n    high,\n    low,\n    close,\n    greatest(\n      high - low,\n      abs(high - prev_close),\n      abs(low - prev_close)\n    ) AS tr\n  FROM with_prev\n  WHERE prev_close IS NOT NULL\n),\nwith_indicators AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    avg(close, 'period', 20) OVER w AS ema20,\n    avg(tr, 'period', 20) OVER w AS atr\n  FROM with_tr\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp)\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(ema20, 5) AS middle,\n  round(ema20 + 2 * atr, 5) AS upper,\n  round(ema20 - 2 * atr, 5) AS lower\nFROM with_indicators\nORDER BY timestamp"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.counterparty,\n    t.passive,\n    h.offset / 1000000 AS horizon_ms,\n    count() AS n,\n    avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (0, 1T, 5T, 10T, 50T, 100T,\n          500T, 1000T, 5000T) AS h\nWHERE t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.counterparty, t.passive, horizon_ms\nORDER BY t.symbol, t.counterparty, horizon_ms"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1m..$now'\n\nSELECT\n  timestamp,\n  symbol,\n  round((bid_price + ask_price) / 2, 5) AS mid_price,\n  LN(\n    (bid_price + ask_price) / 2 /\n    LAG((bid_price + ask_price) / 2)\n        OVER (PARTITION BY symbol ORDER BY timestamp)\n  ) AS log_return\nFROM core_price\nWHERE symbol = @symbol\n  AND ecn = 'LMAX'\n  AND timestamp IN @lookback"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1d..$now'\n\nWITH sampled AS (\n  SELECT\n    timestamp,\n    symbol,\n    last((bid_price + ask_price) / 2) AS close_mid\n  FROM core_price\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  SAMPLE BY 1m ALIGN TO CALENDAR\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close_mid, 5) AS close_mid,\n  LN(close_mid / LAG(close_mid)\n      OVER (PARTITION BY symbol ORDER BY timestamp))\n      AS log_return\nFROM sampled"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH ema AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    avg(close, 'period', 12) OVER w AS ema12,\n    avg(close, 'period', 26) OVER w AS ema26\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp)\n),\nmacd_line AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    ema12,\n    ema26,\n    ema12 - ema26 AS macd\n  FROM ema\n),\nwith_signal AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    macd,\n    avg(macd, 'period', 9) OVER (PARTITION BY symbol ORDER BY timestamp) AS signal\n  FROM macd_line\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(macd, 6) AS macd,\n  round(signal, 6) AS signal,\n  round(macd - signal, 6) AS histogram\nFROM with_signal\nORDER BY timestamp"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.counterparty,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ) AS avg_markout_bps,\n    sum(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             * t.quantity\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             * t.quantity\n        END\n    ) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 30s STEP 5s AS h\nWHERE t.timestamp IN '$now-1h..$now'\nGROUP BY t.symbol, t.ecn, t.counterparty, t.passive, horizon_sec\nORDER BY t.symbol, t.ecn, t.counterparty, t.passive, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.ecn,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ), 3) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (-30s, -5s, 0, 5s, 30s) AS h\nWHERE t.timestamp IN '$now-1h..$now'\nGROUP BY t.ecn, t.passive, horizon_sec\nORDER BY t.ecn, t.passive, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ), 3) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM -30s TO 30s STEP 1s AS h\nWHERE t.timestamp IN '$now-1h..$now'\nGROUP BY horizon_sec\nORDER BY horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.ecn,\n    t.side,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / t.price * 10000\n            WHEN 'sell' THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / t.price * 10000\n        END\n    ), 3) AS avg_markout_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (-30s, -5s, 0, 5s, 30s) AS h\nWHERE t.timestamp IN '$now-1h..$now'\nGROUP BY t.ecn, t.side, horizon_sec\nORDER BY t.ecn, t.side, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price) / t.price * 10000) AS avg_markout_bps,\n    sum(((m.best_bid + m.best_ask) / 2 - t.price) * t.quantity) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 10m STEP 10s AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$now-1h..$now'\nGROUP BY t.symbol, horizon_sec\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg((t.price - (m.best_bid + m.best_ask) / 2) / t.price * 10000) AS avg_markout_bps,\n    sum((t.price - (m.best_bid + m.best_ask) / 2) * t.quantity) AS total_pnl\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 10m STEP 10s AS h\nWHERE t.side = 'sell'\n    AND t.timestamp IN '$now-1h..$now'\nGROUP BY t.symbol, horizon_sec\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.counterparty,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price) / t.price * 10000) AS avg_markout_bps,\n    sum(t.quantity) AS total_volume\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    LIST (0, 1s, 5s, 10s, 30s, 1m, 5m) AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$now-1h..$now'\nGROUP BY t.symbol, t.counterparty, horizon_sec\nORDER BY t.symbol, t.counterparty, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.passive,\n    h.offset / 1000000000 AS horizon_sec,\n    count() AS n,\n    avg(((m.best_bid + m.best_ask) / 2 - t.price)\n        / t.price * 10000) AS avg_markout_bps,\n    avg((m.best_ask - m.best_bid)\n        / ((m.best_bid + m.best_ask) / 2) * 10000) / 2 AS avg_half_spread_bps\nFROM fx_trades t\nHORIZON JOIN market_data m ON (symbol)\n    RANGE FROM 0s TO 5m STEP 5s AS h\nWHERE t.side = 'buy'\n    AND t.timestamp IN '$now-1h..$now'\nGROUP BY t.symbol, t.ecn, t.passive, horizon_sec\nORDER BY t.symbol, t.ecn, t.passive, horizon_sec"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1M..$now'\n\nWITH ohlc AS (\n  SELECT\n    timestamp,\n    symbol,\n    last(price) AS close\n  FROM fx_trades\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  SAMPLE BY 15m ALIGN TO CALENDAR\n),\nwith_peak AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    max(close) OVER (\n      PARTITION BY symbol\n      ORDER BY timestamp\n      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n    ) AS running_peak\n  FROM ohlc\n),\nwith_drawdown AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    running_peak,\n    (close - running_peak) / running_peak * 100 AS drawdown\n  FROM with_peak\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(running_peak, 5) AS peak,\n  round(drawdown, 4) AS drawdown_pct,\n  round(min(drawdown) OVER (\n    PARTITION BY symbol\n    ORDER BY timestamp\n    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n  ), 4) AS max_drawdown_pct\nFROM with_drawdown\nORDER BY timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1M..$now'\n\nWITH ohlc AS (\n  SELECT timestamp, symbol, last(price) AS close\n  FROM fx_trades\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  SAMPLE BY 15m ALIGN TO CALENDAR\n),\nwith_peak AS (\n  SELECT timestamp, symbol, close,\n    max(close) OVER (PARTITION BY symbol ORDER BY timestamp ROWS UNBOUNDED PRECEDING) AS running_peak\n  FROM ohlc\n),\nwith_drawdown AS (\n  SELECT timestamp, symbol, close, running_peak,\n    (close - running_peak) / running_peak * 100 AS drawdown\n  FROM with_peak\n)\nSELECT timestamp, symbol, round(close, 5) AS close, round(drawdown, 2) AS drawdown_pct\nFROM with_drawdown\nWHERE drawdown < -1  -- Drawdowns greater than 1%\nORDER BY drawdown\nLIMIT 10"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1M..$now'\n\nWITH ohlc AS (\n  SELECT\n    timestamp,\n    symbol,\n    last(price) AS close,\n    sum(quantity) AS volume\n  FROM fx_trades\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  SAMPLE BY 15m ALIGN TO CALENDAR\n),\nwith_direction AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    volume,\n    CASE\n      WHEN close > lag(close) OVER w THEN volume\n      WHEN close < lag(close) OVER w THEN -volume\n      ELSE 0\n    END AS directed_volume\n  FROM ohlc\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp)\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(volume, 0) AS volume,\n  round(sum(directed_volume) OVER (\n    PARTITION BY symbol\n    ORDER BY timestamp\n    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n  ), 0) AS obv\nFROM with_direction\nORDER BY timestamp"
+  },
+  {
+    "query": "WITH quote_lag AS (\n    SELECT\n        timestamp,\n        symbol,\n        ecn,\n        bid_price, bid_volume, ask_price, ask_volume,\n        lag(bid_price)  OVER w AS prev_bid_price,\n        lag(bid_volume) OVER w AS prev_bid_volume,\n        lag(ask_price)  OVER w AS prev_ask_price,\n        lag(ask_volume) OVER w AS prev_ask_volume\n    FROM core_price\n    WHERE symbol = 'EURUSD'\n      AND timestamp IN '$yesterday'\n    WINDOW w AS (PARTITION BY symbol, ecn ORDER BY timestamp)\n),\ncontributions AS (\n    SELECT\n        timestamp,\n        symbol,\n        ecn,\n        CASE\n            WHEN bid_price > prev_bid_price THEN bid_volume\n            WHEN bid_price < prev_bid_price THEN -prev_bid_volume\n            ELSE bid_volume - prev_bid_volume\n        END\n        -\n        CASE\n            WHEN ask_price < prev_ask_price THEN ask_volume\n            WHEN ask_price > prev_ask_price THEN -prev_ask_volume\n            ELSE ask_volume - prev_ask_volume\n        END AS ofi_event\n    FROM quote_lag\n    WHERE prev_bid_price IS NOT NULL\n)\nSELECT\n    timestamp,\n    symbol,\n    ecn,\n    sum(ofi_event) AS ofi\nFROM contributions\nSAMPLE BY 1s"
+  },
+  {
+    "query": "WITH quote_lag AS (\n    SELECT\n        timestamp,\n        symbol,\n        ecn,\n        bid_price, bid_volume, ask_price, ask_volume,\n        lag(bid_price)  OVER w AS prev_bid_price,\n        lag(bid_volume) OVER w AS prev_bid_volume,\n        lag(ask_price)  OVER w AS prev_ask_price,\n        lag(ask_volume) OVER w AS prev_ask_volume\n    FROM core_price\n    WHERE symbol = 'EURUSD'\n      AND timestamp IN '$yesterday'\n    WINDOW w AS (PARTITION BY symbol, ecn ORDER BY timestamp)\n),\ncontributions AS (\n    SELECT\n        timestamp,\n        symbol,\n        CASE\n            WHEN bid_price > prev_bid_price THEN bid_volume\n            WHEN bid_price < prev_bid_price THEN -prev_bid_volume\n            ELSE bid_volume - prev_bid_volume\n        END\n        -\n        CASE\n            WHEN ask_price < prev_ask_price THEN ask_volume\n            WHEN ask_price > prev_ask_price THEN -prev_ask_volume\n            ELSE ask_volume - prev_ask_volume\n        END AS ofi_event\n    FROM quote_lag\n    WHERE prev_bid_price IS NOT NULL\n)\nSELECT timestamp, symbol, sum(ofi_event) AS ofi\nFROM contributions\nSAMPLE BY 1s"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH with_lag AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    lag(close, 12) OVER (PARTITION BY symbol ORDER BY timestamp) AS close_12_ago\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(close_12_ago, 5) AS close_12_ago,\n  round((close - close_12_ago) / close_12_ago * 100, 4) AS roc\nFROM with_lag\nWHERE close_12_ago IS NOT NULL\nORDER BY timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH returns AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    ln(close / lag(close)\n        OVER (PARTITION BY symbol ORDER BY timestamp))\n        AS log_return\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n),\nwith_stats AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    log_return,\n    avg(log_return) OVER w AS mean_return,\n    avg(log_return * log_return) OVER w AS mean_sq_return\n  FROM returns\n  WHERE log_return IS NOT NULL\n  WINDOW w AS (\n    PARTITION BY symbol ORDER BY timestamp\n    ROWS BETWEEN 19 PRECEDING AND CURRENT ROW\n  )\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(log_return * 100, 4) AS return_pct,\n  round(\n    sqrt(mean_sq_return - mean_return * mean_return)\n        * sqrt(365 * 96) * 100,\n    2) AS realized_vol_annualized\nFROM with_stats\nORDER BY timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 1M..$now'\n\nWITH ohlc AS (\n  SELECT\n    timestamp,\n    symbol,\n    last(price) AS close\n  FROM fx_trades\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  SAMPLE BY 5m ALIGN TO CALENDAR\n),\nreturns AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    ln(close / lag(close)\n        OVER (PARTITION BY symbol ORDER BY timestamp))\n        AS log_return\n  FROM ohlc\n),\nwith_stats AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    log_return,\n    avg(log_return) OVER w AS mean_return,\n    avg(log_return * log_return) OVER w AS mean_sq_return\n  FROM returns\n  WHERE log_return IS NOT NULL\n  WINDOW w AS (\n    PARTITION BY symbol ORDER BY timestamp\n    ROWS BETWEEN 11 PRECEDING AND CURRENT ROW\n  )\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(log_return * 100, 4) AS return_pct,\n  round(\n    sqrt(mean_sq_return - mean_return * mean_return)\n        * sqrt(288 * 365) * 100,\n    2) AS realized_vol_annualized\nFROM with_stats\nORDER BY timestamp"
+  },
+  {
+    "query": "WITH stats AS (\n  SELECT\n    timestamp,\n    symbol,\n    price,\n    AVG(price) OVER w AS rolling_avg,\n    AVG(price * price) OVER w AS rolling_avg_sq\n  FROM fx_trades\n  WHERE timestamp IN '$yesterday' AND symbol = 'EURUSD'\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp)\n)\nSELECT\n  timestamp,\n  symbol,\n  price,\n  rolling_avg,\n  SQRT(rolling_avg_sq - rolling_avg * rolling_avg) AS rolling_stddev\nFROM stats\nLIMIT 10"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH changes AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    close - lag(close) OVER (PARTITION BY symbol ORDER BY timestamp) AS change\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n),\ngains_losses AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    CASE WHEN change > 0 THEN change ELSE 0 END AS gain,\n    CASE WHEN change < 0 THEN -change ELSE 0 END AS loss\n  FROM changes\n),\nsmoothed AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    avg(gain, 'period', 14) OVER w AS avg_gain,\n    avg(loss, 'period', 14) OVER w AS avg_loss\n  FROM gains_losses\n  WINDOW w AS (PARTITION BY symbol ORDER BY timestamp)\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(100 - (100 / (1 + avg_gain / avg_loss)), 2) AS rsi\nFROM smoothed\nORDER BY timestamp"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.ecn,\n    t.counterparty,\n    t.passive,\n    count() AS trade_count,\n    sum(t.quantity) AS total_qty,\n    avg(\n        CASE t.side\n            WHEN 'buy'  THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / ((m.best_bid + m.best_ask) / 2) * 10000\n            WHEN 'sell' THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / ((m.best_bid + m.best_ask) / 2) * 10000\n        END\n    ) AS avg_slippage_vs_mid_bps,\n    avg(\n        CASE t.side\n            WHEN 'buy'  THEN (t.price - m.best_ask) / m.best_ask * 10000\n            WHEN 'sell' THEN (m.best_bid - t.price) / m.best_bid * 10000\n        END\n    ) AS avg_slippage_vs_tob_bps,\n    avg(\n        (m.best_ask - m.best_bid)\n        / ((m.best_bid + m.best_ask) / 2) * 10000\n    ) AS avg_spread_bps\nFROM fx_trades t\nASOF JOIN market_data m ON (symbol)\nWHERE t.timestamp IN '$yesterday'\nGROUP BY t.symbol, t.ecn, t.counterparty, t.passive\nORDER BY avg_slippage_vs_mid_bps DESC"
+  },
+  {
+    "query": "SELECT\n    t.ecn,\n    t.passive,\n    count() AS trade_count,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / ((m.best_bid + m.best_ask) / 2) * 10000\n            WHEN 'sell' THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / ((m.best_bid + m.best_ask) / 2) * 10000\n        END\n    ), 3) AS avg_slippage_bps\nFROM fx_trades t\nASOF JOIN market_data m ON (symbol)\nWHERE t.timestamp IN '$yesterday'\nGROUP BY t.ecn, t.passive\nORDER BY t.ecn, t.passive"
+  },
+  {
+    "query": "SELECT\n    t.timestamp,\n    t.ecn,\n    count() AS trade_count,\n    round(avg(\n        CASE t.side\n            WHEN 'buy'  THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                             / ((m.best_bid + m.best_ask) / 2) * 10000\n            WHEN 'sell' THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                             / ((m.best_bid + m.best_ask) / 2) * 10000\n        END\n    ), 3) AS avg_slippage_bps\nFROM fx_trades t\nASOF JOIN market_data m ON (symbol)\nWHERE t.timestamp IN '$yesterday'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "WITH fills AS (\n    SELECT\n        t.symbol,\n        t.price,\n        t.quantity,\n        h.offset,\n        (m.best_bid + m.best_ask) / 2 AS mid,\n        m.best_ask - m.best_bid AS spread,\n        CASE\n            WHEN t.quantity < 100000    THEN 'S'\n            WHEN t.quantity < 1000000   THEN 'M'\n            WHEN t.quantity < 10000000  THEN 'L'\n            ELSE 'XL'\n        END AS size_bucket\n    FROM fx_trades t\n    HORIZON JOIN market_data m ON (symbol)\n        LIST (0, 5s, 1m) AS h\n    WHERE t.side = 'buy'\n        AND t.timestamp IN '$yesterday'\n)\nSELECT * FROM fills\nPIVOT (\n    count() AS n,\n    avg((mid - price) / price * 10000) AS markout_bps,\n    avg(spread / mid * 10000) AS spread_bps\n    FOR offset IN (0 AS at_fill, 5000000000 AS t_5s, 60000000000 AS t_1m)\n    GROUP BY symbol, size_bucket\n)\nORDER BY symbol, size_bucket"
+  },
+  {
+    "query": "WITH cp_costs AS (\n    SELECT\n        t.symbol,\n        t.counterparty,\n        t.ecn,\n        t.passive,\n        t.price,\n        t.quantity,\n        h.offset,\n        m.best_bid,\n        m.best_ask,\n        (m.best_bid + m.best_ask) / 2 AS mid\n    FROM fx_trades t\n    HORIZON JOIN market_data m ON (symbol)\n        LIST (0, 5s, 1m) AS h\n    WHERE t.side = 'buy'\n        AND t.timestamp IN '$yesterday'\n)\nSELECT * FROM cp_costs\nPIVOT (\n    count() AS fills,\n    sum(quantity) AS volume,\n    avg((mid - price) / price * 10000) AS markout_bps\n    FOR offset IN (0 AS at_fill, 5000000000 AS t_5s, 60000000000 AS t_1m)\n    GROUP BY symbol, counterparty, ecn, passive\n)\nORDER BY t_1m_markout_bps"
+  },
+  {
+    "query": "WITH hourly AS (\n    SELECT\n        t.symbol,\n        t.price,\n        t.quantity,\n        hour(t.timestamp) AS hour_utc,\n        h.offset,\n        m.best_bid,\n        m.best_ask,\n        (m.best_bid + m.best_ask) / 2 AS mid\n    FROM fx_trades t\n    HORIZON JOIN market_data m ON (symbol)\n        LIST (0, 5s, 1m) AS h\n    WHERE t.side = 'buy'\n        AND t.timestamp IN '$yesterday'\n)\nSELECT * FROM hourly\nPIVOT (\n    count() AS n,\n    avg((mid - price) / price * 10000) AS markout_bps,\n    avg((best_ask - best_bid) / mid * 10000) AS spread_bps\n    FOR offset IN (0 AS at_fill, 5000000000 AS t_5s, 60000000000 AS t_1m)\n    GROUP BY symbol, hour_utc\n)\nORDER BY symbol, hour_utc"
+  },
+  {
+    "query": "WITH daily AS (\n    SELECT\n        t.symbol,\n        t.ecn,\n        t.price,\n        t.quantity,\n        t.timestamp::date AS trade_date,\n        h.offset,\n        (m.best_bid + m.best_ask) / 2 AS mid\n    FROM fx_trades t\n    HORIZON JOIN market_data m ON (symbol)\n        LIST (0, 1m, 5m) AS h\n    WHERE t.side = 'buy'\n        AND t.timestamp IN '$yesterday'\n)\nSELECT * FROM daily\nPIVOT (\n    count() AS fills,\n    sum(quantity) AS volume,\n    sum((mid - price) * quantity) AS pnl\n    FOR offset IN (0 AS at_fill, 60000000000 AS t_1m, 300000000000 AS t_5m)\n    GROUP BY trade_date, symbol, ecn\n)\nORDER BY trade_date, symbol, ecn"
+  },
+  {
+    "query": "SELECT\n    t.timestamp,\n    t.symbol,\n    t.ecn,\n    t.counterparty,\n    t.side,\n    t.passive,\n    t.price,\n    t.quantity,\n    m.best_bid,\n    m.best_ask,\n    (m.best_bid + m.best_ask) / 2 AS mid,\n    (m.best_ask - m.best_bid) AS spread,\n    CASE t.side\n        WHEN 'buy'  THEN (t.price - (m.best_bid + m.best_ask) / 2)\n                         / ((m.best_bid + m.best_ask) / 2) * 10000\n        WHEN 'sell' THEN ((m.best_bid + m.best_ask) / 2 - t.price)\n                         / ((m.best_bid + m.best_ask) / 2) * 10000\n    END AS slippage_bps,\n    CASE t.side\n        WHEN 'buy'  THEN (t.price - m.best_ask) / m.best_ask * 10000\n        WHEN 'sell' THEN (m.best_bid - t.price) / m.best_bid * 10000\n    END AS slippage_vs_tob_bps\nFROM fx_trades t\nASOF JOIN market_data m ON (symbol)\nWHERE t.timestamp IN '$yesterday'\nORDER BY t.timestamp"
+  },
+  {
+    "query": "DECLARE\n  @symbol := 'EURUSD',\n  @lookback := '$now - 2d..$now'\n\nWITH ranges AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    min(low) OVER w AS lowest_low,\n    max(high) OVER w AS highest_high\n  FROM market_data_ohlc_15m\n  WHERE symbol = @symbol\n    AND timestamp IN @lookback\n  WINDOW w AS (\n    PARTITION BY symbol ORDER BY timestamp\n    ROWS BETWEEN 13 PRECEDING AND CURRENT ROW\n  )\n),\nwith_k AS (\n  SELECT\n    timestamp,\n    symbol,\n    close,\n    (close - lowest_low) / (highest_high - lowest_low) * 100 AS pct_k\n  FROM ranges\n  WHERE highest_high > lowest_low\n)\nSELECT\n  timestamp,\n  symbol,\n  round(close, 5) AS close,\n  round(pct_k, 2) AS pct_k,\n  round(avg(pct_k) OVER (\n    PARTITION BY symbol\n    ORDER BY timestamp\n    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n  ), 2) AS pct_d\nFROM with_k\nORDER BY timestamp"
+  },
+  {
+    "query": "SELECT twap(price, timestamp) AS twap\nFROM trades\nWHERE symbol = 'ETH-USDT'\n  AND timestamp IN '$yesterday'"
+  },
+  {
+    "query": "SELECT symbol, twap(price, timestamp) AS twap\nFROM trades\nWHERE symbol IN ('BTC-USDT', 'ETH-USDT', 'SOL-USDT')\n  AND timestamp IN '$yesterday'"
+  },
+  {
+    "query": "SELECT timestamp, symbol, twap(price, timestamp) AS twap\nFROM trades\nWHERE symbol = 'BTC-USDT'\n  AND timestamp IN '$yesterday'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT\n  timestamp,\n  symbol,\n  twap(price, timestamp) AS twap,\n  sum(price * amount) / sum(amount) AS vwap,\n  twap(price, timestamp) - sum(price * amount) / sum(amount) AS twap_vwap_diff\nFROM trades\nWHERE symbol = 'BTC-USDT'\n  AND timestamp IN '$yesterday'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "WITH benchmark AS (\n  SELECT twap(price, timestamp) AS twap_price\n  FROM trades\n  WHERE symbol = 'ETH-USDT'\n    AND timestamp IN '$yesterday'\n)\nSELECT\n  t.timestamp,\n  t.price AS fill_price,\n  b.twap_price,\n  t.price - b.twap_price AS slippage\nFROM trades t\nCROSS JOIN benchmark b\nWHERE t.symbol = 'ETH-USDT'\n  AND t.side = 'buy'\n  AND t.timestamp IN '$yesterday'\nORDER BY t.timestamp\nLIMIT 20"
+  },
+  {
+    "query": "DECLARE @tick_size := 0.01\nSELECT\n  floor(price / @tick_size) * @tick_size AS price_bin,\n  round(SUM(quantity), 2) AS volume\nFROM fx_trades\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$today'\nORDER BY price_bin"
+  },
+  {
+    "query": "WITH bucketed AS (\n    SELECT\n        t.timestamp,\n        t.symbol,\n        t.side,\n        t.price,\n        t.quantity,\n        floor(\n            sum(t.quantity) OVER (PARTITION BY symbol ORDER BY timestamp)\n            / 1000000\n        ) AS vol_bucket\n    FROM fx_trades t\n    WHERE t.symbol = 'EURUSD'\n        AND t.timestamp IN '$yesterday'\n),\nbucket_stats AS (\n    SELECT\n        symbol,\n        vol_bucket,\n        min(timestamp) AS bucket_start,\n        max(timestamp) AS bucket_end,\n        count() AS trade_count,\n        sum(quantity) AS total_vol,\n        sum(CASE WHEN side = 'buy' THEN quantity ELSE 0.0 END) AS buy_vol,\n        sum(CASE WHEN side = 'sell' THEN quantity ELSE 0.0 END) AS sell_vol,\n        abs(\n            sum(CASE WHEN side = 'buy' THEN quantity ELSE 0.0 END)\n            - sum(CASE WHEN side = 'sell' THEN quantity ELSE 0.0 END)\n        ) / sum(quantity) AS bucket_imbalance\n    FROM bucketed\n    GROUP BY symbol, vol_bucket\n)\nSELECT\n    symbol,\n    vol_bucket,\n    bucket_start,\n    bucket_end,\n    total_vol,\n    buy_vol,\n    sell_vol,\n    bucket_imbalance,\n    avg(bucket_imbalance) OVER (\n        PARTITION BY symbol\n        ORDER BY vol_bucket\n        ROWS BETWEEN 49 PRECEDING AND CURRENT ROW\n    ) AS vpin\nFROM bucket_stats\nORDER BY vol_bucket"
+  },
+  {
+    "query": "WITH bucketed AS (\n    SELECT\n        t.timestamp,\n        t.symbol,\n        t.ecn,\n        t.side,\n        t.quantity,\n        floor(\n            sum(t.quantity) OVER (PARTITION BY symbol, ecn ORDER BY timestamp)\n            / 1000000\n        ) AS vol_bucket\n    FROM fx_trades t\n    WHERE t.symbol = 'EURUSD'\n        AND t.timestamp IN '$yesterday'\n),\nbucket_stats AS (\n    SELECT\n        symbol,\n        ecn,\n        vol_bucket,\n        min(timestamp) AS bucket_start,\n        max(timestamp) AS bucket_end,\n        sum(quantity) AS total_vol,\n        abs(\n            sum(CASE WHEN side = 'buy' THEN quantity ELSE 0.0 END)\n            - sum(CASE WHEN side = 'sell' THEN quantity ELSE 0.0 END)\n        ) / sum(quantity) AS bucket_imbalance\n    FROM bucketed\n    GROUP BY symbol, ecn, vol_bucket\n)\nSELECT\n    symbol,\n    ecn,\n    vol_bucket,\n    bucket_start,\n    bucket_end,\n    total_vol,\n    bucket_imbalance,\n    avg(bucket_imbalance) OVER (\n        PARTITION BY symbol, ecn\n        ORDER BY vol_bucket\n        ROWS BETWEEN 49 PRECEDING AND CURRENT ROW\n    ) AS vpin\nFROM bucket_stats\nORDER BY ecn, vol_bucket"
+  },
+  {
+    "query": "WITH sampled AS (\n  SELECT\n    timestamp, symbol,\n    total_volume,\n    ((high + low + close) / 3) * total_volume AS traded_value\n  FROM fx_trades_ohlc_1m\n  WHERE timestamp IN '$yesterday' AND symbol = 'EURUSD'\n)\nSELECT\n  timestamp, symbol,\n  SUM(traded_value) OVER w / SUM(total_volume) OVER w AS vwap\nFROM sampled\nWINDOW w AS (ORDER BY timestamp)"
+  },
+  {
+    "query": "WITH sampled AS (\n  SELECT\n    timestamp, symbol,\n    total_volume,\n    ((high + low + close) / 3) * total_volume AS traded_value\n  FROM fx_trades_ohlc_1m\n  WHERE timestamp IN '$yesterday'\n    AND symbol IN ('EURUSD', 'GBPUSD', 'USDJPY')\n)\nSELECT\n  timestamp, symbol,\n  SUM(traded_value) OVER w / SUM(total_volume) OVER w AS vwap\nFROM sampled\nWINDOW w AS (PARTITION BY symbol ORDER BY timestamp)"
+  },
+  {
+    "query": "SELECT count() AS out_of_order_rows\nFROM (\n  SELECT timestamp AS current_ts, lag(timestamp) OVER () AS previous_ts\n  FROM trades\n  WHERE timestamp IN '$today'\n)\nWHERE current_ts < previous_ts"
+  },
+  {
+    "query": "WITH column_and_prev AS (\n  SELECT row_number() OVER () AS rownum,\n         timestamp AS current_ts,\n         lag(timestamp) OVER () AS previous_ts\n  FROM trades\n  WHERE timestamp IN '$today'\n)\nSELECT rownum, current_ts, previous_ts\nFROM column_and_prev\nWHERE current_ts < previous_ts\nLIMIT 1"
+  },
+  {
+    "query": "WITH column_and_prev AS (\n  SELECT row_number() OVER () AS rownum,\n         price AS current_price,\n         lag(price) OVER () AS previous_price\n  FROM trades\n  WHERE symbol = 'BTC-USDT' AND timestamp IN '$today'\n)\nSELECT rownum, current_price, previous_price\nFROM column_and_prev\nWHERE current_price < previous_price\nLIMIT 1"
+  },
+  {
+    "query": "SELECT count() AS out_of_order_rows\nFROM (\n  SELECT timestamp AS current_ts, lag(timestamp) OVER () AS previous_ts\n  FROM read_parquet('trades.parquet')\n)\nWHERE current_ts < previous_ts"
+  },
+  {
+    "query": "SELECT timestamp, symbol, avg(bid_price) as bid_price, avg(ask_price) as ask_price\nFROM core_price\nWHERE symbol = 'EURUSD' AND timestamp IN '$today'\nSAMPLE BY 100T FILL(PREV(ask_price), PREV)"
+  },
+  {
+    "query": "WITH sampled AS (\n  SELECT timestamp, symbol, avg(bid_price) as bid_price, avg(ask_price) as ask_price\n  FROM core_price\n  WHERE symbol = 'EURUSD' AND timestamp IN '$today'\n  SAMPLE BY 100T FILL(null)\n), with_previous_vals AS (\n  SELECT *,\n    last_value(ask_price) IGNORE NULLS OVER(PARTITION BY symbol ORDER BY timestamp) as filler\n  FROM sampled\n)\nSELECT timestamp, symbol, coalesce(bid_price, filler) as bid_price,\n       coalesce(ask_price, filler) as ask_price\nFROM with_previous_vals"
+  },
+  {
+    "query": "WITH sampled AS (\n  SELECT timestamp, symbol, avg(bid_price) as bid_price, avg(ask_price) as ask_price\n  FROM core_price\n  WHERE symbol = 'EURUSD' AND timestamp IN '$today'\n  SAMPLE BY 100T FILL(null)\n), with_previous_vals AS (\n  SELECT *,\n    last_value(ask_price) IGNORE NULLS OVER(PARTITION BY symbol ORDER BY timestamp) as filler\n  FROM sampled\n)\nSELECT timestamp, symbol, coalesce(bid_price, filler) as bid_price,\n       coalesce(ask_price, filler) as ask_price,\n       case when bid_price is NULL then true END as filled\nFROM with_previous_vals"
+  },
+  {
+    "query": "DECLARE\n  @start_ts := dateadd('m', -2, now()),\n  @end_ts := dateadd('m', 2, now())\nWITH\nsandwich AS (\n  SELECT * FROM (\n    SELECT @start_ts AS timestamp, null AS symbol, null AS open, null AS high, null AS close, null AS low\n    UNION ALL\n    SELECT timestamp, symbol, open_mid AS open, high_mid AS high, close_mid AS close, low_mid AS low\n    FROM core_price_1s\n    WHERE timestamp BETWEEN @start_ts AND @end_ts\n    UNION ALL\n    SELECT @end_ts AS timestamp, null AS symbol, null AS open, null AS high, null AS close, null AS low\n  ) ORDER BY timestamp\n),\nsampled AS (\n  SELECT\n    timestamp,\n    symbol,\n    first(open) AS open,\n    first(high) AS high,\n    first(low) AS low,\n    first(close) AS close\n  FROM sandwich\n  SAMPLE BY 30s\n  FILL(PREV, PREV, PREV, PREV, 0)\n)\nSELECT * FROM sampled WHERE open IS NOT NULL AND symbol IN ('EURUSD', 'GBPUSD')"
+  },
+  {
+    "query": "DECLARE\n  @start_ts := dateadd('s', -3, now()),\n  @end_ts := now()\nWITH\nfiller_row AS (\n  SELECT timestamp, open_mid AS open, high_mid AS high, close_mid AS close, low_mid AS low\n  FROM core_price_1s\n  WHERE timestamp < @start_ts\n  LIMIT -1\n),\nsandwich AS (\n  SELECT * FROM (\n    SELECT * FROM filler_row\n    UNION ALL\n    SELECT timestamp, open_mid AS open, high_mid AS high, close_mid AS close, low_mid AS low\n    FROM core_price_1s\n    WHERE timestamp BETWEEN @start_ts AND @end_ts\n  ) ORDER BY timestamp\n),\nsampled AS (\n  SELECT\n    timestamp,\n    first(open) AS open,\n    first(high) AS high,\n    first(low) AS low,\n    first(close) AS close\n  FROM sandwich\n  SAMPLE BY 100T\n  FILL(PREV, PREV, PREV, PREV, 0)\n)\nSELECT * FROM sampled WHERE timestamp >= @start_ts"
+  },
+  {
+    "query": "DECLARE\n  @year := '2025',\n  @week := 24,\n  @first_monday := dateadd('d', -1 * day_of_week(@year) + 1, @year),\n  @week_start := dateadd('w', @week - 1, @first_monday),\n  @week_end := dateadd('w', @week, @first_monday)\nSELECT * FROM trades\nWHERE timestamp >= @week_start\n  AND timestamp < @week_end"
+  },
+  {
+    "query": "WITH t AS (\n  (\n    SELECT\n      TO_TIMESTAMP(timestamp::STRING, 'yyyy-MM-ddTHH:mm:ss.SSSUUUZ') time,\n      symbol,\n      ecn,\n      bid_price\n    FROM\n      core_price\n    WHERE timestamp IN '$now - 1h..$now'\n    ORDER BY time\n  ) TIMESTAMP (time)\n)\nSELECT * FROM t LATEST BY symbol"
+  },
+  {
+    "query": "WITH ranked AS (\n  SELECT\n    *,\n    row_number() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn\n  FROM trades\n  WHERE timestamp IN '$today'\n)\nSELECT timestamp, symbol, side, price, amount\nFROM ranked\nWHERE rn <= 5\nORDER BY symbol, timestamp DESC"
+  },
+  {
+    "query": "DECLARE @limit := 10\n\nWITH ranked AS (\n  SELECT *, row_number() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn\n  FROM trades\n  WHERE timestamp IN '$now - 1d..$now'\n)\nSELECT * FROM ranked WHERE rn <= @limit"
+  },
+  {
+    "query": "WITH ranked AS (\n  SELECT\n    *,\n    row_number() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn\n  FROM trades\n  WHERE timestamp IN '$today'\n    AND side = 'buy'  -- Additional filter before ranking\n)\nSELECT timestamp, symbol, side, price, amount\nFROM ranked\nWHERE rn <= 5"
+  },
+  {
+    "query": "WITH ranked AS (\n  SELECT *, row_number() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn\n  FROM trades\n  WHERE timestamp IN '$today'\n)\nSELECT timestamp, symbol, price, rn as rank\nFROM ranked\nWHERE rn <= 5"
+  },
+  {
+    "query": "SELECT table_name, walEnabled\nFROM tables()\nORDER BY table_name"
+  },
+  {
+    "query": "SELECT status, progress_percent, start_ts, end_ts, backup_error\nFROM backups()\nORDER BY start_ts DESC\nLIMIT 1"
+  },
+  {
+    "query": "SELECT backup_instance_name()"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(\n    TO PARQUET 7 DAYS,\n    TO REMOTE 14 DAYS,\n    DROP LOCAL 30 DAYS\n)"
+  },
+  {
+    "query": "SELECT table_name, walEnabled, partitionBy, designatedTimestamp\nFROM tables()\nWHERE table_name = 'trades'"
+  },
+  {
+    "query": "SELECT * FROM storage_policies\nWHERE table_dir_name LIKE 'trades~%'"
+  },
+  {
+    "query": "SELECT * FROM table_cold_partitions('trades')"
+  },
+  {
+    "query": "SELECT timestamp, symbol, price\nFROM trades\nWHERE timestamp IN '2026-02-10'"
+  },
+  {
+    "query": "SWITCH COLD STORAGE ROLE TO REFRESHER"
+  },
+  {
+    "query": "SWITCH COLD STORAGE STATUS"
+  },
+  {
+    "query": "SWITCH COLD STORAGE ROLE TO MANAGER"
+  },
+  {
+    "query": "SWITCH COLD STORAGE ROLE TO MANAGER FORCE"
+  },
+  {
+    "query": "SELECT timestamp, state, seq_txn, size, last_modified, partition_path\nFROM table_cold_partitions('trades')\nWHERE state = 'pending'"
+  },
+  {
+    "query": "SELECT name, errorTag, errorMessage FROM wal_tables() WHERE suspended"
+  },
+  {
+    "query": "SELECT timestamp, state, partition_path\nFROM table_cold_partitions('trades')\nWHERE state = 'pending'"
+  },
+  {
+    "query": "-- variable-length array filled with -1\nSELECT array_build(1, x::int, -1) FROM long_sequence(3)"
+  },
+  {
+    "query": "-- array filled with the max of an existing array (market_data is on demo.questdb.com)\nSELECT array_build(1, bids[1], array_max(bids[1])) FROM market_data LIMIT 1"
+  },
+  {
+    "query": "INSERT INTO geo_data VALUES(#u33d8, ##10101111100101111111101101101)\n-- Querying by geohash"
+  },
+  {
+    "query": "SELECT * FROM geo_data WHERE g5c = #u33d8"
+  },
+  {
+    "query": "-- insert a 5-bit geohash into a 4 bit column\nINSERT INTO my_geo_data VALUES(#a/4)\n-- insert a 20-bit geohash into an 18 bit column"
+  },
+  {
+    "query": "INSERT INTO my_geo_data VALUES(#u33d/18)"
+  },
+  {
+    "query": "INSERT INTO my_geo_data VALUES(#u33, #u33d8b12)\n-- equivalent to"
+  },
+  {
+    "query": "INSERT INTO my_geo_data VALUES('u33', 'u33d8b12')"
+  },
+  {
+    "query": "SELECT approx_count_distinct(symbol, 5) FROM fx_trades"
+  },
+  {
+    "query": "SELECT symbol, approx_median(price) FROM trades\nWHERE timestamp IN '$today'\nGROUP BY symbol"
+  },
+  {
+    "query": "SELECT symbol, approx_median(price, 3) FROM trades\nWHERE timestamp IN '$today'\nGROUP BY symbol"
+  },
+  {
+    "query": "SELECT approx_percentile(price, 0.99, 3) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT arg_max(timestamp, price) AS peak_time FROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, arg_max(timestamp, price) AS peak_time\nFROM trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, arg_max(price, amount) AS price_at_peak_volume\nFROM trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT arg_min(timestamp, price) AS bottom_time FROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, arg_min(timestamp, price) AS trough_time\nFROM trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, arg_min(price, amount) AS price_at_min_volume\nFROM trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, array_agg(price) AS prices\nFROM fx_trades\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$now - 3s..$now'\nGROUP BY symbol"
+  },
+  {
+    "query": "SELECT timestamp, array_agg(price) AS prices\nFROM trades\nWHERE symbol = 'BTC-USDT'\n  AND timestamp IN '$now - 5s..$now'\nSAMPLE BY 1s"
+  },
+  {
+    "query": "SELECT timestamp, array_agg(bids[1]) AS all_bids\nFROM market_data\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$now - 1s..$now'\nSAMPLE BY 100ms"
+  },
+  {
+    "query": "SELECT symbol,\n  array_agg(price) AS prices,\n  array_cum_sum(array_agg(price)) AS cumulative_prices\nFROM fx_trades\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$now - 3s..$now'\nGROUP BY symbol"
+  },
+  {
+    "query": "SELECT avg(price) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, avg(price) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT corr(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, corr(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT count() FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, count() FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, count(price) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, count(distinct ecn) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT count_distinct(side) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, count_distinct(ecn) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT covar_pop(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, covar_pop(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT covar_samp(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, covar_samp(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT kurtosis_samp(value)\nFROM UNNEST(ARRAY[-10.0, -20.0, 100.0, 1000.0, 1000.0])"
+  },
+  {
+    "query": "SELECT kurtosis_pop(value)\nFROM UNNEST(ARRAY[-10.0, -20.0, 100.0, 1000.0, 1000.0])"
+  },
+  {
+    "query": "SELECT max(price) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, max(price) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT min(price) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, min(price) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, mode(side)\nFROM trades\nWHERE timestamp IN '$today'\nORDER BY symbol ASC"
+  },
+  {
+    "query": "SELECT skewness_samp(value)\nFROM UNNEST(ARRAY[-10.0, -20.0, 100.0, 1000.0, 1000.0])"
+  },
+  {
+    "query": "SELECT skewness_pop(value)\nFROM UNNEST(ARRAY[-10.0, -20.0, 100.0, 1000.0, 1000.0])"
+  },
+  {
+    "query": "SELECT string_distinct_agg(symbol, ',') AS distinct_symbols\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT side, string_distinct_agg(symbol, ',') AS distinct_symbols\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT sum(quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, sum(quantity) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT twap(price, timestamp)\nFROM trades\nWHERE symbol = 'BTC-USDT'\n  AND timestamp IN '$yesterday'"
+  },
+  {
+    "query": "SELECT symbol, twap(price, timestamp)\nFROM trades\nWHERE timestamp IN '$yesterday'"
+  },
+  {
+    "query": "SELECT timestamp, symbol, twap(price, timestamp)\nFROM trades\nWHERE symbol IN ('BTC-USDT', 'ETH-USDT')\n  AND timestamp IN '$yesterday'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT weighted_avg(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT weighted_stddev_freq(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, weighted_stddev_freq(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT weighted_stddev(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, weighted_stddev(price, quantity) FROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, array_avg(bids[1]) AS avg_bid_price\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT array_build(1, 3, 0) FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT x, array_build(1, x::int, -1) FROM long_sequence(3)"
+  },
+  {
+    "query": "SELECT array_build(1, bids[1], bids[1])\nFROM market_data\nLIMIT 1"
+  },
+  {
+    "query": "SELECT array_build(1, 5, ARRAY[10.0, 20.0, 30.0]) FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT array_build(2, 3, 1.0, 0.0) FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT array_build(2, bids[1], bids[1], asks[1])\nFROM market_data\nLIMIT 1"
+  },
+  {
+    "query": "SELECT array_build(4, bids[1], bids[1], bids[2], asks[1], asks[2])\nFROM market_data\nLIMIT 1"
+  },
+  {
+    "query": "SELECT symbol, array_count(bids[1]) AS bid_levels, array_count(asks[1]) AS ask_levels\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, array_cum_sum(bids[2]) AS cumulative_bid_volume\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT array_elem_avg(ARRAY[10.0, 20.0, 30.0], ARRAY[30.0, 40.0, 50.0])"
+  },
+  {
+    "query": "SELECT timestamp, symbol, array_elem_avg(bids[2]) AS avg_bid_volume\nFROM market_data\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$today'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT array_elem_max(ARRAY[1.0, 5.0, 3.0], ARRAY[4.0, 2.0, 6.0])"
+  },
+  {
+    "query": "SELECT array_elem_max(\n    ARRAY[[1.0, 8.0, 3.0], [5.0, 2.0, 9.0]],\n    ARRAY[[4.0, 6.0, 7.0], [3.0, 8.0, 1.0]]\n)"
+  },
+  {
+    "query": "SELECT timestamp, symbol, array_elem_max(bids[1]) AS best_bid_per_level\nFROM market_data\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$today'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT array_elem_min(ARRAY[1.0, 5.0, 3.0], ARRAY[4.0, 2.0, 6.0])"
+  },
+  {
+    "query": "SELECT array_elem_min(\n    ARRAY[100.0, 200.0, 150.0],\n    ARRAY[120.0, 180.0, 160.0, 90.0]\n)"
+  },
+  {
+    "query": "SELECT array_elem_min(ARRAY[100.0, null], ARRAY[null, 200.0])"
+  },
+  {
+    "query": "SELECT timestamp, symbol, array_elem_min(bids[1]) AS worst_bid_per_level\nFROM market_data\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$today'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT array_elem_min(\n    ARRAY[[1.0, 8.0, 3.0], [5.0, 2.0, 9.0]],\n    ARRAY[[4.0, 6.0, 7.0], [3.0, 8.0, 1.0]]\n)"
+  },
+  {
+    "query": "SELECT array_elem_sum(\n    ARRAY[1.0, 2.0, 3.0],\n    ARRAY[10.0, 20.0, 30.0]\n)"
+  },
+  {
+    "query": "SELECT timestamp, symbol, array_elem_sum(bids[2]) AS total_bid_volume_per_level\nFROM market_data\nWHERE symbol = 'EURUSD'\n  AND timestamp IN '$today'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT symbol, array_max(bids[1]) AS best_bid, array_min(asks[1]) AS best_ask\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, array_min(bids[1]) AS worst_bid, array_max(asks[1]) AS worst_ask\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, array_position(bids[1], best_bid) AS best_bid_position\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT array_reverse(ARRAY[1.0, 2.0, 3.0])"
+  },
+  {
+    "query": "SELECT symbol, array_reverse(bids[1]) AS bids_worst_to_best\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT array_reverse(ARRAY[[1.0, 2.0], [3.0, 4.0]])"
+  },
+  {
+    "query": "SELECT symbol, array_sort(asks[1], true) AS asks_desc\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT array_sort(ARRAY[3.0, 1.0, 2.0], true)"
+  },
+  {
+    "query": "SELECT\n  array_sort(ARRAY[1.0, null, 2.0]) AS default_nulls,\n  array_sort(ARRAY[1.0, null, 2.0], false, true) AS nulls_first"
+  },
+  {
+    "query": "SELECT array_sort(ARRAY[[3.0, 1.0, 2.0], [6.0, 4.0, 5.0]])"
+  },
+  {
+    "query": "SELECT symbol, array_stddev(bids[1]) AS bid_price_dispersion\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, array_stddev_pop(asks[2]) AS ask_volume_stddev\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, array_stddev_samp(bids[1]) AS bid_price_stddev\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, array_sum(bids[2]) AS total_bid_volume\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT\n  dim_length(bids, 1) AS num_sub_arrays,\n  dim_length(bids, 2) AS levels_per_sub_array\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol,\n  dot_product(bids[1], bids[2]) / array_sum(bids[2]) AS vwap_bid\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, flatten(bids) AS bids_flat\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, insertion_point(asks[1], best_bid) AS bid_in_ask_book\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT symbol, bids[1] - shift(bids[1], 1, 0.0) AS bid_level_diffs\nFROM market_data\nWHERE symbol = 'EURUSD'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT isOrdered(numeric_sequence) is_num_ordered,\n       isOrdered(ts) is_ts_ordered\nFROM my_table"
+  },
+  {
+    "query": "SELECT isOrdered(numeric_sequence) FROM my_table"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE ts IN '$today'"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE ts IN '$now - 1h..$now'"
+  },
+  {
+    "query": "SELECT dateadd('h', 2, ts) as shifted_time FROM trades"
+  },
+  {
+    "query": "SELECT year(ts), month(ts) FROM trades"
+  },
+  {
+    "query": "SELECT\n  is_end_of_month('2024-02-29T00:00:00.000000Z'::timestamp) feb29_leap,\n  is_end_of_month('2023-02-28T00:00:00.000000Z'::timestamp) feb28_nonleap,\n  is_end_of_month('2024-02-28T00:00:00.000000Z'::timestamp) feb28_leap,\n  is_end_of_month(null) nul"
+  },
+  {
+    "query": "SELECT timestamp, symbol, price\nFROM trades\nWHERE is_end_of_month(timestamp)\nLIMIT 10"
+  },
+  {
+    "query": "SELECT regr_r2(close, open) AS r2\nFROM market_data_ohlc_1d\nWHERE symbol = 'EURUSD'"
+  },
+  {
+    "query": "SELECT symbol, regr_r2(close, open) AS r2\nFROM market_data_ohlc_1d\nWHERE symbol IN ('USDCHF', 'EURUSD', 'GBPUSD', 'EURGBP', 'USDHKD')\nORDER BY r2 DESC"
+  },
+  {
+    "query": "json_extract('{\"name\": \"Lisa\"}', '$.name')           -- Lisa"
+  },
+  {
+    "query": "SELECT current_data_id()"
+  },
+  {
+    "query": "-- Get the authenticated user of the current session\nSELECT session_user()"
+  },
+  {
+    "query": "SELECT node_role()"
+  },
+  {
+    "query": "SELECT query_id, username, state, memory_used, memory_limit, query\nFROM query_activity()"
+  },
+  {
+    "query": "SELECT * FROM sleep(1)"
+  },
+  {
+    "query": "SELECT wait_wal_table('trades')"
+  },
+  {
+    "query": "SELECT wait_wal_table('trades', 42)"
+  },
+  {
+    "query": "SELECT timestamp, symbol, side,\n    avg(price) AS avg_price,\n    avg(amount) AS avg_amount\nFROM read_parquet('trades.parquet') TIMESTAMP(timestamp)\nWHERE side = 'buy'\nSAMPLE BY 1m"
+  },
+  {
+    "query": "SELECT timestamp, symbol, side,\n    avg(price) AS avg_price,\n    avg(amount) AS avg_amount\nFROM (\n    SELECT * FROM read_parquet('trades.parquet')\n    WHERE side = 'buy'\n) TIMESTAMP(timestamp)\nSAMPLE BY 1m"
+  },
+  {
+    "query": "WITH buys AS (\n    SELECT * FROM read_parquet('trades.parquet')\n    WHERE side = 'buy'\n)\nSELECT timestamp, symbol, side,\n    avg(price) AS avg_price,\n    avg(amount) AS avg_amount\nFROM buys TIMESTAMP(timestamp)\nSAMPLE BY 1m"
+  },
+  {
+    "query": "SELECT p.timestamp, p.symbol,\n    p.price AS archived_price,\n    t.price AS live_price\nFROM read_parquet('trades.parquet') p TIMESTAMP(timestamp)\nASOF JOIN trades t ON (symbol)"
+  },
+  {
+    "query": "SELECT timestamp, symbol, avg(price) AS avg_price\nFROM (\n    SELECT * FROM read_parquet('trades.parquet')\n    ORDER BY timestamp\n) TIMESTAMP(timestamp)\nSAMPLE BY 1h"
+  },
+  {
+    "query": "INSERT INTO trades\nSELECT symbol, side, price, amount, timestamp\nFROM read_parquet('trades.parquet')"
+  },
+  {
+    "query": "INSERT INTO trades_1m\nSELECT timestamp, symbol, side,\n    avg(price) AS avg_price,\n    avg(amount) AS avg_amount\nFROM (\n    SELECT * FROM read_parquet('trades.parquet')\n    WHERE side = 'buy'\n) TIMESTAMP(timestamp)\nSAMPLE BY 1m"
+  },
+  {
+    "query": "CREATE TABLE trades AS (\n    SELECT * FROM read_parquet('trades.parquet')\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    symbol SYMBOL CAPACITY 256,\n    side SYMBOL,\n    price DOUBLE,\n    amount DOUBLE,\n    timestamp TIMESTAMP\n) TIMESTAMP(timestamp) PARTITION BY DAY\nDEDUP UPSERT KEYS(timestamp, symbol)"
+  },
+  {
+    "query": "SELECT rnd_int() FROM long_sequence(5)"
+  },
+  {
+    "query": "SELECT rnd_int(1,4,0) FROM long_sequence(5)"
+  },
+  {
+    "query": "SELECT rnd_timestamp_ns(\n    to_timestamp('2015', 'yyyy'),\n    to_timestamp('2016', 'yyyy'),\n    0)\nFROM long_sequence(5)"
+  },
+  {
+    "query": "SELECT x, timestamp_sequence_ns(\n    to_timestamp_ns('2019-10-17T00:00:00', 'yyyy-MM-ddTHH:mm:ss'),\n    100L -- 100 nanoseconds\n) AS ts\nFROM long_sequence(5)"
+  },
+  {
+    "query": "SELECT timestamp, symbol,\n       round(sum(amount), 2) total,\n       bar(sum(amount), 0, 50, 30)\nFROM trades\nWHERE symbol IN ('BTC-USDT', 'ETH-USDT')\nSAMPLE BY 1m\nLIMIT -10"
+  },
+  {
+    "query": "SELECT timestamp, symbol, round(total, 2) total,\n       bar(total, min(total) OVER (PARTITION BY symbol),\n                  max(total) OVER (PARTITION BY symbol), 30)\nFROM (\n  SELECT timestamp, symbol, sum(amount) total\n  FROM trades\n  WHERE symbol IN ('BTC-USDT', 'ETH-USDT')\n  SAMPLE BY 1m\n)\nLIMIT -10"
+  },
+  {
+    "query": "SELECT timestamp, symbol, round(total, 2) total,\n       bar(total, min(total) OVER (),\n                  max(total) OVER (), 30)\nFROM (\n  SELECT timestamp, symbol, sum(amount) total\n  FROM trades\n  WHERE symbol IN ('BTC-USDT', 'ETH-USDT')\n  SAMPLE BY 1m\n)\nLIMIT -10"
+  },
+  {
+    "query": "SELECT symbol, price,\n       bar(price, 0, 100000, 25)\nFROM trades\nLATEST ON timestamp PARTITION BY symbol"
+  },
+  {
+    "query": "SELECT timestamp, symbol,\n       round(avg(price), 0) avg_price,\n       sparkline(price, NULL, NULL, 20)\nFROM trades\nWHERE symbol IN ('BTC-USDT', 'ETH-USDT')\n  AND timestamp IN '2026-03-07'\nSAMPLE BY 1h\nLIMIT 10"
+  },
+  {
+    "query": "SELECT symbol, sparkline(price)\nFROM trades\nWHERE timestamp IN '2026-03-07'\nSAMPLE BY 1h"
+  },
+  {
+    "query": "SELECT symbol, sparkline(amount, 0, 1000000, 24)\nFROM trades\nSAMPLE BY 1d\nLIMIT -5"
+  },
+  {
+    "query": "SELECT symbol, sparkline(price, 0, NULL, 24)\nFROM trades\nSAMPLE BY 1d\nLIMIT -5"
+  },
+  {
+    "query": "DECLARE @symbol := 'BTC-USDT'\n\nWITH ohlc AS (\n    SELECT\n        timestamp AS ts,\n        symbol,\n        first(price) AS open,\n        max(price) AS high,\n        min(price) AS low,\n        last(price) AS close,\n        sum(amount) AS volume\n    FROM trades\n    WHERE timestamp IN '2024-05-22' AND symbol = @symbol\n    SAMPLE BY 1m\n)\nSELECT\n    ts,\n    symbol,\n    open, high, low, close, volume,\n    sum((high + low + close) / 3 * volume) OVER w / sum(volume) OVER w AS vwap\nFROM ohlc\nWINDOW w AS (ORDER BY ts CUMULATIVE)\nORDER BY ts"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price) OVER w AS symbol_avg,\n    price - avg(price) OVER w AS diff_from_avg\nFROM trades\nWHERE timestamp IN '[$today]'\nWINDOW w AS (PARTITION BY symbol)"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    price,\n    lag(price) OVER w AS prev_price,\n    price - lag(price) OVER w AS price_change\nFROM trades\nWHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp)"
+  },
+  {
+    "query": "WITH prices AS (\n    SELECT\n        symbol,\n        price,\n        avg(price) OVER (ORDER BY timestamp) AS moving_avg\n    FROM trades\n    WHERE timestamp IN '[$today]'\n)\nSELECT * FROM prices\nWHERE moving_avg > 100"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n    ) AS moving_avg\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price, 'alpha', 0.2) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS ema_alpha\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price, 'period', 10) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS ema_10\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price, 'minute', 5) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS ema_5min\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price, 'alpha', 0.1, amount) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS vwema_alpha\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price, 'period', 10, amount) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS vwema_10\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    avg(price, 'hour', 1, amount) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS vwema_1h\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    ts,\n    robot_id,\n    corr(motor_temp, joint_velocity) OVER (\n        PARTITION BY robot_id\n        ORDER BY ts\n        ROWS BETWEEN 99 PRECEDING AND CURRENT ROW\n    ) AS rolling_corr\nFROM telemetry"
+  },
+  {
+    "query": "SELECT robot_id, device_corr,\n    avg(device_corr) OVER () AS fleet_avg_corr\nFROM (\n    SELECT robot_id,\n        corr(motor_temp, joint_velocity) AS device_corr\n    FROM telemetry\n    WHERE ts > dateadd('d', -1, now())\n    GROUP BY robot_id\n)"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    timestamp,\n    count(*) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        RANGE BETWEEN '1' SECOND PRECEDING AND CURRENT ROW\n    ) AS trades_last_second\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    ts,\n    robot_id,\n    covar_pop(motor_temp, joint_velocity) OVER (\n        PARTITION BY robot_id\n        ORDER BY ts\n        ROWS BETWEEN 99 PRECEDING AND CURRENT ROW\n    ) AS temp_vel_covariance\nFROM telemetry"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    first_value(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS first_price,\n    first_value(price) IGNORE NULLS OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS first_non_null_price\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    ksum(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n    ) AS cumulative_price\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    ksum(price) OVER (\n        ORDER BY timestamp\n        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n    ) AS rolling_sum\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    price,\n    last_value(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n    ) AS last_price,\n    last_value(price) IGNORE NULLS OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS last_non_null_price\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    max(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n    ) AS highest_price\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    min(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n    ) AS lowest_price\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    nth_value(price, 3) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS 4 PRECEDING\n    ) AS third_price\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    first_value(price) OVER w AS first_price,\n    nth_value(price, 1) OVER w AS nth_1,\n    nth_value(price, 2) OVER w AS nth_2,\n    nth_value(price, 3) OVER w AS nth_3\nFROM trades\nWHERE timestamp IN '$today' AND symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp ROWS 2 PRECEDING)"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    stddev_pop(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 19 PRECEDING AND CURRENT ROW\n    ) AS volatility_20\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT robot_id, robot_avg,\n    (robot_avg - avg(robot_avg) OVER ()) / stddev(robot_avg) OVER () AS z_score\nFROM (\n    SELECT robot_id, avg(motor_temp) AS robot_avg\n    FROM telemetry\n    WHERE ts > dateadd('d', -1, now())\n    GROUP BY robot_id\n)\nORDER BY z_score DESC"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    amount,\n    timestamp,\n    sum(amount) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n    ) AS cumulative_amount\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    var_pop(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 9 PRECEDING AND CURRENT ROW\n    ) AS price_variance\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    cume_dist() OVER (\n        PARTITION BY symbol\n        ORDER BY price\n    ) AS price_cdf\nFROM trades\nWHERE timestamp IN '$today' AND symbol = 'BTC-USDT'\nORDER BY price DESC"
+  },
+  {
+    "query": "SELECT ts, val,\n    cume_dist() OVER (ORDER BY val) AS cd\nFROM tab"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    dense_rank() OVER (\n        PARTITION BY symbol\n        ORDER BY price DESC\n    ) AS price_rank\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    ntile(4) OVER (\n        PARTITION BY symbol\n        ORDER BY price\n    ) AS price_quartile\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT ts, val,\n    ntile(3) OVER (ORDER BY ts) AS bucket\nFROM tab"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    percent_rank() OVER (\n        PARTITION BY symbol\n        ORDER BY price DESC\n    ) AS price_percentile\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    rank() OVER (ORDER BY price DESC) AS rank,\n    percent_rank() OVER (ORDER BY price DESC) AS percent_rank\nFROM trades\nWHERE timestamp IN '$today'\n    AND symbol = 'BTC-USDT'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    rank() OVER (\n        PARTITION BY symbol\n        ORDER BY price DESC\n    ) AS price_rank\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    symbol,\n    price,\n    timestamp,\n    row_number() OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS trade_number\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    price,\n    lag(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS previous_price,\n    lag(price, 2, 0.0) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS price_two_rows_back\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    price,\n    lead(price) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS next_price,\n    lead(price, 2, 0.0) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n    ) AS price_after_next\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "DECLARE @best_bid := bids[1,1]\nSELECT\n    timestamp,\n    symbol,\n    @best_bid AS best_bid,\n    avg(@best_bid) OVER (\n        PARTITION BY symbol\n        ORDER BY timestamp\n        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n    ) AS bid_moving_avg\nFROM market_data\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "DECLARE\n  @best_bid := bids[1,1],\n  @volume_l1 := bids[2,1]\nSELECT\n    timestamp, symbol,\n    @best_bid AS bid_price_l1,\n    @volume_l1 AS bid_volume_l1,\n    sum(@volume_l1) OVER (\n        PARTITION BY symbol ORDER BY timestamp\n        ROWS BETWEEN 5 PRECEDING AND CURRENT ROW\n    ) AS bid_volume_l1_5rows\nFROM market_data\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "DECLARE\n    @best_bid := bids[1,1],\n    @volume_l1 := bids[2,1]\nSELECT\n    timestamp,\n    sum(@volume_l1) OVER (\n        ORDER BY timestamp\n        RANGE BETWEEN '1' MINUTE PRECEDING AND CURRENT ROW\n    ) AS bid_volume_1min\nFROM market_data\nWHERE timestamp IN '$today' AND symbol = 'GBPUSD'"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    COUNT(*) OVER w AS updates_per_min,\n    COUNT(CASE WHEN side = 'buy' THEN 1 END) OVER w AS buys_per_minute,\n    COUNT(CASE WHEN side = 'sell' THEN 1 END) OVER w AS sells_per_minute\nFROM trades\nWHERE timestamp IN '$today' AND symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp RANGE BETWEEN 60000000 PRECEDING AND CURRENT ROW)"
+  },
+  {
+    "query": "DECLARE @symbol := 'BTC-USDT'\n\nWITH ohlc AS (\n    SELECT\n        timestamp AS ts,\n        first(price) AS open,\n        max(price) AS high,\n        min(price) AS low,\n        last(price) AS close,\n        sum(amount) AS volume\n    FROM trades\n    WHERE timestamp IN '2024-05-22' AND symbol = @symbol\n    SAMPLE BY 1m\n)\nSELECT\n    ts, open, high, low, close, volume,\n    sum((high + low + close) / 3 * volume) OVER w / sum(volume) OVER w AS vwap\nFROM ohlc\nWINDOW w AS (ORDER BY ts CUMULATIVE)"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w AS avg_price,\n    min(price) OVER w AS min_price,\n    max(price) OVER w AS max_price\nFROM trades\nWHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER short_window AS avg_10,\n    avg(price) OVER long_window AS avg_50\nFROM trades\nWHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT'\nWINDOW\n    short_window AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW),\n    long_window AS (ORDER BY timestamp ROWS BETWEEN 49 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w AS moving_avg,\n    row_number() OVER (PARTITION BY symbol ORDER BY timestamp) AS seq\nFROM trades\nWHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT'\nWINDOW w AS (ORDER BY timestamp ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "WITH price_stats AS (\n    SELECT\n        timestamp,\n        symbol,\n        price,\n        avg(price) OVER w AS moving_avg,\n        price - avg(price) OVER w AS deviation\n    FROM trades\n    WHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT'\n    WINDOW w AS (ORDER BY timestamp ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)\n)\nSELECT * FROM price_stats\nWHERE deviation > 10\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w1 AS symbol_avg,\n    avg(price) OVER w2 AS moving_avg\nFROM trades\nWHERE timestamp IN '[$today]' AND symbol = 'BTC-USDT'\nWINDOW\n    w1 AS (ORDER BY timestamp),\n    w2 AS (w1 ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "SELECT\n    timestamp,\n    symbol,\n    price,\n    avg(price) OVER w3 AS moving_avg\nFROM trades\nWHERE timestamp IN '[$today]'\nWINDOW\n    w1 AS (PARTITION BY symbol),\n    w2 AS (w1 ORDER BY timestamp),\n    w3 AS (w2 ROWS BETWEEN 9 PRECEDING AND CURRENT ROW)\nLIMIT 100"
+  },
+  {
+    "query": "WITH prices_and_avg AS (\n    SELECT\n        symbol,\n        price,\n        avg(price) OVER (ORDER BY timestamp) AS moving_avg_price,\n        timestamp\n    FROM trades\n    WHERE timestamp IN '[$today]'\n)\nSELECT * FROM prices_and_avg\nWHERE moving_avg_price > 100"
+  },
+  {
+    "query": "-- Workdays only with timezone\nSELECT * FROM trades WHERE ts IN '[2024-01]T09:30@EST#wd;6h30m'"
+  },
+  {
+    "query": "-- NYSE regular trading hours for January, holidays excluded automatically\nSELECT * FROM trades\nWHERE ts IN '[2025-01]#XNYS'"
+  },
+  {
+    "query": "SELECT *\nFROM a, b\nWHERE a.id = b.id"
+  },
+  {
+    "query": "-- NYSE trading hours on workdays for January\nSELECT * FROM trades\nWHERE ts IN '[2025-01]T09:30@America/New_York#workday;6h30m'"
+  },
+  {
+    "query": "-- Jan 15 (1 day) + all of February (29 days) = 30 intervals\nSELECT * FROM trades WHERE ts IN '[2024-01-15, 2024-02]T09:30'"
+  },
+  {
+    "query": "-- Two full months, workdays only\nSELECT * FROM trades\nWHERE ts IN '[2024-01, 2024-02]T09:30@America/New_York#workday;6h30m'"
+  },
+  {
+    "query": "-- Workdays only (Monday-Friday)\nSELECT * FROM trades WHERE ts IN '[2024-01]#workday'"
+  },
+  {
+    "query": "-- Weekends only\nSELECT * FROM logs WHERE ts IN '[2024-01]T02:00#weekend;4h'"
+  },
+  {
+    "query": "-- Specific days\nSELECT * FROM attendance WHERE ts IN '[2024-01]#Mon,Wed,Fri'"
+  },
+  {
+    "query": "-- NYSE trading hours for January workdays\nSELECT * FROM nyse_trades\nWHERE ts IN '[2024-01]T09:30@America/New_York#workday;6h30m'"
+  },
+  {
+    "query": "-- Weekend maintenance (every Sat/Sun in January at 02:00)\nSELECT * FROM system_logs\nWHERE ts IN '[2024-01]T02:00#weekend;4h'"
+  },
+  {
+    "query": "-- cap queries of the group's members at 2 GiB of native memory\nALTER GROUP analysts SET MEMORY LIMIT 2G"
+  },
+  {
+    "query": "-- remove the limit\nALTER GROUP analysts SET MEMORY LIMIT UNLIMITED"
+  },
+  {
+    "query": "ALTER GROUP analysts WITH EXTERNAL ALIAS 'CN=Analysts,OU=Users,DC=example,DC=com'"
+  },
+  {
+    "query": "ALTER GROUP analysts DROP EXTERNAL ALIAS 'CN=Analysts,OU=Users,DC=example,DC=com'"
+  },
+  {
+    "query": "-- cap the service account's queries at 1 GiB of native memory\nALTER SERVICE ACCOUNT client_app SET MEMORY LIMIT 1G"
+  },
+  {
+    "query": "-- remove the limit\nALTER SERVICE ACCOUNT client_app SET MEMORY LIMIT UNLIMITED"
+  },
+  {
+    "query": "-- cap the user's queries at 512 MiB of native memory\nALTER USER john SET MEMORY LIMIT 512M"
+  },
+  {
+    "query": "-- remove the limit\nALTER USER john SET MEMORY LIMIT UNLIMITED"
+  },
+  {
+    "query": "CREATE GROUP analysts WITH EXTERNAL ALIAS 'CN=Analysts,OU=Users,DC=example,DC=com'"
+  },
+  {
+    "query": "CREATE TABLE trades (\n    symbol SYMBOL, price DOUBLE, quantity DOUBLE,\n    counterparty SYMBOL, ts TIMESTAMP\n) TIMESTAMP(ts)"
+  },
+  {
+    "query": "GRANT SELECT ON trades(*) TO john"
+  },
+  {
+    "query": "GRANT SELECT ON trades(* EXCLUDE (counterparty)) TO john"
+  },
+  {
+    "query": "REVOKE SELECT ON trades(*) FROM john"
+  },
+  {
+    "query": "REVOKE SELECT ON trades(* EXCLUDE (symbol, ts)) FROM john"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW trades_hourly\n  ALTER COLUMN symbol ADD INDEX TYPE POSTING"
+  },
+  {
+    "query": "SELECT name, suspended, writerTxn, sequencerTxn, errorTag\nFROM wal_tables()\nWHERE suspended"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN side ADD INDEX"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN instrument ADD INDEX TYPE POSTING"
+  },
+  {
+    "query": "-- Force delta + Frame-of-Reference (benchmarking)\nALTER TABLE trades ALTER COLUMN instrument ADD INDEX TYPE POSTING DELTA"
+  },
+  {
+    "query": "-- Force Elias-Fano (benchmarking)\nALTER TABLE trades ALTER COLUMN instrument ADD INDEX TYPE POSTING EF"
+  },
+  {
+    "query": "ALTER TABLE trades\n  ALTER COLUMN symbol ADD INDEX TYPE POSTING INCLUDE (price, quantity)"
+  },
+  {
+    "query": "-- This query reads from the index sidecar, not from column files\nSELECT timestamp, price FROM trades WHERE symbol = 'AAPL'"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN side NOCACHE"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN side DROP INDEX"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN price SET PARQUET(rle_dictionary)"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN price SET PARQUET(default, zstd(3))"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN price SET PARQUET(rle_dictionary, zstd(3))"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN price SET PARQUET(default)"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN symbol SET PARQUET(default, BLOOM_FILTER)"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN symbol SET PARQUET(rle_dictionary, zstd(3), BLOOM_FILTER)"
+  },
+  {
+    "query": "ALTER TABLE trades ALTER COLUMN symbol SET PARQUET(rle_dictionary)"
+  },
+  {
+    "query": "ALTER TABLE fx_trades ALTER COLUMN counterparty TYPE VARCHAR"
+  },
+  {
+    "query": "ALTER TABLE fx_trades ALTER COLUMN counterparty TYPE SYMBOL CAPACITY 10000 CACHE"
+  },
+  {
+    "query": "ALTER TABLE fx_trades ALTER COLUMN counterparty SYMBOL CAPACITY 512"
+  },
+  {
+    "query": "--DAY\nALTER TABLE trades DROP PARTITION LIST '2019-05-18'"
+  },
+  {
+    "query": "--MONTH\nALTER TABLE trades DROP PARTITION LIST '2019-05'"
+  },
+  {
+    "query": "--YEAR\nALTER TABLE trades DROP PARTITION LIST '2019'"
+  },
+  {
+    "query": "ALTER TABLE trades DROP PARTITION LIST '2018','2019'"
+  },
+  {
+    "query": "ALTER TABLE trades\nDROP PARTITION\nWHERE timestamp = to_timestamp('2019-01-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')"
+  },
+  {
+    "query": "ALTER TABLE trades\nDROP PARTITION\nWHERE timestamp < to_timestamp('2018-01-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')"
+  },
+  {
+    "query": "SELECT name, suspended, writerTxn, sequencerTxn\nFROM wal_tables()\nWHERE name = 'trades'"
+  },
+  {
+    "query": "ALTER TABLE trades SET FORMAT PARQUET"
+  },
+  {
+    "query": "ALTER TABLE table_name ENABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE table_name DISABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE table_name DROP STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE sensor_data SET STORAGE POLICY(\n    TO PARQUET 3 DAYS,\n    DROP LOCAL 1 MONTH\n)"
+  },
+  {
+    "query": "ALTER TABLE trades SET STORAGE POLICY(\n    TO PARQUET 7 DAYS,\n    TO REMOTE 14 DAYS,\n    DROP LOCAL 30 DAYS,\n    DROP REMOTE 7 YEARS\n)"
+  },
+  {
+    "query": "ALTER TABLE sensor_data SET STORAGE POLICY(TO PARQUET 7d)"
+  },
+  {
+    "query": "ALTER TABLE sensor_data DISABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE sensor_data ENABLE STORAGE POLICY"
+  },
+  {
+    "query": "ALTER TABLE sensor_data DROP STORAGE POLICY"
+  },
+  {
+    "query": "SHOW CREATE TABLE sensor_data"
+  },
+  {
+    "query": "ALTER TABLE weather SET TTL 0h"
+  },
+  {
+    "query": "ALTER TABLE trades SUSPEND WAL"
+  },
+  {
+    "query": "INSERT INTO trades VALUES ('2026-08-28T10:00:00.000000Z', 'EURUSD', 1.0842)"
+  },
+  {
+    "query": "SELECT count() FROM trades"
+  },
+  {
+    "query": "-- Original view\nCREATE VIEW summary AS (\n  SELECT ts, symbol, max(price) as max_price\n  FROM trades\n  SAMPLE BY 1h\n)"
+  },
+  {
+    "query": "-- Alter to change aggregation\nALTER VIEW summary AS (\n  SELECT ts, symbol, avg(price) as avg_price\n  FROM trades\n  SAMPLE BY 1h\n)"
+  },
+  {
+    "query": "-- Original view\nCREATE VIEW trade_view AS (\n  SELECT ts, symbol, price FROM trades\n)"
+  },
+  {
+    "query": "-- Add volume column\nALTER VIEW trade_view AS (\n  SELECT ts, symbol, price, quantity FROM trades\n)"
+  },
+  {
+    "query": "-- Original view\nCREATE VIEW filtered AS (\n  SELECT * FROM trades WHERE price > 100\n)"
+  },
+  {
+    "query": "-- Change filter threshold\nALTER VIEW filtered AS (\n  SELECT * FROM trades WHERE price > 200\n)"
+  },
+  {
+    "query": "-- Original view with parameter\nCREATE VIEW by_price AS (\n  DECLARE @min := 0\n  SELECT * FROM trades WHERE price >= @min\n)"
+  },
+  {
+    "query": "-- Change default value\nALTER VIEW by_price AS (\n  DECLARE @min := 100\n  SELECT * FROM trades WHERE price >= @min\n)"
+  },
+  {
+    "query": "-- Original view without parameters\nCREATE VIEW trades_filtered AS (\n  SELECT * FROM trades WHERE price > 100\n)"
+  },
+  {
+    "query": "-- Add parameter\nALTER VIEW trades_filtered AS (\n  DECLARE @threshold := 100\n  SELECT * FROM trades WHERE price > @threshold\n)"
+  },
+  {
+    "query": "-- The 'market_data' table has 'timestamp' as its designated timestamp.\n-- Even though 'timestamp' is not selected in the subquery,\n-- it is used implicitly for the ASOF JOIN.\nWITH market_subset AS (\n  SELECT symbol,bids\n  FROM market_data\n  WHERE timestamp IN '$today'\n)\nSELECT *\nFROM market_subset ASOF JOIN core_price ON (symbol)"
+  },
+  {
+    "query": "WITH trades_ordered_by_ingestion AS (\n  SELECT symbol, price, ingestion_time\n  FROM trades\n  WHERE timestamp IN '$today'\n  -- This ORDER BY clause tells QuestDB to use 'ingestion_time'\n  -- as the new designated timestamp for this subquery.\n  ORDER BY ingestion_time ASC\n)\n-- No extra syntax is needed here. The ASOF JOIN automatically uses\n-- the new designated timestamp from the subquery.\nSELECT *\nFROM trades_ordered_by_ingestion\nASOF JOIN quotes ON (symbol)"
+  },
+  {
+    "query": "SELECT market_data.timestamp, market_data.symbol, bids, core_price.*\nFROM market_data\nASOF JOIN core_price ON (symbol) TOLERANCE 50T\nWHERE market_data.timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT symbol, side,\n    CASE\n        WHEN side = 'buy' THEN 'bullish'\n        ELSE 'bearish'\n    END AS sentiment\nFROM trades\nLIMIT -40"
+  },
+  {
+    "query": "SELECT symbol, side,\n    CASE\n        WHEN side = 'buy' THEN 'bullish'\n    END AS sentiment\nFROM trades\nLIMIT -40"
+  },
+  {
+    "query": "COPY (SELECT * FROM trades WHERE timestamp IN '$today' AND symbol = 'BTC-USDT')\nTO 'btc_today'\nWITH FORMAT PARQUET"
+  },
+  {
+    "query": "COPY trades TO 'trades_bloom'\nWITH FORMAT PARQUET\nBLOOM_FILTER_COLUMNS 'symbol,side'"
+  },
+  {
+    "query": "COPY (\n    SELECT\n        timestamp,\n        symbol,\n        first(price) AS open,\n        max(price) AS high,\n        min(price) AS low,\n        last(price) AS close,\n        sum(amount) AS volume\n    FROM trades\n    WHERE timestamp IN '$now-7d..$now'\n    SAMPLE BY 1h\n)\nTO 'ohlcv_7d'\nWITH FORMAT PARQUET"
+  },
+  {
+    "query": "SELECT ts, \"table\", destination, status, rows_exported\nFROM sys.copy_export_log\nWHERE ts IN '$now-1d..$now'\nORDER BY ts DESC"
+  },
+  {
+    "query": "COPY 'operationId' CANCEL"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma\nFLUSH EVERY 1s\nSTART FROM NOW\nAS\nSELECT timestamp, symbol,\n  avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING)\n    AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma\nFLUSH EVERY 1s\nIN MEMORY 5s\nSTART FROM NOW\nAS\nSELECT timestamp, symbol,\n  avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING)\n    AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma\nFLUSH EVERY 1s\nPARTITION BY HOUR\nSTART FROM NOW\nAS\nSELECT timestamp, symbol,\n  avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING)\n    AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma_from_april\nFLUSH EVERY 1s\nSTART FROM '2026-04-01T00:00:00.000000Z'\nAS\nSELECT timestamp, symbol,\n  avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING)\n    AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_hourly_volume\nFLUSH EVERY 1s\nSTART FROM NOW\nAS\nSELECT timestamp, symbol,\n  sum(amount) OVER w AS bucket_volume\nFROM trades\nWINDOW w AS (\n  PARTITION BY symbol\n  ORDER BY timestamp\n  ANCHOR EXPRESSION timestamp_floor('1h', timestamp)\n)"
+  },
+  {
+    "query": "CREATE LIVE VIEW IF NOT EXISTS trades_ma\nFLUSH EVERY 1s\nIN MEMORY 5s\nPARTITION BY HOUR\nSTART FROM BEGINNING\nAS\nSELECT\n  timestamp,\n  symbol,\n  price,\n  avg(price) OVER (\n    PARTITION BY symbol\n    ORDER BY timestamp\n    ROWS 300 PRECEDING\n  ) AS moving_avg\nFROM trades"
+  },
+  {
+    "query": "SELECT view_name, base_table_name, view_status, lag_seqtxn\nFROM live_views()"
+  },
+  {
+    "query": "GRANT CREATE LIVE VIEW TO user1"
+  },
+  {
+    "query": "CREATE LIVE VIEW trades_ma\nFLUSH EVERY 1s\nSTART FROM NOW\nAS\nSELECT timestamp, symbol,\n  avg(price) OVER (PARTITION BY symbol ORDER BY timestamp ROWS 300 PRECEDING)\n    AS moving_avg\nFROM trades\nOWNED BY analysts"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW IF NOT EXISTS trades_hourly_stats\nWITH BASE trades\nREFRESH EVERY 15m\n  START '2025-01-01T00:00:00Z'\n  TIME ZONE 'UTC'\n  PERIOD (LENGTH 1h DELAY 5m)\nAS (\n  SELECT\n    timestamp,\n    symbol,\n    avg(price) AS avg_price,\n    sum(amount) AS total_volume\n  FROM trades\n  SAMPLE BY 1h\n)\nPARTITION BY DAY TTL 30 DAYS"
+  },
+  {
+    "query": "CREATE TABLE trades (\n  timestamp TIMESTAMP,\n  symbol SYMBOL,\n  price DOUBLE,\n  amount DOUBLE\n) TIMESTAMP(timestamp)\nPARTITION BY DAY\nSTORAGE POLICY(TO PARQUET 3d, DROP LOCAL 1M)"
+  },
+  {
+    "query": "CREATE TABLE sensors (\n    ts TIMESTAMP,\n    temperature DOUBLE PARQUET(rle_dictionary, zstd(3)),\n    humidity FLOAT PARQUET(rle_dictionary),\n    device_id VARCHAR PARQUET(default, lz4_raw, BLOOM_FILTER),\n    status INT\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE t (\n  a VARCHAR PARQUET(BLOOM_FILTER),\n  ts TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE t (\n  a INT PARQUET(delta_binary_packed, BLOOM_FILTER),\n  ts TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE t (\n  a INT PARQUET(delta_binary_packed, zstd(3), BLOOM_FILTER),\n  ts TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE trades (\n  timestamp TIMESTAMP,\n  symbol SYMBOL INDEX,\n  price DOUBLE,\n  amount DOUBLE\n) TIMESTAMP(timestamp)"
+  },
+  {
+    "query": "-- Inline syntax\nCREATE TABLE trades (\n  timestamp TIMESTAMP,\n  symbol SYMBOL INDEX TYPE POSTING,\n  price DOUBLE,\n  amount DOUBLE\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "-- Out-of-line syntax\nCREATE TABLE trades (\n  timestamp TIMESTAMP,\n  symbol SYMBOL,\n  price DOUBLE,\n  amount DOUBLE\n), INDEX(symbol TYPE POSTING)\nTIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE trades (\n  timestamp TIMESTAMP,\n  symbol SYMBOL INDEX TYPE POSTING INCLUDE (price, exchange),\n  exchange SYMBOL,\n  price DOUBLE,\n  amount DOUBLE\n) TIMESTAMP(timestamp) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE VIEW 日本語ビュー AS (SELECT * FROM trades)"
+  },
+  {
+    "query": "CREATE VIEW Részvény_árak AS (SELECT * FROM prices)"
+  },
+  {
+    "query": "DECLARE\n    @x := 5\nSELECT @x"
+  },
+  {
+    "query": "DECLARE\n    @x := 5,\n    @y := 2\nSELECT @x + @y"
+  },
+  {
+    "query": "DECLARE\n  @today := today(),\n  @start := interval_start(@today),\n  @end := interval_end(@today)\nSELECT @today = interval(@start, @end)"
+  },
+  {
+    "query": "DECLARE\n    @x := 5\nSELECT y FROM (\n    SELECT @x AS y\n)"
+  },
+  {
+    "query": "DECLARE\n    @x := 5\nSELECT @x + y FROM (\n    DECLARE @x := 10\n    SELECT @x AS y\n)"
+  },
+  {
+    "query": "DECLARE\n    @subquery := (SELECT timestamp FROM trades)\nSELECT * FROM @subquery"
+  },
+  {
+    "query": "DECLARE\n    @timestamp := timestamp,\n    @symbol := symbol,\n    @subquery := (SELECT @timestamp, @symbol FROM trades)\nSELECT * FROM @subquery"
+  },
+  {
+    "query": "DECLARE\n  @x := 5\nWITH first AS (\n  DECLARE @x := 10\n  SELECT @x as a -- a = 10\n),\nsecond AS (\n  DECLARE @y := 4\n  SELECT\n    @x + @y as b, -- b = 5 + 4 = 9\n    a -- a = 10\n    FROM first\n)\nSELECT a, b\nFROM second"
+  },
+  {
+    "query": "SELECT DISTINCT symbol\nFROM fx_trades\nWHERE timestamp IN '$now - 1h..$now'"
+  },
+  {
+    "query": "SELECT DISTINCT symbol, count()\nFROM fx_trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT DISTINCT symbol, side, count()\nFROM fx_trades\nWHERE timestamp IN '$today'\n  AND price > 1"
+  },
+  {
+    "query": "DROP LIVE VIEW trades_ma"
+  },
+  {
+    "query": "DROP LIVE VIEW IF EXISTS trades_ma"
+  },
+  {
+    "query": "GRANT DROP LIVE VIEW ON trades_ma TO user1"
+  },
+  {
+    "query": "SELECT symbol, avg(price), count()\nFROM fx_trades\nWHERE timestamp IN '$today'\nGROUP BY symbol\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, avg(price), count()\nFROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, side, avg(price), count()\nFROM fx_trades\nWHERE timestamp IN '$today'\nGROUP BY symbol, side\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, side, avg(price), count()\nFROM fx_trades\nWHERE timestamp IN '$today'\nLIMIT 5"
+  },
+  {
+    "query": "SELECT symbol, avg(price)\nFROM fx_trades\nWHERE timestamp IN '$today'\nGROUP BY symbol, side\nORDER BY symbol\nLIMIT 6"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1_000_000_000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2) AS avg_mid\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM 0s TO 1m STEP 5s AS h\nWHERE t.timestamp IN '$now-1h..$now'\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1_000_000_000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2) AS avg_mid,\n    count() AS sample_size\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM -5s TO 5s STEP 1s AS h\nWHERE t.timestamp IN '$now-1h..$now'\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1_000_000_000 AS horizon_sec,\n    sum(((m.best_bid + m.best_ask) / 2 - t.price) * t.quantity)\n        / sum(t.quantity) AS vwap_markout\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM 0s TO 5m STEP 30s AS h\nWHERE t.timestamp IN '$now-1h..$now'\nORDER BY horizon_sec"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1000000 AS horizon_ms,\n    t.symbol,\n    avg(m.best_bid) AS consolidated_bid,\n    avg(c.bid_price) AS ecn_bid\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m\n    ON (t.symbol = m.symbol)\nHORIZON JOIN core_price AS c\n    ON (t.symbol = c.symbol AND t.ecn = c.ecn)\n    LIST (-1s, 0, 1s, 5s) AS h\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nGROUP BY horizon_ms, t.symbol\nORDER BY t.symbol, horizon_ms"
+  },
+  {
+    "query": "SELECT\n    h.offset / 1_000_000_000 AS horizon_sec,\n    t.symbol,\n    avg(b.bid) AS avg_bid,\n    avg(a.ask) AS avg_ask,\n    avg(a.ask - b.bid) AS avg_spread\nFROM trades AS t\nHORIZON JOIN bids AS b ON (t.symbol = b.symbol)\nHORIZON JOIN asks AS a ON (t.symbol = a.symbol)\n    RANGE FROM -2s TO 2s STEP 2s AS h\nGROUP BY horizon_sec, t.symbol\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "SELECT\n    avg(p.price) AS avg_price,\n    avg(r.rate) AS avg_rate\nFROM trades AS t\nHORIZON JOIN prices AS p ON (t.symbol = p.symbol)\nHORIZON JOIN rates AS r\n    LIST (0, 1s, 5s) AS h"
+  },
+  {
+    "query": "SELECT\n    avg(b.bid) AS avg_bid,\n    avg(a.ask) AS avg_ask,\n    avg(m.mid) AS avg_mid\nFROM trades AS t\nHORIZON JOIN bids AS b ON (t.symbol = b.symbol)\nHORIZON JOIN asks AS a ON (t.symbol = a.symbol)\nHORIZON JOIN mids AS m ON (t.symbol = m.symbol)\n    LIST (0) AS h"
+  },
+  {
+    "query": "EXPLAIN SELECT\n    h.offset / 1_000_000_000 AS horizon_sec,\n    t.symbol,\n    avg((m.best_bid + m.best_ask) / 2) AS avg_mid\nFROM fx_trades AS t\nHORIZON JOIN market_data AS m ON (symbol)\nRANGE FROM -1m TO 1m STEP 5s AS h\nWHERE t.timestamp IN '$now-1h..$now'\nORDER BY t.symbol, horizon_sec"
+  },
+  {
+    "query": "WITH\n  many_trades AS\n    (SELECT * FROM trades LIMIT -1000000),\n  lookup AS\n    (SELECT 'BTC-USDT' AS symbol, 'Bitcoin/USDT Pair' AS description)\nSELECT *\nFROM lookup\nINNER JOIN many_trades\n  ON lookup.symbol = many_trades.symbol"
+  },
+  {
+    "query": "WITH\n  many_trades AS\n    (SELECT * FROM trades LIMIT -1000000),\n  lookup AS\n    (SELECT 'BTC-USDT' AS symbol, 'Bitcoin/USDT Pair' AS description)\nSELECT *\nFROM many_trades\nINNER JOIN lookup\n  ON lookup.symbol = many_trades.symbol"
+  },
+  {
+    "query": "WITH\n  mayTrades AS (\n    SELECT symbol, side, COUNT(*) as total\n    FROM trades\n    WHERE timestamp in '2024-05'\n    ORDER BY Symbol\n    LIMIT 4\n  ),\n  juneTrades AS (\n    SELECT symbol, side, COUNT(*) as total\n    FROM trades\n    WHERE timestamp in '2024-06'\n    ORDER BY Symbol\n    LIMIT 4\n  )\nSELECT mayTrades.symbol, juneTrades.symbol,\n    mayTrades.side, juneTrades.side,\n    mayTrades.total, juneTrades.total\nFROM mayTrades\nJOIN juneTrades\n  ON mayTrades.symbol = juneTrades.symbol\n    AND mayTrades.side = juneTrades.side"
+  },
+  {
+    "query": "WITH\n  mayTrades AS (\n    SELECT symbol, side, COUNT(*) as total\n    FROM trades\n    WHERE timestamp in '2024-05'\n    ORDER BY Symbol\n    LIMIT 4\n  ),\n  juneTrades AS (\n    SELECT symbol, side, COUNT(*) as total\n    FROM trades\n    WHERE timestamp in '2024-06'\n    ORDER BY Symbol\n    LIMIT 4\n  )\nSELECT mayTrades.symbol, juneTrades.symbol,\n    mayTrades.side, juneTrades.side,\n    mayTrades.total, juneTrades.total\nFROM mayTrades\nJOIN juneTrades ON (symbol, side)"
+  },
+  {
+    "query": "WITH\n  many_trades AS\n    (SELECT * FROM trades LIMIT -100),\n  lookup AS\n    (SELECT 'BTC-USDT' AS symbol, 'Bitcoin/USDT Pair' AS description)\nSELECT *\nFROM many_trades\nLEFT OUTER JOIN lookup\n  ON lookup.symbol = many_trades.symbol"
+  },
+  {
+    "query": "WITH\n  many_trades AS\n    (SELECT * FROM trades LIMIT -100),\n  lookup AS\n    (SELECT 'BTC-USDT' AS symbol, 'Bitcoin/USDT Pair' AS description)\nSELECT *\nFROM many_trades\nLEFT JOIN lookup\n  ON lookup.symbol = many_trades.symbol"
+  },
+  {
+    "query": "WITH\n  many_trades AS\n    (SELECT * FROM trades LIMIT -100),\n  lookup AS\n    (SELECT 'BTC-USDT' AS symbol, 'Bitcoin/USDT Pair' AS description)\nSELECT *\nFROM many_trades\nLEFT OUTER JOIN lookup\n  ON lookup.symbol = many_trades.symbol\nWHERE lookup.symbol = NULL"
+  },
+  {
+    "query": "WITH\n  many_trades AS\n    (SELECT * FROM trades LIMIT -100),\n  lookup AS\n    (SELECT 'BTC-USDT' AS symbol, 'Bitcoin/USDT Pair' AS description)\nSELECT *\nFROM many_trades\nRIGHT OUTER JOIN lookup\n  ON lookup.symbol = many_trades.symbol"
+  },
+  {
+    "query": "WITH\n  may_trades AS (\n    SELECT symbol, COUNT(*) AS may_total\n    FROM trades\n    WHERE timestamp IN '2024-05'\n  ),\n  june_trades AS (\n    SELECT symbol, COUNT(*) AS june_total\n    FROM trades\n    WHERE timestamp IN '2024-06'\n  )\nSELECT\n  COALESCE(may_trades.symbol, june_trades.symbol) AS symbol,\n  may_total,\n  june_total\nFROM may_trades\nFULL OUTER JOIN june_trades\n  ON may_trades.symbol = june_trades.symbol"
+  },
+  {
+    "query": "WITH t AS (\n  SELECT * FROM trades LIMIT -10000\n)\nSELECT * FROM t CROSS JOIN t AS t2\nWHERE t.timestamp < t2.timestamp\n  AND datediff('s', t.timestamp, t2.timestamp) < 10\n  AND t.symbol = t2.symbol\n  AND t.side = t2.side\n  AND t.price = t2.price\n  AND t.amount = t2.amount"
+  },
+  {
+    "query": "WITH miniTrades AS (\n  SELECT timestamp, price\n  FROM TRADES\n  WHERE symbol = 'BTC-USD'\n  LIMIT 3\n)\nSELECT tradesA.timestamp, tradesB.timestamp, tradesA.price\nFROM miniTrades tradesA\nLT JOIN miniTrades tradesB"
+  },
+  {
+    "query": "CREATE TABLE orders (\n    id        INT,\n    desk      SYMBOL,\n    min_qty   DOUBLE,\n    ts        TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE fills (\n    id        INT,\n    order_id  INT,\n    qty       DOUBLE,\n    ts        TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "INSERT INTO orders VALUES\n    (1, 'eq',  15.0, '2024-01-01T00:00:00.000000Z'),\n    (2, 'fi',  35.0, '2024-01-01T01:00:00.000000Z'),\n    (3, 'cmd',  5.0, '2024-01-01T02:00:00.000000Z')"
+  },
+  {
+    "query": "INSERT INTO fills VALUES\n    (1, 1, 10.0, '2024-01-01T00:10:00.000000Z'),\n    (2, 1, 20.0, '2024-01-01T00:40:00.000000Z'),\n    (3, 1, 30.0, '2024-01-01T01:10:00.000000Z'),\n    (4, 2, 40.0, '2024-01-01T01:10:00.000000Z'),\n    (5, 2, 50.0, '2024-01-01T01:40:00.000000Z')"
+  },
+  {
+    "query": "SELECT o.id, o.desk, t.qty\nFROM orders o\nJOIN LATERAL (\n    SELECT qty FROM fills WHERE order_id = o.id\n) t\nORDER BY o.id, t.qty"
+  },
+  {
+    "query": "SELECT o.id, o.desk, t.qty\nFROM orders o\nLEFT JOIN LATERAL (\n    SELECT qty FROM fills WHERE order_id = o.id\n) t\nORDER BY o.id, t.qty"
+  },
+  {
+    "query": "SELECT o.id, t.cnt\nFROM orders o\nLEFT JOIN LATERAL (\n    SELECT count(*) AS cnt FROM fills WHERE order_id = o.id\n) t\nORDER BY o.id"
+  },
+  {
+    "query": "SELECT o.id, o.desk, t.qty\nFROM orders o\nJOIN LATERAL (\n    SELECT qty\n    FROM fills\n    WHERE order_id = o.id\n    ORDER BY qty DESC\n    LIMIT 2\n) t\nORDER BY o.id, t.qty DESC"
+  },
+  {
+    "query": "SELECT o.id, o.desk, t.total_qty\nFROM orders o\nJOIN LATERAL (\n    SELECT sum(qty) AS total_qty\n    FROM fills\n    WHERE order_id = o.id\n) t\nORDER BY o.id"
+  },
+  {
+    "query": "SELECT o.id, o.desk, t.total_qty\nFROM orders o\nJOIN LATERAL (\n    SELECT sum(qty) AS total_qty\n    FROM fills\n    WHERE order_id = o.id\n      AND qty > o.min_qty\n) t\nORDER BY o.id"
+  },
+  {
+    "query": "SELECT o.id, t.qty, t.running_total\nFROM orders o\nJOIN LATERAL (\n    SELECT qty,\n           sum(qty) OVER (ORDER BY ts) AS running_total\n    FROM fills\n    WHERE order_id = o.id\n) t\nORDER BY o.id, t.qty"
+  },
+  {
+    "query": "SELECT t.symbol, sub.ts, sub.volume\nFROM (\n    SELECT * FROM fx_trades\n    LATEST ON timestamp PARTITION BY symbol\n) t\nJOIN LATERAL (\n    SELECT timestamp AS ts, sum(quantity) AS volume\n    FROM fx_trades\n    WHERE symbol = t.symbol\n      AND timestamp IN '$now-6h..$now'\n    SAMPLE BY 1h\n) sub\nORDER BY t.symbol, sub.ts"
+  },
+  {
+    "query": "SELECT t.symbol, sub.side, sub.price, sub.quantity\nFROM (\n    SELECT DISTINCT symbol FROM fx_trades\n    WHERE timestamp IN '$now-1h..$now'\n) t\nJOIN LATERAL (\n    SELECT side, price, quantity\n    FROM fx_trades\n    WHERE symbol = t.symbol\n    LATEST ON timestamp PARTITION BY side\n) sub\nORDER BY t.symbol, sub.side"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    sub.timestamp,\n    sub.side,\n    sub.price,\n    sub.quantity,\n    sub.ecn,\n    sub.bid_price,\n    sub.ask_price\nFROM (\n    SELECT * FROM fx_trades\n    LATEST ON timestamp PARTITION BY symbol\n) t\nJOIN LATERAL (\n    SELECT\n        f.timestamp, f.side, f.price,\n        f.quantity, f.ecn,\n        c.bid_price, c.ask_price\n    FROM fx_trades f\n    ASOF JOIN core_price c\n        ON (f.symbol = c.symbol AND f.ecn = c.ecn)\n    WHERE f.symbol = t.symbol\n        AND f.timestamp IN '$now-1m..$now'\n    ORDER BY f.quantity DESC\n    LIMIT 3\n) sub"
+  },
+  {
+    "query": "SELECT o.id, t.qty, t.bucket\nFROM orders o\nJOIN LATERAL (\n    SELECT qty, 'small' AS bucket FROM fills\n        WHERE order_id = o.id AND qty < 30\n    UNION ALL\n    SELECT qty, 'large' AS bucket FROM fills\n        WHERE order_id = o.id AND qty >= 30\n) t\nORDER BY o.id, t.qty"
+  },
+  {
+    "query": "SELECT o.id, t.qty\nFROM orders o,\n     LATERAL (SELECT qty FROM fills WHERE order_id = o.id) t\nORDER BY o.id, t.qty"
+  },
+  {
+    "query": "CREATE TABLE master (\n    mm_id  INT,\n    symbol STRING,\n    ts     TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE detail (\n    mm_id  INT,\n    symbol STRING,\n    qty    DOUBLE,\n    ts     TIMESTAMP\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "SELECT m.mm_id, m.symbol, t.total\nFROM master m\nLEFT JOIN LATERAL (\n    SELECT sum(qty) AS total\n    FROM detail\n    WHERE mm_id = m.mm_id\n      AND symbol = m.symbol\n) t\nORDER BY m.mm_id"
+  },
+  {
+    "query": "SELECT symbol, timestamp, price\nFROM fx_trades\nLATEST ON timestamp PARTITION BY symbol"
+  },
+  {
+    "query": "(fx_trades WHERE timestamp IN '$today' LATEST ON timestamp PARTITION BY symbol)\nWHERE price > 3"
+  },
+  {
+    "query": "CREATE TABLE orders (id LONG)"
+  },
+  {
+    "query": "INSERT INTO orders VALUES (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT 5"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT -5"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT 2, 5"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT -5, -3"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT 2, -1"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT 5, 2"
+  },
+  {
+    "query": "SELECT * FROM orders LIMIT -3, -5"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1m..$now'\nORDER BY symbol"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1m..$now'\nORDER BY symbol DESC"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1m..$now'\nORDER BY symbol, side DESC"
+  },
+  {
+    "query": "trades PIVOT (\n    avg(price)\n    FOR symbol IN ('BTC-USDT', 'ETH-USDT')\n    GROUP BY side\n)\nORDER BY side      -- outside PIVOT parentheses\nLIMIT 10"
+  },
+  {
+    "query": "SELECT symbol, avg(price)\nFROM trades\nWHERE timestamp IN '$today'\nGROUP BY symbol"
+  },
+  {
+    "query": "SELECT\n    avg(CASE WHEN symbol = 'BTC-USDT' THEN price END) AS \"BTC-USDT\",\n    avg(CASE WHEN symbol = 'ETH-USDT' THEN price END) AS \"ETH-USDT\",\n    avg(CASE WHEN symbol = 'SOL-USDT' THEN price END) AS \"SOL-USDT\",\n    avg(CASE WHEN symbol = 'ADA-USDT' THEN price END) AS \"ADA-USDT\",\n    avg(CASE WHEN symbol = 'AVAX-USDT' THEN price END) AS \"AVAX-USDT\"\nFROM trades\nWHERE timestamp IN '$today'"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price)\n    FOR symbol IN (\n        'BTC-USDT', 'ETH-USDT', 'SOL-USDT',\n        'ADA-USDT', 'AVAX-USDT'\n    )\n)"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price) AS avg_price,\n    sum(price * amount) / 2 AS half_value\n    FOR symbol IN ('BTC-USDT', 'ETH-USDT', 'SOL-USDT')\n)"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price)\n    FOR symbol IN (\n        'BTC-USDT', 'ETH-USDT', 'SOL-USDT',\n        'ADA-USDT', 'AVAX-USDT'\n    )\n        side IN ('buy', 'sell')\n)"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price)\n    FOR symbol IN (\n        'BTC-USDT', 'ETH-USDT', 'SOL-USDT',\n        'ADA-USDT', 'AVAX-USDT'\n    )\n    GROUP BY side\n) ORDER BY side"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price)\n    FOR symbol IN (\n        SELECT DISTINCT symbol FROM trades\n        WHERE timestamp IN '$today'\n        ORDER BY symbol\n    )\n    GROUP BY side\n)"
+  },
+  {
+    "query": "WITH recent_trades AS (\n    SELECT * FROM trades\n    WHERE timestamp IN '$today'\n)\nSELECT * FROM recent_trades\nPIVOT (\n    avg(price)\n    FOR symbol IN (\n        SELECT DISTINCT symbol FROM recent_trades\n        ORDER BY symbol\n    )\n    GROUP BY side\n)"
+  },
+  {
+    "query": "-- Columns: BTC-USDT, ETH-USDT\nSELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price)\n    FOR symbol IN ('BTC-USDT', 'ETH-USDT')\n)"
+  },
+  {
+    "query": "-- Columns: BTC-USDT_avg(price), BTC-USDT_sum(price), ...\nSELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price), sum(price)\n    FOR symbol IN ('BTC-USDT', 'ETH-USDT')\n)"
+  },
+  {
+    "query": "-- Columns: BTC-USDT_avg_price, BTC-USDT_total_price, ...\nSELECT * FROM trades\nWHERE timestamp IN '$today'\nPIVOT (\n    avg(price) AS avg_price, sum(price) AS total_price\n    FOR symbol IN ('BTC-USDT', 'ETH-USDT')\n)"
+  },
+  {
+    "query": "SELECT ts, count()\nFROM trades\nSAMPLE BY h"
+  },
+  {
+    "query": "SELECT ts, count()\nFROM trades\nSAMPLE BY 1h FROM '2026-01-01T00:00:00' TO '2026-01-02T00:00:00' FILL(NULL)\nALIGN TO CALENDAR TIME ZONE 'Europe/Berlin'"
+  },
+  {
+    "query": "CREATE TABLE trades (\n  ts TIMESTAMP,\n  price DOUBLE\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (TABLES)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (TABLES, MATERIALIZED_VIEWS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE EXCLUDE (MATERIALIZED_VIEWS)"
+  },
+  {
+    "query": "SHOW CREATE MATERIALIZED VIEW bbo_1s"
+  },
+  {
+    "query": "CREATE TABLE trades (\n\tsymbol SYMBOL CAPACITY 256 CACHE,\n\tside SYMBOL CAPACITY 256 CACHE,\n\tprice DOUBLE,\n\tamount DOUBLE,\n\ttimestamp TIMESTAMP\n) timestamp(timestamp) PARTITION BY DAY\nWITH maxUncommittedRows=500000, o3MaxLag=600000000us"
+  },
+  {
+    "query": "CREATE TABLE trades (\n\tsymbol SYMBOL CAPACITY 256 CACHE INDEX TYPE POSTING INCLUDE (price, exchange, timestamp),\n\texchange SYMBOL CAPACITY 256 CACHE,\n\tprice DOUBLE,\n\tamount DOUBLE,\n\ttimestamp TIMESTAMP\n) timestamp(timestamp) PARTITION BY DAY\nWITH maxUncommittedRows=500000, o3MaxLag=600000000us"
+  },
+  {
+    "query": "CREATE TABLE sensors (\n\tts TIMESTAMP,\n\ttemperature DOUBLE PARQUET(rle_dictionary, zstd(3)),\n\thumidity FLOAT PARQUET(rle_dictionary),\n\tdevice_id VARCHAR PARQUET(default, lz4_raw),\n\tstatus INT\n) timestamp(ts) PARTITION BY DAY BYPASS WAL"
+  },
+  {
+    "query": "CREATE TABLE trades (\n\tsymbol SYMBOL CAPACITY 256 CACHE,\n\tside SYMBOL CAPACITY 256 CACHE,\n\tprice DOUBLE,\n\tamount DOUBLE,\n\ttimestamp TIMESTAMP\n) timestamp(timestamp) PARTITION BY DAY\nWITH maxUncommittedRows=500000, o3MaxLag=600000000us\nOWNED BY 'admin'"
+  },
+  {
+    "query": "-- This query will return all parameters where the property_path is not 'cairo.root' or 'cairo.snapshot.instance.id', ordered by the first column\n(SHOW PARAMETERS) WHERE property_path NOT IN ('cairo.root', 'cairo.snapshot.instance.id') ORDER BY 1"
+  },
+  {
+    "query": "SWITCH COLD STORAGE ROLE TO REFRESHER TIMEOUT 30000"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 60000"
+  },
+  {
+    "query": "SELECT * FROM (SELECT symbol FROM trades WHERE symbol = 'BTC-USDT' LIMIT 1)\nUNION ALL\nSELECT * FROM (SELECT symbol FROM trades WHERE symbol = 'ETH-USDT' LIMIT 1)"
+  },
+  {
+    "query": "binance_symbols UNION coinbase_symbols"
+  },
+  {
+    "query": "binance_symbols\nUNION\ncoinbase_symbols WHERE base = 'NONEXISTENT'"
+  },
+  {
+    "query": "binance_symbols UNION ALL coinbase_symbols"
+  },
+  {
+    "query": "binance_symbols EXCEPT coinbase_symbols"
+  },
+  {
+    "query": "binance_symbols EXCEPT ALL coinbase_symbols"
+  },
+  {
+    "query": "binance_symbols INTERSECT coinbase_symbols"
+  },
+  {
+    "query": "SELECT t.symbol, u.vol\nFROM market_data t, UNNEST(t.asks[2]) u(vol)\nWHERE t.timestamp IN '$now-1m..$now'\n  AND t.symbol = 'EURUSD'"
+  },
+  {
+    "query": "SELECT t.symbol, u.vol\nFROM market_data t\nCROSS JOIN UNNEST(t.asks[2]) u(vol)\nWHERE t.timestamp IN '$now-1m..$now'\n  AND t.symbol = 'EURUSD'"
+  },
+  {
+    "query": "SELECT u.val, u.pos\nFROM UNNEST(ARRAY[10.0, 20.0, 30.0]) WITH ORDINALITY u(val, pos)"
+  },
+  {
+    "query": "SELECT u.a, u.b\nFROM UNNEST(ARRAY[1.0, 2.0, 3.0], ARRAY[10.0, 20.0]) u(a, b)"
+  },
+  {
+    "query": "SELECT value\nFROM UNNEST(ARRAY[ARRAY[1.0, 2.0], ARRAY[3.0, 4.0]])"
+  },
+  {
+    "query": "SELECT u.val\nFROM UNNEST(ARRAY[ARRAY[1.0, 2.0], ARRAY[3.0, 4.0]]) t(arr),\n     UNNEST(t.arr) u(val)"
+  },
+  {
+    "query": "SELECT u.price FROM UNNEST(ARRAY[1.5, 2.5]) u(price)"
+  },
+  {
+    "query": "SELECT u.trade_id, u.price, u.size, u.side, u.time\nFROM UNNEST(\n    '[{\"trade_id\":994619709,\"side\":\"sell\",\"size\":\"0.00000100\",\"price\":\"69839.36000000\",\"time\":\"2026-04-06T10:32:55.517183Z\"},\n      {\"trade_id\":994619708,\"side\":\"buy\",\"size\":\"0.00000006\",\"price\":\"69839.35000000\",\"time\":\"2026-04-06T10:32:55.418434Z\"},\n      {\"trade_id\":994619707,\"side\":\"buy\",\"size\":\"0.00000006\",\"price\":\"69839.35000000\",\"time\":\"2026-04-06T10:32:55.024765Z\"}]'::VARCHAR\n    COLUMNS(trade_id LONG, price DOUBLE, size DOUBLE, side VARCHAR, time TIMESTAMP)\n) u"
+  },
+  {
+    "query": "SELECT u.val\nFROM UNNEST('[1.5, 2.5, 3.5]'::VARCHAR COLUMNS(val DOUBLE)) u"
+  },
+  {
+    "query": "SELECT u.val, u.pos\nFROM UNNEST(\n    '[10, 20, 30]'::VARCHAR COLUMNS(val LONG)\n) WITH ORDINALITY u(val, pos)"
+  },
+  {
+    "query": "SELECT u.ts, u.val\nFROM UNNEST(\n    '[{\"ts\":\"2024-01-15T10:30:00.000000Z\",\"val\":1.5},\n      {\"ts\":\"2024-06-20T14:00:00.000000Z\",\"val\":2.5}]'::VARCHAR\n    COLUMNS(ts TIMESTAMP, val DOUBLE)\n) u"
+  },
+  {
+    "query": "SELECT u.cost\nFROM UNNEST(\n    '[{\"price\":1.5},{\"price\":2.5}]'::VARCHAR\n    COLUMNS(price DOUBLE)\n) u(cost)"
+  },
+  {
+    "query": "SELECT u.price\nFROM events e, UNNEST(\n    json_extract(e.payload, '$.items')::VARCHAR\n    COLUMNS(price DOUBLE)\n) u"
+  },
+  {
+    "query": "SELECT u.a, u.b\nFROM UNNEST(\n    '[{\"a\":1},{\"a\":2,\"b\":99},{\"a\":null}]'::VARCHAR\n    COLUMNS(a INT, b INT)\n) u"
+  },
+  {
+    "query": "SELECT t.symbol, u.vol\nFROM market_data t, UNNEST(t.asks[2]) u(vol)\nWHERE t.timestamp IN '$now-1m..$now'\n  AND t.symbol = 'EURUSD'\n  AND u.vol > 100.0\nORDER BY t.timestamp"
+  },
+  {
+    "query": "SELECT t.symbol, sum(u.vol) AS total_ask_vol\nFROM market_data t, UNNEST(t.asks[2]) u(vol)\nWHERE t.timestamp IN '$now-1m..$now'\nGROUP BY t.symbol"
+  },
+  {
+    "query": "WITH expanded AS (\n    SELECT m.symbol, m.timestamp, u.vol, u.level\n    FROM market_data m, UNNEST(m.asks[2]) WITH ORDINALITY u(vol, level)\n    WHERE m.timestamp IN '$now-1m..$now'\n      AND m.symbol = 'EURUSD'\n)\nSELECT symbol, level, avg(vol) AS avg_vol\nFROM expanded\nGROUP BY symbol, level\nORDER BY symbol, level"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND side = 'buy'\n  AND (symbol = 'BTC-USDT' OR price > 100000)\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND symbol = 'BTC-USDT'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND symbol != 'BTC-USDT'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND symbol ~ '^BTC'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND symbol !~ '^BTC'\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND symbol IN ('BTC-USDT', 'ETH-USDT')\nLIMIT -20"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now'\n  AND symbol NOT IN ('BTC-USDT', 'ETH-USDT')\nLIMIT -20"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now' AND amount >= 1.0\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now' AND amount = 1.0\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1h..$now' AND amount != 1.0\nLIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM instruments WHERE is_tradable"
+  },
+  {
+    "query": "SELECT * FROM instruments WHERE NOT is_tradable"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp = '2026-04-02T12:00:00.190Z'"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp = '2026-04-02T12:00:00.190000Z'"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '2026' LIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '2026-04-02T12:15' LIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '2026;1M' LIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE timestamp IN '2026-04;-3d' LIMIT -3"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '2025-01-01;1d;1y;2' AND symbol = 'SOL-ETH'"
+  },
+  {
+    "query": "-- IN extension for time-intervals\n\nSELECT * FROM trades WHERE timestamp in '2026'"
+  },
+  {
+    "query": "-- whole year\nSELECT * FROM trades WHERE timestamp in '2025-12'"
+  },
+  {
+    "query": "-- whole month\nSELECT * FROM trades WHERE timestamp in '2025-12-20'"
+  },
+  {
+    "query": "-- whole day\n\n-- The whole day, extending 15s into the next day\nSELECT * FROM trades WHERE timestamp in '2025-12-20;15s'"
+  },
+  {
+    "query": "-- For the past 7 days, 2 seconds before and after midnight\nSELECT * from trades WHERE timestamp in '2025-09-20T23:59:58;4s;-1d;7'"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN ('2026-04-01', '2026-04-01T12:00:00.017999Z', '2026-04-02')"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp = '2026-04-01'\n   OR timestamp = '2026-04-01T12:00:00.017999Z'\n   OR timestamp = '2026-04-02'"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp BETWEEN '2026-04-01T00:00:23.000000Z'\n                    AND '2026-04-01T00:00:23.500000Z'"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp BETWEEN to_str(now(), 'yyyy-MM-dd')\nAND dateadd('y', -1, to_str(now(), 'yyyy-MM-dd'))"
+  },
+  {
+    "query": "SELECT * FROM trades\nWHERE timestamp IN '$now-1y..$now'"
+  },
+  {
+    "query": "SELECT *\nFROM trades\nWHERE timestamp BETWEEN '2026-04-01' AND '2026-04-03'\nLIMIT -1"
+  },
+  {
+    "query": "SELECT *\nFROM trades\nWHERE timestamp BETWEEN '2026-04-01' AND '2026-04-03T00:00:00.99'\nLIMIT -1"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.price,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 5 seconds PRECEDING AND 5 seconds FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nORDER BY t.timestamp\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid,\n    count() AS num_quotes\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 5 seconds PRECEDING AND 5 seconds FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol) AND c.ecn = t.ecn\n    RANGE BETWEEN 2 seconds PRECEDING AND 2 seconds FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nORDER BY t.timestamp\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS pre_trade_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 2 seconds PRECEDING AND 1 second PRECEDING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS post_trade_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 1 second FOLLOWING AND 5 seconds FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    count() AS total_quotes\nFROM fx_trades t\nWINDOW JOIN core_price c\n    RANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    t.price,\n    avg(m.best_bid) AS consolidated_bid_1s,\n    avg(c.bid_price) AS ecn_bid_5s\nFROM fx_trades t\nWINDOW JOIN market_data m\n    ON (t.symbol = m.symbol)\n    RANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 5 seconds PRECEDING AND 5 seconds FOLLOWING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    t.lookback,\n    t.lookahead,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN t.lookback seconds PRECEDING AND t.lookahead seconds FOLLOWING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN t.lookback seconds PRECEDING AND 5 seconds FOLLOWING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 2 * t.lookback seconds PRECEDING AND 10 seconds FOLLOWING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'\nLIMIT -20"
+  },
+  {
+    "query": "SELECT\n    t.symbol,\n    t.timestamp,\n    avg(c.bid_price) AS avg_bid\nFROM fx_trades t\nWINDOW JOIN core_price c\n    ON (t.symbol = c.symbol)\n    RANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\n    EXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.side = 'buy'\n    AND t.timestamp IN '$now-1h..$now'\nORDER BY t.timestamp\nLIMIT -20"
+  },
+  {
+    "query": "EXPLAIN SELECT t.symbol, avg(c.bid_price)\nFROM fx_trades t\nWINDOW JOIN core_price c ON (t.symbol = c.symbol)\nRANGE BETWEEN 1 second PRECEDING AND 1 second FOLLOWING\nEXCLUDE PREVAILING\nWHERE t.symbol = 'EURUSD'\n    AND t.timestamp IN '$now-1h..$now'"
+  },
+  {
+    "query": "WITH trades_with_future_bid AS (\n    SELECT\n        t.symbol,\n        t.price,\n        first(c.bid_price) AS future_bid\n    FROM fx_trades t\n    WINDOW JOIN core_price c ON (t.symbol = c.symbol)\n        RANGE BETWEEN 10 milliseconds FOLLOWING AND 10 milliseconds FOLLOWING\n        INCLUDE PREVAILING\n    WHERE t.timestamp IN '$now-1h..$now'\n)\nSELECT\n    symbol,\n    count(*) AS trade_count,\n    avg(future_bid - price) AS avg_slippage\nFROM trades_with_future_bid\nGROUP BY symbol"
+  },
+  {
+    "query": "WITH recent_eurusd AS (\n    SELECT timestamp, price FROM fx_trades\n    WHERE symbol = 'EURUSD'\n    LIMIT -10\n)\nSELECT * FROM recent_eurusd"
+  },
+  {
+    "query": "WITH recent_eurusd AS (\n    SELECT timestamp, price FROM fx_trades\n    WHERE symbol = 'EURUSD'\n    LIMIT -10\n),\nlast_5 AS (SELECT * FROM recent_eurusd LIMIT -5)\nSELECT * FROM last_5"
+  },
+  {
+    "query": "WITH eurusd_today AS (\n    SELECT timestamp, price,\n           avg(price) OVER () AS avg_price\n    FROM fx_trades\n    WHERE symbol = 'EURUSD'\n      AND timestamp IN '$today'\n)\nSELECT timestamp, price, avg_price\nFROM eurusd_today\nWHERE price > avg_price"
+  },
+  {
+    "query": "-- Default bitmap index — low overhead, good for most cases\nCREATE TABLE trades (\n    ts TIMESTAMP,\n    symbol SYMBOL INDEX,\n    price DOUBLE\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "-- Posting index with covering columns — best for read-heavy, selective queries\nCREATE TABLE trades (\n    ts TIMESTAMP,\n    symbol SYMBOL INDEX TYPE POSTING INCLUDE (price),\n    price DOUBLE,\n    raw_data VARCHAR  -- not in INCLUDE, read from column files\n) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "-- User can see all columns except trader_id\nGRANT SELECT ON trades(* EXCLUDE (trader_id)) TO analyst"
+  },
+  {
+    "query": "ALTER USER tenant_a SET MEMORY LIMIT 1G"
+  },
+  {
+    "query": "CREATE SERVICE ACCOUNT failover_bot WITH PASSWORD 'pwd'"
+  },
+  {
+    "query": "GRANT HTTP TO failover_bot"
+  },
+  {
+    "query": "-- POST /lifecycle/switch on port 9003\nGRANT SWITCH ROLE TO failover_bot"
+  },
+  {
+    "query": "-- Now operating with trading_app's exact permissions\n-- Test what works and what doesn't...\nEXIT SERVICE ACCOUNT"
+  },
+  {
+    "query": "-- Database-level: applies to all tables\nGRANT SELECT ON ALL TABLES TO user"
+  },
+  {
+    "query": "-- Table-level: applies to specific tables\nGRANT SELECT ON trades, prices TO user"
+  },
+  {
+    "query": "-- Column-level: applies to specific columns\nGRANT SELECT ON trades(ts, symbol, price) TO user"
+  },
+  {
+    "query": "-- Database level\nREVOKE SELECT ON secret_table FROM user"
+  },
+  {
+    "query": "GRANT SELECT ON trades TO user"
+  },
+  {
+    "query": "-- Table level\nREVOKE SELECT ON trades(ssn) FROM user"
+  },
+  {
+    "query": "GRANT SELECT ON trdaes TO user WITH VERIFICATION"
+  },
+  {
+    "query": "ALTER SERVICE ACCOUNT ingest_app SET MEMORY LIMIT 1G"
+  },
+  {
+    "query": "DECLARE\n    @prices := asks[1],\n    @volumes := asks[2],\n    @best_price := @prices[1],\n    @multiplier := 1.01,\n    @target_price := @multiplier *  @best_price,\n    @relevant_volume_levels := @volumes[1:insertion_point(@prices, @target_price)]\nSELECT timestamp, array_sum(@relevant_volume_levels) total_volume\nFROM market_data WHERE symbol='EURUSD'\nLIMIT -10"
+  },
+  {
+    "query": "DECLARE\n  @prices := asks[1],\n  @volumes := asks[2],\n  @best_price := @prices[1],\n  @price_delta := 0.1,\n  @target_price := @best_price + @price_delta,\n  @relevant_volumes := @volumes[1:insertion_point(@prices, @target_price)]\nSELECT timestamp, array_sum(@relevant_volumes) volume\nFROM market_data WHERE symbol='EURUSD'\nLIMIT -10"
+  },
+  {
+    "query": "DECLARE\n  @volumes := asks[2],\n  @dropoff_ratio := 3.0\nSELECT * FROM (\n  SELECT\n    timestamp,\n    array_avg(@volumes[1:3]) top,\n    array_avg(@volumes[3:6]) deep\n  FROM market_data\n  WHERE timestamp > dateadd('m',-30,now()) )\nWHERE top > @dropoff_ratio * deep"
+  },
+  {
+    "query": "DECLARE\n  @top_bid_volume := bids[2, 1],\n  @top_ask_volume := asks[2, 1],\n  @drop_ratio := 1.5\nSELECT * FROM (\n  SELECT\n    timestamp,\n    lag(@top_bid_volume) OVER () prev_bid_vol,\n    @top_bid_volume curr_bid_vol,\n    lag(@top_ask_volume) OVER () prev_ask_vol,\n    @top_ask_volume curr_ask_vol\n  FROM market_data WHERE timestamp > dateadd('h',-1,now()) AND symbol='EURUSD' )\nWHERE prev_bid_vol > curr_bid_vol * @drop_ratio OR prev_ask_vol > curr_ask_vol * @drop_ratio\nLIMIT 10"
+  },
+  {
+    "query": "REFRESH MATERIALIZED VIEW mv STATS"
+  },
+  {
+    "query": "ALTER TABLE t REBASE WAL INTO 'd1'"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mv REBASE WAL"
+  },
+  {
+    "query": "SHOW CREATE DATABASE EXCLUDE (users, groups)"
+  },
+  {
+    "query": "CREATE TABLE t (a INT) TIMESTAMP(a) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "ALTER TABLE t SET FORMAT NATIVE"
+  },
+  {
+    "query": "SELECT switch(x, 1, 'a', 'b') FROM t"
+  },
+  {
+    "query": "GRANT SELECT ON tab(*) TO alice"
+  },
+  {
+    "query": "GRANT SELECT ON tab(* EXCLUDE(a, b)) TO alice"
+  },
+  {
+    "query": "GRANT SET TABLE FORMAT ON t TO alice"
+  },
+  {
+    "query": "GRANT CONVERT PARTITION TO PARQUET ON tab TO alice"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP LATEST PARTITION BY sym"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mv DROP EXPIRE"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 5s IN MEMORY 1h START FROM BEGINNING AS (SELECT * FROM t)"
+  },
+  {
+    "query": "ALTER LIVE VIEW lv RESUME WAL FROM TXN 1"
+  },
+  {
+    "query": "SELECT avg(x) OVER w FROM t WINDOW w AS (ORDER BY ts ANCHOR DAILY '09:30')"
+  },
+  {
+    "query": "SELECT avg(x) OVER (ORDER BY ts ANCHOR EXPRESSION timestamp_floor('1d', ts)) FROM t"
+  },
+  {
+    "query": "COPY PERMISSIONS FROM src TO dst"
+  },
+  {
+    "query": "CREATE TABLE t (s SYMBOL INDEX TYPE POSTING DELTA INCLUDE (a, b), a INT, b INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE t (s SYMBOL, ts TIMESTAMP), INDEX(s TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "ALTER TABLE t ALTER COLUMN sym ADD INDEX TYPE POSTING INCLUDE (p)"
+  },
+  {
+    "query": "SELECT * FROM t WINDOW JOIN p ON t.sym = p.sym RANGE BETWEEN wndBound SECONDS PRECEDING AND wndBound SECONDS FOLLOWING"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY s"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY m"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY h"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY d"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY w"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY y"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY T"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY U"
+  },
+  {
+    "query": "SELECT ts, avg(x) FROM t SAMPLE BY n"
+  },
+  {
+    "query": "select ts, avg(x) from fromto sample by w from '2017-12-20' to '2018-01-31' fill(null) align to calendar"
+  },
+  {
+    "query": "alter table t rebase wal"
+  },
+  {
+    "query": "alter table base_price rebase wal"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (SCHEMA)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE EXCLUDE (VIEWS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (USERS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (GROUPS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (SERVICE_ACCOUNTS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (PERMISSIONS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (ACL)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (PERMISSIONS, TABLES)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (ALL)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (VIEWS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE INCLUDE (MATERIALIZED_VIEWS)"
+  },
+  {
+    "query": "SHOW CREATE DATABASE EXCLUDE ALL"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY FORMAT NATIVE WAL"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP, n LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP UPSERT KEYS(ts) FORMAT PARQUET"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP, n LONG) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET DEDUP UPSERT KEYS(ts)"
+  },
+  {
+    "query": "CREATE TABLE tango (val INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET"
+  },
+  {
+    "query": "CREATE TABLE tango (val INT PARQUET(BLOOM_FILTER), ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP, sym SYMBOL, n LONG) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP, s STRING, v VARCHAR, b BINARY) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP PARQUET(plain), v LONG) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL"
+  },
+  {
+    "query": "CREATE TABLE 'tango' (ts TIMESTAMP) timestamp(ts) PARTITION BY DAY FORMAT PARQUET"
+  },
+  {
+    "query": "ALTER TABLE tango SET FORMAT NATIVE"
+  },
+  {
+    "query": "ALTER TABLE tango SET FORMAT PARQUET"
+  },
+  {
+    "query": "ALTER TABLE no_partition SET FORMAT NATIVE"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 10000"
+  },
+  {
+    "query": "SWITCH ROLE TO PRIMARY TIMEOUT 10000"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 1"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 500"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 8000"
+  },
+  {
+    "query": "SWITCH ROLE TO REPLICA TIMEOUT 42000"
+  },
+  {
+    "query": "SWITCH ROLE TO PRIMARY TIMEOUT 1000"
+  },
+  {
+    "query": "SWITCH ROLE TO PRIMARY TIMEOUT 2000"
+  },
+  {
+    "query": "SWITCH ROLE TO PRIMARY TIMEOUT 42000"
+  },
+  {
+    "query": "grant select on t1(*) to ddd"
+  },
+  {
+    "query": "grant select on t1(* exclude(b, c)) to ddd"
+  },
+  {
+    "query": "grant select on t1(* exclude(b)) to ddd with grant option"
+  },
+  {
+    "query": "grant select on t1(* exclude(c)) to ddd"
+  },
+  {
+    "query": "grant all on t1(*) to ddd"
+  },
+  {
+    "query": "grant select, update on t1(*) to ddd"
+  },
+  {
+    "query": "grant select on t1(a, b), t2(*), t3(* exclude(q)) to ddd"
+  },
+  {
+    "query": "grant select on t1(* exclude(a)), t2(* exclude(z)) to ddd"
+  },
+  {
+    "query": "grant select on mv1(* exclude(avg_x)) to ddd"
+  },
+  {
+    "query": "grant select on mv1(*) to ddd"
+  },
+  {
+    "query": "grant select on v1(*) to ddd"
+  },
+  {
+    "query": "grant select on v1(* exclude(a)) to ddd"
+  },
+  {
+    "query": "GRANT SELECT ON tgs1(* EXCLUDE(b)) TO ugs1"
+  },
+  {
+    "query": "GRANT SELECT ON tgs1(*) TO ugs1"
+  },
+  {
+    "query": "revoke select on t1(*) from ddd"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) EXPIRE ROWS WHEN v < 2.0"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when v < 2.0 cleanup every 30m"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) EXPIRE ROWS WHEN v < 2.0 cleanup every 15m"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when v < 2.0 cleanup every 90m"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) EXPIRE ROWS WHEN (v < 2.0) CLEANUP EVERY 30m"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) EXPIRE ROWS WHEN cleanup > 5"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when v < 0"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when v < 0.0"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when v > 100"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts < '2024-01-02T00:00:00.000000Z'"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts < '2024-01-02T00:00:00.000000Z' cleanup every 1h"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts <= '2024-01-02T00:00:00.000000Z'"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts < dateadd('d', -1, now())"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts < now()"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts > now()"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows when ts < cast(null as timestamp)"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 100ms START FROM NOW AS SELECT ts, sym, x, count(*) OVER (PARTITION BY g ORDER BY ts ROWS BETWEEN 1_000_000 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW IF NOT EXISTS lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1_200s IN MEMORY 1_800s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv2 FLUSH EVERY 1_500ms START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv0 FLUSH EVERY 1s START FROM BEGINNING AS SELECT ts, x, count(*) OVER (PARTITION BY 0 ORDER BY ts ROWS BETWEEN 1000000 PRECEDING AND CURRENT ROW) AS rn FROM base WHERE x > 0"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM '2026-04-01T00:00:15.000000Z' AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM '2026-04-01T00:00:15.000000123Z' AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base_ns"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS (SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM tab)"
+  },
+  {
+    "query": "CREATE LIVE VIEW public.lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, x, count(*) OVER (PARTITION BY x ORDER BY ts ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS rn FROM base"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR EXPRESSION timestamp_floor('1d', ts))"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv_daily FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, x, row_number() OVER w AS rn FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR DAILY '00:00')"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR DAILY '09:30')"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR DAILY '00:00' 'Europe/London')"
+  },
+  {
+    "query": "CREATE LIVE VIEW lv FLUSH EVERY 1s START FROM NOW AS SELECT ts, sym, sum(x) OVER w AS s FROM base WINDOW w AS (PARTITION BY sym ORDER BY ts ANCHOR EXPRESSION timestamp_floor('4h', ts))"
+  },
+  {
+    "query": "COPY PERMISSIONS FROM 'my table' TO 'other table'"
+  },
+  {
+    "query": "GRANT CONVERT PARTITION TO PARQUET ON tab TO testUser"
+  },
+  {
+    "query": "GRANT CONVERT PARTITION TO NATIVE ON tab TO testUser"
+  },
+  {
+    "query": "REVOKE CONVERT PARTITION TO PARQUET ON tab FROM testUser"
+  },
+  {
+    "query": "ALTER TABLE tab CONVERT PARTITION TO PARQUET WHERE ts > 0"
+  },
+  {
+    "query": "ALTER TABLE tab CONVERT PARTITION TO NATIVE WHERE ts > 0"
+  },
+  {
+    "query": "alter table test convert partition to parquet where ts > 0"
+  },
+  {
+    "query": "alter table test convert partition to native where ts > 0"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL index type posting) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL index type bitmap) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL index type bitmap capacity 64) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL index type posting delta) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL index type posting ef) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, p DOUBLE, x SYMBOL index include (p)) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, p DOUBLE, x SYMBOL index type posting include (p)) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, p DOUBLE, x SYMBOL index type posting ef include (p)) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL), index(x type posting delta) timestamp(t)"
+  },
+  {
+    "query": "create table x (t TIMESTAMP, x SYMBOL), index(x type posting ef) timestamp(t)"
+  },
+  {
+    "query": "CREATE TABLE tab (s SYMBOL INDEX TYPE POSTING, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE tab (s SYMBOL INDEX TYPE POSTING DELTA, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE tab (s SYMBOL INDEX TYPE POSTING EF, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "create table tab (s symbol index type posting, ts timestamp) timestamp(ts)"
+  },
+  {
+    "query": "create table tab (s symbol index type bitmap, ts timestamp) timestamp(ts)"
+  },
+  {
+    "query": "CREATE TABLE tab (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING INCLUDE (v), v DOUBLE) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "CREATE TABLE t (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY BYPASS WAL"
+  },
+  {
+    "query": "CREATE TABLE t (ts TIMESTAMP, s SYMBOL INDEX TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY WAL"
+  },
+  {
+    "query": "CREATE TABLE tab (s SYMBOL, ts TIMESTAMP), INDEX(s TYPE POSTING) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long minutes PRECEDING AND 1 minute FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long minutes PRECEDING AND 1 minute FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long PRECEDING AND 60_000_000 FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN t.price::long PRECEDING AND 60_000_000 FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN 1 minute PRECEDING AND t.price::long seconds FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN 1 minute PRECEDING AND t.price::long seconds FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN price::long seconds PRECEDING AND 1 minute FOLLOWING INCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT t.sym, t.price, t.ts, sum(p.price) AS window_price FROM trades t WINDOW JOIN prices p RANGE BETWEEN price::long seconds PRECEDING AND 1 minute FOLLOWING EXCLUDE PREVAILING ORDER BY t.ts;"
+  },
+  {
+    "query": "SELECT m.ts, m.lo_bound, m.hi_bound, sum(s.val) AS agg FROM master m WINDOW JOIN slave s RANGE BETWEEN lo_bound minutes PRECEDING AND hi_bound minutes FOLLOWING EXCLUDE PREVAILING ORDER BY m.ts"
+  },
+  {
+    "query": "SELECT m.ts, m.lo_bound, m.hi_bound, sum(s.val) AS agg FROM master m WINDOW JOIN slave s RANGE BETWEEN lo_bound minutes PRECEDING AND hi_bound minutes FOLLOWING INCLUDE PREVAILING ORDER BY m.ts"
+  },
+  {
+    "query": "SELECT m.ts, sum(s.val) AS agg FROM master m WINDOW JOIN slave s RANGE BETWEEN bound minutes PRECEDING AND 0 seconds FOLLOWING EXCLUDE PREVAILING ORDER BY m.ts"
+  },
+  {
+    "query": "SELECT m.ts, sum(s.val) AS agg FROM (SELECT * FROM master LIMIT 4) m WINDOW JOIN slave s RANGE BETWEEN bound minutes PRECEDING AND 0 seconds FOLLOWING EXCLUDE PREVAILING ORDER BY m.ts"
+  },
+  {
+    "query": "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) LIST (-1s, 0s, 1s) AS h"
+  },
+  {
+    "query": "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b HORIZON JOIN asks AS a LIST (0s) AS h"
+  },
+  {
+    "query": "SELECT avg(b.bid) AS avg_bid, avg(a.ask) AS avg_ask FROM trades AS t HORIZON JOIN bids AS b ON (t.sym = b.sym) HORIZON JOIN asks AS a ON (t.sym = a.sym) RANGE FROM -1s TO 1s STEP 1s AS h"
   }
 ]
