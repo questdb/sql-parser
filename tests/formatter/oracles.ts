@@ -2,6 +2,7 @@ import { expect } from "vitest"
 import { parseToAst, toSql } from "../../src/index"
 import { format, FormatOptions } from "../../src/formatter/index"
 import { scan, StreamToken } from "../../src/formatter/lexer"
+import { tokenize } from "../../src/parser/lexer"
 
 const significant = (sql: string): StreamToken[] =>
   scan(sql).filter((token) => token.kind !== "whitespace")
@@ -36,6 +37,27 @@ export const assertSameOperatorAdjacency = (input: string, output: string) => {
   expect(adjacencyPairs(output)).toEqual(adjacencyPairs(input))
 }
 
+const lexemeSignature = (sql: string): string[] => {
+  const result = tokenize(sql)
+  return [
+    ...result.tokens.map((token) => `${token.tokenType.name}:${token.image}`),
+    ...result.errors.map(
+      (error) =>
+        `error:${sql.slice(error.offset, error.offset + error.length)}`,
+    ),
+  ]
+}
+
+export const assertSameLexemes = (input: string, output: string) => {
+  expect(lexemeSignature(output)).toEqual(lexemeSignature(input))
+}
+
+const withoutWhitespace = (sql: string) => sql.replace(/\s+/g, "")
+
+export const assertSameCharacters = (input: string, output: string) => {
+  expect(withoutWhitespace(output)).toBe(withoutWhitespace(input))
+}
+
 export const assertIdempotent = (sql: string, options?: FormatOptions) => {
   const once = format(sql, options)
   expect(format(once, options)).toBe(once)
@@ -52,6 +74,10 @@ export const assertPreserved = (input: string, options?: FormatOptions) => {
   const output = format(input, options)
   assertSameStream(input, output)
   assertSameOperatorAdjacency(input, output)
+  if (!options?.capitalize) {
+    assertSameCharacters(input, output)
+    assertSameLexemes(input, output)
+  }
   assertIdempotent(input, options)
   if (parsesCleanly(input)) assertSameAst(input, output)
 }
