@@ -30,10 +30,15 @@ const noSpaceAfter: ReadonlySet<string> = new Set([
 const isComment = (piece: Piece) =>
   piece.token.kind === "lineComment" || piece.token.kind === "blockComment"
 
-const isNumber = (piece: Piece) => piece.token.tokenName === "NumberLiteral"
+const isNumber = (piece: Piece) => /^\d/.test(piece.token.image)
 
 const isUncertain = (piece: Piece) =>
   piece.token.kind === "opaque" || piece.token.kind === "tolerant"
+
+export const isGluedWords = (previous: Piece, next: Piece) =>
+  previous.token.kind === "word" &&
+  next.token.kind === "word" &&
+  next.gapBefore === ""
 
 export const isSign = (piece: Piece) =>
   piece.token.tokenName === "Minus" || piece.token.tokenName === "Plus"
@@ -53,6 +58,7 @@ export const gapBetween = (previous: Piece | null, next: Piece): string => {
     return preserved(next)
   }
   if (previous.unary && !isComment(next)) return ""
+  if (isGluedWords(previous, next)) return ""
   const previousName = previous.token.tokenName
   const nextName = next.token.tokenName
   if (nextName === "Dot" && isNumber(previous)) return " "

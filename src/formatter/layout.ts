@@ -23,7 +23,7 @@ import {
   pivotSubClauses,
   windowSubClauses,
 } from "./phrases"
-import { gapBetween, isOperand, isSign, Piece } from "./spacing"
+import { gapBetween, isGluedWords, isOperand, isSign, Piece } from "./spacing"
 import { Statement } from "./statements"
 
 type Element = { leading: Doc; doc: Doc }
@@ -208,8 +208,20 @@ class StatementBuilder {
     return { leading, doc: text(this.textOf(piece)) }
   }
 
+  private phraseAt(phrases: Phrase[]): PhraseMatch | null {
+    const piece = this.peek()
+    if (
+      piece !== undefined &&
+      this.previous !== null &&
+      isGluedWords(this.previous, piece)
+    ) {
+      return null
+    }
+    return matchPhrase(this.tokens, this.index, phrases)
+  }
+
   private matchClause(current: Phrase | null): PhraseMatch | null {
-    const match = matchPhrase(this.tokens, this.index, this.phrases)
+    const match = this.phraseAt(this.phrases)
     if (match === null || continuesPhrase(current, match.phrase)) return null
     return match
   }
@@ -345,7 +357,7 @@ class StatementBuilder {
         items.length === 0 &&
         current === null &&
         ctx.subClauses.length > 0 &&
-        matchPhrase(this.tokens, this.index, ctx.subClauses) !== null
+        this.phraseAt(ctx.subClauses) !== null
       ) {
         subClauseStarted = true
       }
@@ -369,7 +381,7 @@ class StatementBuilder {
 
       const subClause =
         current !== null && endsOperand(this.previous)
-          ? matchPhrase(this.tokens, this.index, ctx.subClauses)
+          ? this.phraseAt(ctx.subClauses)
           : null
       if (subClause !== null) {
         closeItem()
