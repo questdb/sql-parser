@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.19 - 2026.09.24
+### Fixed
+- keep glued lexemes intact when formatting [#36](https://github.com/questdb/sql-parser/pull/36)
+
 ## 0.1.18 - 2026.09.21
 ### Added
 - Add SUBSAMPLE keyword and algorithm constants [#25](https://github.com/questdb/sql-parser/pull/25)
