@@ -4384,6 +4384,18 @@ describe("Position-typed suggestions — by statement type", () => {
       })
     })
 
+    it("FROM act| — active_permissions/active_grants suggested as table-valued", () => {
+      assertAtPosition("SELECT * FROM act", {
+        hasFunction: ["active_grants", "active_permissions"],
+      })
+    })
+
+    it("SELECT act| — active_* NOT suggested in expression context", () => {
+      assertAtPosition("SELECT act", {
+        noFunction: ["active_grants", "active_permissions"],
+      })
+    })
+
     it("SELECT b| — bar (scalar) suggested in expression context", () => {
       assertAtPosition("SELECT b", { hasFunction: ["bar"] })
     })
