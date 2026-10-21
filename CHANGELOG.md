@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.20 - 2026.10.21
+### Added
+- Add active ACL inspection functions `active_permissions()` and `active_grants()` as table-valued functions [#37](https://github.com/questdb/sql-parser/pull/37)
+
 ## 0.1.19 - 2026.09.24
 ### Fixed
 - keep glued lexemes intact when formatting [#36](https://github.com/questdb/sql-parser/pull/36)
