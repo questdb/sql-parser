@@ -307,6 +307,8 @@ export const windowFunctions: string[] = [
 
 export const tableValuedFunctions: string[] = [
   // CURSOR type — explicitly row-returning
+  "active_grants",
+  "active_permissions",
   "all_permissions",
   "backups",
   "generate_series",
