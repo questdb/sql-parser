@@ -4404,6 +4404,24 @@ describe("Position-typed suggestions — by statement type", () => {
       assertAtPosition("SELECT s", { hasFunction: ["sparkline"] })
     })
 
+    it("SELECT p| — percentile_cont/percentile_disc (aggregate) suggested in expression context", () => {
+      assertAtPosition("SELECT p", {
+        hasFunction: ["percentile_cont", "percentile_disc"],
+      })
+    })
+
+    it("SELECT q| — quantile_cont/quantile_disc (aggregate) suggested in expression context", () => {
+      assertAtPosition("SELECT q", {
+        hasFunction: ["quantile_cont", "quantile_disc"],
+      })
+    })
+
+    it("SELECT * FROM trades WHERE col = p| — percentile_* NOT suggested (aggregate)", () => {
+      assertAtPosition("SELECT * FROM trades WHERE price = p", {
+        noFunction: ["percentile_cont", "percentile_disc"],
+      })
+    })
+
     it("SELECT * FROM trades WHERE col = s| — sparkline NOT suggested (aggregate)", () => {
       assertAtPosition("SELECT * FROM trades WHERE price = s", {
         noFunction: ["sparkline"],
