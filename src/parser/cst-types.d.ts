@@ -1538,6 +1538,7 @@ export type AlterTableActionCstChildren = {
   Detach?: IToken[];
   Squash?: IToken[];
   Partitions?: IToken[];
+  alterTableForceAction?: AlterTableForceActionCstNode[];
   Param?: IToken[];
   tableParam?: (TableParamCstNode)[];
   Ttl?: IToken[];
@@ -1564,6 +1565,24 @@ export type AlterTableActionCstChildren = {
   Into?: IToken[];
   Convert?: IToken[];
   convertPartitionTarget?: ConvertPartitionTargetCstNode[];
+};
+
+export interface AlterTableForceActionCstNode extends CstNode {
+  name: "alterTableForceAction";
+  children: AlterTableForceActionCstChildren;
+}
+
+export type AlterTableForceActionCstChildren = {
+  Force: IToken[];
+  Drop?: IToken[];
+  Partition?: (IToken)[];
+  List?: (IToken)[];
+  StringLiteral?: (IToken)[];
+  Comma?: (IToken)[];
+  Reindex?: IToken[];
+  Parquet?: IToken[];
+  Column?: IToken[];
+  identifier?: IdentifierCstNode[];
 };
 
 export interface ConvertPartitionTargetCstNode extends CstNode {
@@ -3051,6 +3070,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   memoryLimit(children: MemoryLimitCstChildren, param?: IN): OUT;
   alterTableStatement(children: AlterTableStatementCstChildren, param?: IN): OUT;
   alterTableAction(children: AlterTableActionCstChildren, param?: IN): OUT;
+  alterTableForceAction(children: AlterTableForceActionCstChildren, param?: IN): OUT;
   convertPartitionTarget(children: ConvertPartitionTargetCstChildren, param?: IN): OUT;
   alterMaterializedViewStatement(children: AlterMaterializedViewStatementCstChildren, param?: IN): OUT;
   alterMaterializedViewAction(children: AlterMaterializedViewActionCstChildren, param?: IN): OUT;

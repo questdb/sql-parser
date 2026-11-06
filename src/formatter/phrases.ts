@@ -103,6 +103,8 @@ const alterActionPhrases: Phrase[] = action(
   ["Drop", "Partition", "List"],
   ["Set"],
   ["Squash"],
+  ["Force", "Drop", "Partition", "List"],
+  ["Force", "Reindex", "Parquet"],
   ["Dedup"],
   ["Resume", "Wal"],
   ["Suspend", "Wal"],

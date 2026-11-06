@@ -554,6 +554,8 @@ export type AlterTableAction =
   | AttachPartitionAction
   | DetachPartitionAction
   | SquashPartitionsAction
+  | ForceDropPartitionAction
+  | ForceReindexParquetAction
   | SetParamAction
   | SetTtlAction
   | SetTableFormatAction
@@ -626,6 +628,17 @@ export interface DetachPartitionAction {
 
 export interface SquashPartitionsAction {
   actionType: "squashPartitions"
+}
+
+export interface ForceDropPartitionAction {
+  actionType: "forceDropPartition"
+  partitions: string[]
+}
+
+export interface ForceReindexParquetAction {
+  actionType: "forceReindexParquet"
+  column?: string
+  partitions?: string[]
 }
 
 export interface SetParamAction {

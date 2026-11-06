@@ -19,6 +19,7 @@ import type {
   AlterServiceAccountStatementCstChildren,
   AlterStatementCstChildren,
   AlterTableActionCstChildren,
+  AlterTableForceActionCstChildren,
   AlterTableStatementCstChildren,
   AlterUserActionCstChildren,
   AlterUserStatementCstChildren,
@@ -2374,7 +2375,32 @@ class QuestDBVisitor extends BaseVisitor {
     return ctx.NumberLiteral![0].image + (ctx.Identifier?.[0]?.image ?? "")
   }
 
+  alterTableForceAction(
+    ctx: AlterTableForceActionCstChildren,
+  ): AST.ForceDropPartitionAction | AST.ForceReindexParquetAction {
+    const partitions = (ctx.StringLiteral ?? []).map((s: IToken) =>
+      s.image.slice(1, -1),
+    )
+    if (ctx.Drop) {
+      return { actionType: "forceDropPartition", partitions }
+    }
+    const result: AST.ForceReindexParquetAction = {
+      actionType: "forceReindexParquet",
+    }
+    if (ctx.identifier) {
+      result.column = this.extractIdentifierName(ctx.identifier[0].children)
+    }
+    if (partitions.length > 0) {
+      result.partitions = partitions
+    }
+    return result
+  }
+
   alterTableAction(ctx: AlterTableActionCstChildren): AST.AlterTableAction {
+    // FORCE DROP PARTITION / FORCE REINDEX PARQUET
+    if (ctx.alterTableForceAction) {
+      return this.visit(ctx.alterTableForceAction) as AST.AlterTableAction
+    }
     // SET STORAGE POLICY(...) — must come before generic SET branches below
     if (ctx.Set && ctx.storagePolicy) {
       return {

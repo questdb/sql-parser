@@ -7973,6 +7973,60 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
     })
   })
 
+  describe("FORCE REINDEX PARQUET / FORCE DROP PARTITION — parse & AST", () => {
+    it("bare FORCE REINDEX PARQUET", () => {
+      const r = parseToAst("ALTER TABLE t FORCE REINDEX PARQUET")
+      expect(r.errors).toHaveLength(0)
+      const s = r.ast[0] as AST.AlterTableStatement
+      expect(s.action).toEqual({ actionType: "forceReindexParquet" })
+    })
+    it("FORCE REINDEX PARQUET with COLUMN and PARTITION LIST", () => {
+      const r = parseToAst(
+        "ALTER TABLE t FORCE REINDEX PARQUET COLUMN b PARTITION LIST '2024-01-01', '2024-01-02'",
+      )
+      expect(r.errors).toHaveLength(0)
+      const s = r.ast[0] as AST.AlterTableStatement
+      expect(s.action).toEqual({
+        actionType: "forceReindexParquet",
+        column: "b",
+        partitions: ["2024-01-01", "2024-01-02"],
+      })
+    })
+    it("FORCE REINDEX PARQUET with PARTITION LIST only", () => {
+      const r = parseToAst(
+        "ALTER TABLE t FORCE REINDEX PARQUET PARTITION LIST '2024-01-01'",
+      )
+      expect(r.errors).toHaveLength(0)
+      const s = r.ast[0] as AST.AlterTableStatement
+      expect(s.action).toEqual({
+        actionType: "forceReindexParquet",
+        partitions: ["2024-01-01"],
+      })
+    })
+    it("FORCE DROP PARTITION LIST", () => {
+      const r = parseToAst(
+        "ALTER TABLE t FORCE DROP PARTITION LIST '2024-01-01', '2024-01-02'",
+      )
+      expect(r.errors).toHaveLength(0)
+      const s = r.ast[0] as AST.AlterTableStatement
+      expect(s.action).toEqual({
+        actionType: "forceDropPartition",
+        partitions: ["2024-01-01", "2024-01-02"],
+      })
+    })
+    it("rejects FORCE REINDEX without PARQUET", () => {
+      expect(
+        parseToAst("ALTER TABLE t FORCE REINDEX COLUMN b").errors.length,
+      ).toBeGreaterThan(0)
+    })
+    it("rejects FORCE REINDEX PARQUET PARTITION without LIST", () => {
+      expect(
+        parseToAst("ALTER TABLE t FORCE REINDEX PARQUET PARTITION '2024-01-01'")
+          .errors.length,
+      ).toBeGreaterThan(0)
+    })
+  })
+
   describe("SHOW CREATE DATABASE — parse & AST", () => {
     it("bare", () => {
       const s = parseToAst("SHOW CREATE DATABASE").ast[0] as AST.ShowStatement
@@ -8298,6 +8352,25 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         const r2 = parseToAst(toSql(r.ast[0]))
         expect(r2.errors).toHaveLength(0)
         expect(r2.ast[0].type).toBe(r.ast[0].type)
+      })
+    }
+  })
+
+  describe("FORCE REINDEX PARQUET (QuestDB #8139) — round-trip", () => {
+    const queries = [
+      "alter table t force reindex parquet",
+      "alter table t force reindex parquet column b",
+      "alter table t force reindex parquet partition list '2024-01-01', '2024-01-02'",
+      "alter table t force reindex parquet column b partition list '2024-01-02'",
+      "alter table t force drop partition list '2024-01-01', '2024-01-02'",
+    ]
+    for (const query of queries) {
+      it(`round-trips: ${query.slice(0, 64)}`, () => {
+        const r = parseToAst(query)
+        expect(r.errors, JSON.stringify(r.errors)).toHaveLength(0)
+        const r2 = parseToAst(toSql(r.ast[0]))
+        expect(r2.errors).toHaveLength(0)
+        expect(r2.ast[0]).toEqual(r.ast[0])
       })
     }
   })

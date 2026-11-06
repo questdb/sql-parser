@@ -2926,6 +2926,8 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Partitions)
         },
       },
+      // FORCE (DROP PARTITION LIST ... | REINDEX PARQUET ...)
+      { ALT: () => this.SUBRULE(this.alterTableForceAction) },
       // SET (PARAM ... | TTL ... | TYPE WAL ... | STORAGE POLICY ...)
       {
         ALT: () => {
@@ -3061,6 +3063,45 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Disable)
           this.CONSUME2(Storage)
           this.CONSUME2(Policy)
+        },
+      },
+    ])
+  })
+
+  // FORCE DROP PARTITION LIST '<p>' [, ...]
+  // FORCE REINDEX PARQUET [COLUMN <col>] [PARTITION LIST '<p>' [, ...]]
+  private alterTableForceAction = this.RULE("alterTableForceAction", () => {
+    this.CONSUME(Force)
+    this.OR([
+      {
+        ALT: () => {
+          this.CONSUME(Drop)
+          this.CONSUME(Partition)
+          this.CONSUME(List)
+          this.CONSUME(StringLiteral)
+          this.MANY(() => {
+            this.CONSUME(Comma)
+            this.CONSUME1(StringLiteral)
+          })
+        },
+      },
+      {
+        ALT: () => {
+          this.CONSUME(Reindex)
+          this.CONSUME(Parquet)
+          this.OPTION(() => {
+            this.CONSUME(Column)
+            this.SUBRULE(this.identifier)
+          })
+          this.OPTION1(() => {
+            this.CONSUME1(Partition)
+            this.CONSUME1(List)
+            this.CONSUME2(StringLiteral)
+            this.MANY1(() => {
+              this.CONSUME1(Comma)
+              this.CONSUME3(StringLiteral)
+            })
+          })
         },
       },
     ])

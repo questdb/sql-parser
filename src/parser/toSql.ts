@@ -964,6 +964,21 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
     case "squashPartitions":
       parts.push("SQUASH PARTITIONS")
       break
+    case "forceDropPartition":
+      parts.push("FORCE DROP PARTITION LIST")
+      parts.push(action.partitions.map((p) => escapeString(p)).join(", "))
+      break
+    case "forceReindexParquet":
+      parts.push("FORCE REINDEX PARQUET")
+      if (action.column) {
+        parts.push("COLUMN")
+        parts.push(escapeIdentifier(action.column))
+      }
+      if (action.partitions && action.partitions.length > 0) {
+        parts.push("PARTITION LIST")
+        parts.push(action.partitions.map((p) => escapeString(p)).join(", "))
+      }
+      break
     case "setParam":
       parts.push("SET PARAM")
       parts.push(
