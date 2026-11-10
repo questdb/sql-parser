@@ -997,9 +997,44 @@ export const LineComment = createToken({
   group: Lexer.SKIPPED,
 })
 
+/**
+ * End offset (exclusive) of the block comment that starts with `/*` at
+ * `offset`, or -1 when it is never closed. Block comments nest: every `/*`
+ * needs its own `*\/` (SqlUtil.fetchNext blockCount). Quotes and `--` inside
+ * the comment are plain text.
+ */
+export function blockCommentEnd(text: string, offset: number): number {
+  let depth = 0
+  let index = offset
+  while (index < text.length - 1) {
+    const ch = text[index]
+    const next = text[index + 1]
+    if (ch === "/" && next === "*") {
+      depth++
+      index += 2
+    } else if (ch === "*" && next === "/") {
+      index += 2
+      if (--depth === 0) return index
+    } else {
+      index++
+    }
+  }
+  return -1
+}
+
+// A block comment that is never closed runs to the end of the input, as on
+// the server (SqlParserTest.testBlockCommentUnclosed).
+function matchBlockComment(text: string, offset: number): [string] | null {
+  if (!text.startsWith("/*", offset)) return null
+  const end = blockCommentEnd(text, offset)
+  return [text.slice(offset, end === -1 ? text.length : end)]
+}
+
 export const BlockComment = createToken({
   name: "BlockComment",
-  pattern: /\/\*[\s\S]*?\*\//,
+  pattern: { exec: matchBlockComment },
+  start_chars_hint: ["/"],
+  line_breaks: true,
   group: Lexer.SKIPPED,
 })
 

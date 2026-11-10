@@ -548,15 +548,18 @@ class QuestDBParser extends CstParser {
   // Entry point
   // ==========================================================================
 
+  // Empty statements (`;;`, a leading `;`) are skipped, as in
+  // SqlCompilerImpl.compileBatch (getNextValidTokenPosition).
   public statements = this.RULE("statements", () => {
-    this.MANY(() => {
+    this.MANY(() => this.CONSUME(Semicolon))
+    this.MANY2(() => {
       this._semicolonBoundedRecovery = true
       try {
         this.SUBRULE(this.statement)
       } finally {
         this._semicolonBoundedRecovery = false
       }
-      this.OPTION(() => this.CONSUME(Semicolon))
+      this.MANY3(() => this.CONSUME2(Semicolon))
     })
   })
 

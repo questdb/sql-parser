@@ -1018,5 +1018,101 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:168",
     "feature": "lexer-quoting",
     "toSql": "CREATE TABLE base (k SYMBOL, price$1 DOUBLE, price$2 DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL"
+  },
+  {
+    "query": "DECLARE @x := /* a /* b */ c */ ('a', 'b') SELECT s FROM k WHERE s IN @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5139",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE @x := ('a', 'b') SELECT s FROM k WHERE s IN @x"
+  },
+  {
+    "query": "DECLARE @x := ('a' /* a /* b */ ) */ , 'b') SELECT s FROM k WHERE s IN @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5154",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE @x := ('a', 'b') SELECT s FROM k WHERE s IN @x"
+  },
+  {
+    "query": "DECLARE @x := (1 /* a /* b */ , */ + 2) SELECT l FROM k WHERE l = @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5162",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE @x := (1 + 2) SELECT l FROM k WHERE l = @x"
+  },
+  {
+    "query": "DECLARE OVERRIDABLE /* a /* b */ c */ @y := 2 SELECT @y AS y",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5714",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE OVERRIDABLE @y := 2 SELECT @y AS y"
+  },
+  {
+    "query": "select /* /*+ NO_INDEX(a) */ */ a,b,c from xyz where a = 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6397",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT a, b, c FROM xyz WHERE a = 1"
+  },
+  {
+    "query": "select /*+ NO_INDEX(a) /*+ IGNORED */ */ a,b,c from xyz where a = 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6417",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT a, b, c FROM xyz WHERE a = 1"
+  },
+  {
+    "query": "(x where a > 1) 'b a' where x > 1 /* this block comment",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:1534",
+    "feature": "comments-empty-statements",
+    "toSql": "(x WHERE a > 1) AS \"b a\" WHERE x > 1"
+  },
+  {
+    "query": "select 1;;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:890",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT 1"
+  },
+  {
+    "query": ";;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:909",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": " ; ;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:918",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": ";--comment",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:982",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": "; /* comment */",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:985",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": "/* comment */",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:976",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": "select 1;/* comment */",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:1108",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT 1"
+  },
+  {
+    "query": "select 1;;/*multiline comment */;--single line comment\n;select 2;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:333",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT 1;\nSELECT 2",
+    "statements": 2
   }
 ]

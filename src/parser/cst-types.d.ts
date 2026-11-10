@@ -6,8 +6,8 @@ export interface StatementsCstNode extends CstNode {
 }
 
 export type StatementsCstChildren = {
+  Semicolon?: (IToken)[];
   statement?: StatementCstNode[];
-  Semicolon?: IToken[];
 };
 
 export interface StatementCstNode extends CstNode {

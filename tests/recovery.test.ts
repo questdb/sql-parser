@@ -452,9 +452,10 @@ describe("Edge cases", () => {
     expect(result.ast.length).toBe(0)
   })
 
-  it("semicolons-only input produces error but no AST", () => {
+  it("semicolons-only input is empty statements: no error, no AST", () => {
+    // Server compileBatch skips empty statements.
     const result = parseToAst(";;;")
-    expect(result.errors.length).toBe(1)
+    expect(result.errors.length).toBe(0)
     expect(result.ast.length).toBe(0)
   })
 
@@ -481,7 +482,7 @@ describe("Edge cases", () => {
 
   it("many semicolons between statements still parses all valid statements", () => {
     const result = parseToAst("SELECT 1;;;;;SELECT 2;;;;;SELECT 3")
-    expect(result.errors.length).toBe(2)
+    expect(result.errors.length).toBe(0)
     expect(result.ast.length).toBe(3)
     expect(result.ast.map((s) => s.type)).toEqual([
       "select",
