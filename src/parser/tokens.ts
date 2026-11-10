@@ -46,12 +46,13 @@ function toPascalCase(str: string): string {
  * identifiers. JavaScript's \b only considers ASCII \w characters, so
  * "in\b" would incorrectly match the "in" prefix of "inção" (since ç
  * is non-ASCII and not in \w). The lookahead ensures the keyword is not
- * followed by any valid identifier character, including Unicode.
+ * followed by any valid identifier character, including Unicode and `$`
+ * (`select$x` is one identifier, SqlParser.validateIdentifier).
  */
 function createKeywordToken(name: string, pattern: string): TokenType {
   return createToken({
     name,
-    pattern: new RegExp(`${pattern}(?![\\w\\u0080-\\uFFFF])`, "i"),
+    pattern: new RegExp(`${pattern}(?![\\w$\\u0080-\\uFFFF])`, "i"),
   })
 }
 

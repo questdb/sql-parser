@@ -2220,7 +2220,7 @@ function escapeString(value: string): string {
 
 function escapeIdentifier(name: string): string {
   if (
-    /^[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_\u0080-\uFFFF]*$/.test(name) &&
+    /^[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_$\u0080-\uFFFF]*$/.test(name) &&
     !RESERVED_KEYWORDS.has(name.toLowerCase())
   ) {
     return name

@@ -790,7 +790,10 @@ export const AtSign = createToken({ name: "AtSign", pattern: /@/ })
 // `x = :sym`, `IN (:a, :b)`, `LIMIT :n` and `arr[:1]` are bind variables.
 // `::` and `:=` are matched earlier by DoubleColon / ColonEquals.
 const POSITIONAL_BIND_VARIABLE = /\$\d+(?![\w$\u0080-\uFFFF])/y
-const NAMED_BIND_VARIABLE = /:[a-zA-Z0-9_\u0080-\uFFFF]+/y
+// The name may contain `$` after its first character, like an identifier
+// (`:a$b`); `:$1` stays a slice colon followed by a positional variable.
+const NAMED_BIND_VARIABLE =
+  /:[a-zA-Z0-9_\u0080-\uFFFF][a-zA-Z0-9_$\u0080-\uFFFF]*/y
 
 const COMPLETED_OPERAND_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
   "Identifier",
@@ -959,19 +962,23 @@ export const EscapeStringLiteral = createToken({
 })
 
 // Quoted Identifiers — same convention: "" escapes a double quote,
-// backslash is literal.
+// backslash is literal. Backticks quote too (GenericLexer, Chars.isQuote):
+// `BTC-USD_buy`. A backtick token has no escapes, it ends at the next
+// backtick (`a``b` is two tokens, as on the server).
 export const QuotedIdentifier = createToken({
   name: "QuotedIdentifier",
-  pattern: /"([^"]|"")*"/,
+  pattern: /"([^"]|"")*"|`[^`]*`/,
 })
 
 // Identifiers (must come after keywords)
 // Uses Unicode ranges to support non-ASCII identifiers (e.g., café, 日本語)
 // \u0080-\uFFFF covers all non-ASCII characters; Chevrotain's regex analyzer
 // cannot handle \p{L} Unicode property escapes, so we use explicit ranges.
+// `$` is allowed after the first character (SqlParser.validateIdentifier:
+// `a1$_`, `_a1$`); a leading `$` is a bind variable or an error.
 export const Identifier = createToken({
   name: "Identifier",
-  pattern: /[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_\u0080-\uFFFF]*/,
+  pattern: /[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_$\u0080-\uFFFF]*/,
 })
 
 // =============================================================================

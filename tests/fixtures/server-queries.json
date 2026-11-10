@@ -976,5 +976,47 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:677",
     "feature": "bind-variables",
     "toSql": "SELECT arr[i:j + j - i - i] AS x FROM tango"
+  },
+  {
+    "query": "WITH p AS \n(WITH t AS\n(\n\n    SELECT timestamp, symbol,  side, AVG(price) price, AVG(amount) amount FROM trades WHERE symbol IN 'BTC-USD'\n    SAMPLE BY 1m\n)\nSELECT * FROM t\nPIVOT (\n    sum(price)\n    FOR symbol IN ('BTC-USD')    \n    side IN ('buy', 'sell')   \n    GROUP BY timestamp\n) ) SELECT * from p where `BTC-USD_buy` > 25780 or `BTC-USD_sell` > 25780;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:4104",
+    "feature": "lexer-quoting",
+    "toSql": "WITH p AS (WITH t AS (SELECT timestamp, symbol, side, AVG(price) AS price, AVG(amount) AS amount FROM trades WHERE symbol IN 'BTC-USD' SAMPLE BY 1m) SELECT * FROM t PIVOT (sum(price) FOR symbol IN ('BTC-USD') side IN ('buy', 'sell') GROUP BY timestamp)) SELECT * FROM p WHERE \"BTC-USD_buy\" > 25780 OR \"BTC-USD_sell\" > 25780"
+  },
+  {
+    "query": "copy `test_table❤️` to '❤️🍺' with format parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:1622",
+    "feature": "lexer-quoting",
+    "toSql": "COPY test_table❤️ TO '❤️🍺' WITH format parquet"
+  },
+  {
+    "query": "DECLARE OVERRIDABLE @col := `@c` + 1 SELECT @col v FROM q",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:638",
+    "feature": "lexer-quoting",
+    "toSql": "DECLARE OVERRIDABLE @col := \"@c\" + 1 SELECT @col AS v FROM q"
+  },
+  {
+    "query": "DECLARE OVERRIDABLE @x := (1, ``) SELECT d FROM q",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:390",
+    "feature": "lexer-quoting",
+    "toSql": "DECLARE OVERRIDABLE @x := (1, \"\") SELECT d FROM q"
+  },
+  {
+    "query": "select 'a' a1$_",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6037",
+    "feature": "lexer-quoting",
+    "toSql": "SELECT 'a' AS a1$_"
+  },
+  {
+    "query": "select 'a' _a1$",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6038",
+    "feature": "lexer-quoting",
+    "toSql": "SELECT 'a' AS _a1$"
+  },
+  {
+    "query": "CREATE TABLE base (k SYMBOL, \"price$1\" DOUBLE, \"price$2\" DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:168",
+    "feature": "lexer-quoting",
+    "toSql": "CREATE TABLE base (k SYMBOL, price$1 DOUBLE, price$2 DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL"
   }
 ]

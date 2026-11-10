@@ -254,6 +254,13 @@ function unquoteSingle(image: string): string {
   return image.slice(1, -1).replace(/''/g, "'")
 }
 
+// Strip a QuotedIdentifier's quotes. "..." unescapes "" (as before); a
+// `...` identifier has no escapes (GenericLexer), its content is verbatim.
+function unquoteIdentifier(image: string): string {
+  const inner = image.slice(1, -1)
+  return image.startsWith("`") ? inner : inner.replace(/""/g, '"')
+}
+
 type StoragePolicyKind = "toParquet" | "toRemote" | "dropLocal" | "dropRemote"
 
 type DedupModeKeys = { mode: AST.DedupMode; keys: string[] }
@@ -4927,8 +4934,9 @@ class QuestDBVisitor extends BaseVisitor {
       return this.tokenImage(ctx.Identifier[0] as IToken)
     }
     if (ctx.QuotedIdentifier) {
-      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
-      return raw.slice(1, -1).replace(/""/g, '"')
+      return unquoteIdentifier(
+        this.tokenImage(ctx.QuotedIdentifier[0] as IToken),
+      )
     }
     if (ctx.IdentifierKeyword) {
       return this.tokenImage(ctx.IdentifierKeyword[0] as IToken)
@@ -5012,8 +5020,9 @@ class QuestDBVisitor extends BaseVisitor {
       return this.tokenImage(ctx.Identifier[0] as IToken)
     }
     if (ctx.QuotedIdentifier) {
-      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
-      return raw.slice(1, -1).replace(/""/g, '"')
+      return unquoteIdentifier(
+        this.tokenImage(ctx.QuotedIdentifier[0] as IToken),
+      )
     }
     // QuestDB accepts single-quoted strings in identifier positions
     if (ctx.StringLiteral) {
