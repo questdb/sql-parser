@@ -257,6 +257,10 @@ export type ImplicitSelectBodyCstChildren = {
   sampleByClause?: SampleByClauseCstNode[];
   latestOnClause?: LatestOnClauseCstNode[];
   groupByClause?: GroupByClauseCstNode[];
+  Pivot?: IToken[];
+  LParen?: IToken[];
+  pivotBody?: PivotBodyCstNode[];
+  RParen?: IToken[];
   subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
@@ -808,7 +812,7 @@ export type CreateViewBodyCstChildren = {
   LParen?: (IToken)[];
   selectStatement?: (SelectStatementCstNode)[];
   RParen?: (IToken)[];
-  implicitSelectBody?: ImplicitSelectBodyCstNode[];
+  implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
   Owned?: IToken[];
   By?: IToken[];
   stringOrIdentifier?: StringOrIdentifierCstNode[];
@@ -830,6 +834,7 @@ export type CreateTableBodyCstChildren = {
   As?: IToken[];
   LParen?: (IToken)[];
   selectStatement?: SelectStatementCstNode[];
+  implicitSelectStatement?: ImplicitSelectStatementCstNode[];
   RParen?: (IToken)[];
   Comma?: (IToken)[];
   castDefinition?: CastDefinitionCstNode[];
@@ -1014,8 +1019,9 @@ export type CreateMaterializedViewBodyCstChildren = {
   materializedViewRefresh?: MaterializedViewRefreshCstNode[];
   As: IToken[];
   LParen?: (IToken)[];
-  selectStatement: SelectStatementCstNode[];
+  selectStatement?: (SelectStatementCstNode)[];
   RParen?: (IToken)[];
+  implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
   Comma?: IToken[];
   indexDefinition?: IndexDefinitionCstNode[];
   Timestamp?: IToken[];
@@ -1488,9 +1494,10 @@ export type AlterViewStatementCstChildren = {
   View: IToken[];
   stringOrQualifiedName: StringOrQualifiedNameCstNode[];
   As: IToken[];
-  LParen?: IToken[];
+  LParen?: (IToken)[];
   selectStatement?: (SelectStatementCstNode)[];
-  RParen?: IToken[];
+  RParen?: (IToken)[];
+  implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
 };
 
 export interface AlterUserStatementCstNode extends CstNode {
@@ -2045,6 +2052,7 @@ export interface CopyToCstNode extends CstNode {
 export type CopyToCstChildren = {
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];
+  implicitSelectStatement?: ImplicitSelectStatementCstNode[];
   RParen?: IToken[];
   tableName?: TableNameCstNode[];
   To: IToken[];

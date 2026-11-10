@@ -925,6 +925,13 @@ class QuestDBParser extends CstParser {
     this.OPTION1(() => this.SUBRULE(this.sampleByClause))
     this.OPTION2(() => this.SUBRULE(this.latestOnClause))
     this.OPTION3(() => this.SUBRULE(this.groupByClause))
+    // PIVOT clause, as in simpleSelect: (t PIVOT (...) ORDER BY ...)
+    this.OPTION7(() => {
+      this.CONSUME(Pivot)
+      this.CONSUME(LParen)
+      this.SUBRULE(this.pivotBody)
+      this.CONSUME(RParen)
+    })
     this.OPTION6(() => this.SUBRULE(this.subsampleClause))
     this.OPTION4(() => this.SUBRULE(this.orderByClause))
     this.OPTION5(() => this.SUBRULE(this.limitClause))
@@ -1723,13 +1730,19 @@ class QuestDBParser extends CstParser {
         },
       },
       {
+        // (t [WHERE ...] [UNION ...]) — server parseDml implicit select
         ALT: () => {
           this.CONSUME1(LParen)
-          this.SUBRULE(this.implicitSelectBody)
+          this.SUBRULE(this.implicitSelectStatement)
           this.CONSUME1(RParen)
         },
       },
       { ALT: () => this.SUBRULE1(this.selectStatement) },
+      {
+        // Unparenthesised implicit select: CREATE VIEW v AS t WHERE ...
+        GATE: () => this.LA(1).tokenType !== LParen,
+        ALT: () => this.SUBRULE1(this.implicitSelectStatement),
+      },
     ])
     // Optional OWNED BY
     this.OPTION2(() => {
@@ -1757,12 +1770,21 @@ class QuestDBParser extends CstParser {
     this.SUBRULE(this.stringOrQualifiedName)
 
     this.OR1([
-      // CREATE TABLE AS (SELECT ...)
+      // CREATE TABLE AS (SELECT ...) | (t [WHERE ...] [UNION ...])
       {
         ALT: () => {
           this.CONSUME(As)
           this.CONSUME(LParen)
-          this.SUBRULE(this.selectStatement)
+          this.OR7([
+            {
+              GATE: () => {
+                const la1 = this.LA(1).tokenType
+                return la1 === Select || la1 === With || la1 === Declare
+              },
+              ALT: () => this.SUBRULE(this.selectStatement),
+            },
+            { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+          ])
           this.CONSUME(RParen)
           this.MANY2(() => {
             this.CONSUME(Comma)
@@ -2099,9 +2121,33 @@ class QuestDBParser extends CstParser {
         this.SUBRULE1(this.materializedViewPeriod)
       })
       this.CONSUME(As)
-      this.OPTION4(() => this.CONSUME(LParen))
-      this.SUBRULE(this.selectStatement)
-      this.OPTION5(() => this.CONSUME(RParen))
+      // Body: (SELECT ...) | SELECT ... | (t [WHERE ...]) | t — server
+      // parseDml reads a bare table as an implicit SELECT (OSS #7263).
+      this.OR3([
+        {
+          GATE: () => {
+            const la2 = this.LA(2).tokenType
+            return la2 === Select || la2 === With || la2 === Declare
+          },
+          ALT: () => {
+            this.CONSUME(LParen)
+            this.SUBRULE(this.selectStatement)
+            this.CONSUME(RParen)
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME2(LParen)
+            this.SUBRULE(this.implicitSelectStatement)
+            this.CONSUME2(RParen)
+          },
+        },
+        { ALT: () => this.SUBRULE1(this.selectStatement) },
+        {
+          GATE: () => this.LA(1).tokenType !== LParen,
+          ALT: () => this.SUBRULE1(this.implicitSelectStatement),
+        },
+      ])
       // Optional `, INDEX(col [CAPACITY n])` clauses (mat-view symbol indexes)
       this.MANY(() => {
         this.CONSUME(Comma)
@@ -2776,15 +2822,31 @@ class QuestDBParser extends CstParser {
     this.CONSUME(View)
     this.SUBRULE(this.stringOrQualifiedName)
     this.CONSUME(As)
+    // Same body forms as CREATE VIEW (server parseViewSql → parseDml)
     this.OR([
       {
+        GATE: () => {
+          const la2 = this.LA(2).tokenType
+          return la2 === Select || la2 === With || la2 === Declare
+        },
         ALT: () => {
           this.CONSUME(LParen)
           this.SUBRULE(this.selectStatement)
           this.CONSUME(RParen)
         },
       },
+      {
+        ALT: () => {
+          this.CONSUME1(LParen)
+          this.SUBRULE(this.implicitSelectStatement)
+          this.CONSUME1(RParen)
+        },
+      },
       { ALT: () => this.SUBRULE1(this.selectStatement) },
+      {
+        GATE: () => this.LA(1).tokenType !== LParen,
+        ALT: () => this.SUBRULE1(this.implicitSelectStatement),
+      },
     ])
   })
 
@@ -3894,9 +3956,20 @@ class QuestDBParser extends CstParser {
   private copyTo = this.RULE("copyTo", () => {
     this.OR([
       {
+        // COPY (SELECT ...) | (t [WHERE ...]) | (fn(...)) | (t PIVOT (...))
+        // — server parseCopy → parseDml
         ALT: () => {
           this.CONSUME(LParen)
-          this.SUBRULE(this.selectStatement)
+          this.OR1([
+            {
+              GATE: () => {
+                const la1 = this.LA(1).tokenType
+                return la1 === Select || la1 === With || la1 === Declare
+              },
+              ALT: () => this.SUBRULE(this.selectStatement),
+            },
+            { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+          ])
           this.CONSUME(RParen)
         },
       },

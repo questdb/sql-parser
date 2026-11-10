@@ -102,6 +102,10 @@ const INLINE_BY_DESIGN: Record<Kind, string[]> = {
     "Start",
     "Limit",
     "Time Zone",
+    // The query after AS, with or without parentheses.
+    "Select",
+    "Declare",
+    "With",
   ],
   createLiveView: [
     "Live View",

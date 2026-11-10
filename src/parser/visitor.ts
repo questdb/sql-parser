@@ -722,6 +722,17 @@ class QuestDBVisitor extends BaseVisitor {
       if (groupBy?.groupBy) result.groupBy = groupBy.groupBy
       if (groupBy?.groupingSets) result.groupingSets = groupBy.groupingSets
     }
+    if (ctx.pivotBody) {
+      const body = this.visitSafe(ctx.pivotBody) as PivotBodyResult | undefined
+      if (body) {
+        result.pivot = {
+          type: "pivotClause",
+          aggregations: body.aggregations,
+          pivots: body.pivots,
+          groupBy: body.groupBy,
+        }
+      }
+    }
     if (ctx.subsampleClause) {
       result.subsample = this.visitSafe(
         ctx.subsampleClause,
@@ -1391,6 +1402,10 @@ class QuestDBVisitor extends BaseVisitor {
       result.asSelect = this.visit(
         ctx.selectStatement[0],
       ) as AST.SelectStatement
+    } else if (ctx.implicitSelectStatement) {
+      result.asSelect = this.visit(
+        ctx.implicitSelectStatement[0],
+      ) as AST.SelectStatement
     }
 
     if (ctx.castDefinition) {
@@ -1745,7 +1760,7 @@ class QuestDBVisitor extends BaseVisitor {
       view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
       query: ctx.selectStatement
         ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
-        : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement),
+        : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement),
     }
     if (ctx.LParen) {
       result.asParens = true
@@ -1831,9 +1846,13 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.CreateMaterializedViewStatement = {
       type: "createMaterializedView",
       view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
-      query: this.visit(ctx.selectStatement[0]) as AST.SelectStatement,
+      query: ctx.selectStatement
+        ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement),
     }
-    if (ctx.LParen) {
+    // The body's "(" follows AS; TIMESTAMP(col) also consumes an LParen here.
+    const timestampOffset = ctx.Timestamp?.[0].startOffset ?? Infinity
+    if (ctx.LParen?.some((t) => t.startOffset < timestampOffset)) {
       result.asParens = true
     }
     if (ctx.If) {
@@ -2207,7 +2226,9 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "alterView",
       view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
-      query: this.visit(ctx.selectStatement![0]) as AST.SelectStatement,
+      query: ctx.selectStatement
+        ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement),
     }
   }
 
@@ -3220,7 +3241,9 @@ class QuestDBVisitor extends BaseVisitor {
   copyTo(ctx: CopyToCstChildren): AST.CopyToStatement {
     const source = ctx.selectStatement
       ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
-      : (this.visit(ctx.tableName!) as AST.QualifiedName)
+      : ctx.implicitSelectStatement
+        ? (this.visit(ctx.implicitSelectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.tableName!) as AST.QualifiedName)
     const result: AST.CopyToStatement = {
       type: "copyTo",
       source,

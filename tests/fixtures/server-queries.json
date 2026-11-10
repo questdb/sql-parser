@@ -544,5 +544,125 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/EntRowExpiryAclTest.java:586",
     "feature": "expire-rows-keep-on",
     "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "create materialized view price_copy as (base_price where \"declare\" > 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10596",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW price_copy AS (base_price WHERE \"declare\" > 0)"
+  },
+  {
+    "query": "create materialized view v3 as (base_price)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10746",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v3 AS (base_price)"
+  },
+  {
+    "query": "create materialized view v4 as base_price",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10747",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v4 AS base_price"
+  },
+  {
+    "query": "create materialized view v5 as (base_price where price > 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10748",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v5 AS (base_price WHERE price > 0)"
+  },
+  {
+    "query": "create materialized view v6 as (base_price where price * 2 > 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10749",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v6 AS (base_price WHERE price * 2 > 0)"
+  },
+  {
+    "query": "create table z as (x union all y)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:4765",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE z AS (x UNION ALL y)"
+  },
+  {
+    "query": "CREATE ATOMIC TABLE y AS (x UNION ALL append)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3FailureTest.java:1415",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE ATOMIC TABLE y AS (x UNION ALL append)"
+  },
+  {
+    "query": "create atomic table x1 as (x) timestamp(ts) partition by DAY",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3FailureTest.java:4558",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE ATOMIC TABLE x1 AS (x) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "create table y as (w union all append1 union all append2)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:3664",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y AS (w UNION ALL append1 UNION ALL append2)"
+  },
+  {
+    "query": "create table y as (x order by 1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:4523",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y AS (x ORDER BY 1)"
+  },
+  {
+    "query": "create table y1 as (y)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:8548",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y1 AS (y)"
+  },
+  {
+    "query": "CREATE TABLE tab2 AS (tab WHERE x>8)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/QueryRegistryTest.java:79",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE tab2 AS (tab WHERE x > 8)"
+  },
+  {
+    "query": "create table y as (x), cast(col as ipv4)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:727",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y AS (x), CAST(col AS IPV4)"
+  },
+  {
+    "query": "create table x as (tab), cast(b as double), cast(b as long)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:2989",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE x AS (tab), CAST(b AS DOUBLE), CAST(b AS LONG)"
+  },
+  {
+    "query": "alter view v1 as bla",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:1009",
+    "feature": "implicit-select-bodies",
+    "toSql": "ALTER VIEW v1 AS (bla)"
+  },
+  {
+    "query": "alter view v1 as bla",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntSqlParserTest.java:586",
+    "feature": "implicit-select-bodies",
+    "toSql": "ALTER VIEW v1 AS (bla)"
+  },
+  {
+    "query": "copy (generate_series(0, '9999-01-01', '1U')) TO 'very_large_table' WITH FORMAT PARQUET;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:226",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (generate_series(0, '9999-01-01', '1U')) TO 'very_large_table' WITH FORMAT PARQUET"
+  },
+  {
+    "query": "COPY (test_table where x > 0) TO 'mmap_fail_output' WITH FORMAT parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:716",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (test_table WHERE x > 0) TO 'mmap_fail_output' WITH FORMAT parquet"
+  },
+  {
+    "query": "copy (monthly_sales PIVOT (SUM(amount) FOR month IN ('JAN', 'FEB', 'MAR') GROUP BY empid) ORDER BY empid) to 'pivot_output' with format parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:2736",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (monthly_sales PIVOT (SUM(amount) FOR month IN ('JAN', 'FEB', 'MAR') GROUP BY empid) ORDER BY empid) TO 'pivot_output' WITH format parquet"
+  },
+  {
+    "query": "copy (test_table ORDER BY x DESC) to 'output1' with format parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:4251",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (test_table ORDER BY x DESC) TO 'output1' WITH format parquet"
   }
 ]
