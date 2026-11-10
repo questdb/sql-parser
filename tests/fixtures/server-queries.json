@@ -1,0 +1,26 @@
+[
+  {
+    "query": "alter table t force reindex parquet column b partition list '2024-01-02'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/parquet/StaleParquetColumnTopTest.java:325",
+    "feature": "baseline",
+    "toSql": "ALTER TABLE t FORCE REINDEX PARQUET COLUMN b PARTITION LIST '2024-01-02'"
+  },
+  {
+    "query": "select first(i) from a sample by 1h fill(linear) align to first observation",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/ExplainPlanTest.java:8658",
+    "feature": "baseline",
+    "toSql": "SELECT first(i) FROM a SAMPLE BY 1h FILL(LINEAR) ALIGN TO FIRST OBSERVATION"
+  },
+  {
+    "query": "INSERT INTO dim1 VALUES (1, 'one')",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewHashJoinGroupByTest.java:82",
+    "feature": "baseline",
+    "toSql": "INSERT INTO dim1 VALUES (1, 'one')"
+  },
+  {
+    "query": "GRANT SELECT ON pending_grants TO alice",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1357",
+    "feature": "baseline",
+    "toSql": "GRANT SELECT ON pending_grants TO alice"
+  }
+]
