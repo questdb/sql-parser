@@ -79,6 +79,11 @@ export interface SelectStatement extends AstNode {
   /** GROUP BY ROLLUP(...) / CUBE(...) / GROUPING SETS (...), after any plain keys */
   groupingSets?: GroupingSets
   pivot?: PivotClause
+  /**
+   * PIVOT written before SAMPLE BY / GROUP BY (server order): those clauses
+   * then apply to the pivoted result.
+   */
+  pivotBeforeGroupBy?: boolean
   /** Named window definitions: SELECT ... WINDOW w AS (...) [, w2 AS (...)] */
   namedWindows?: NamedWindow[]
   /** SUBSAMPLE method(args): server-side downsampling, before ORDER BY */

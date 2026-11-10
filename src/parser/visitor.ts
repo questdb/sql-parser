@@ -115,6 +115,7 @@ import type {
   IntervalValueCstChildren,
   JoinClauseCstChildren,
   LatestOnClauseCstChildren,
+  LatestOnColumnCstChildren,
   LimitClauseCstChildren,
   LiteralCstChildren,
   TimestampWithTimeZoneLiteralCstChildren,
@@ -540,6 +541,7 @@ class QuestDBVisitor extends BaseVisitor {
         pivots: body.pivots,
         groupBy: body.groupBy,
       }
+      this.markPivotPosition(result, ctx)
     }
 
     if (ctx.windowClause) {
@@ -771,6 +773,7 @@ class QuestDBVisitor extends BaseVisitor {
           pivots: body.pivots,
           groupBy: body.groupBy,
         }
+        this.markPivotPosition(result, ctx)
       }
     }
     if (ctx.subsampleClause) {
@@ -1159,23 +1162,47 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   latestOnClause(ctx: LatestOnClauseCstChildren): AST.LatestOnClause {
-    const columnRefs = ctx.columnRef!.map(
-      (c: CstNode) => this.visit(c) as AST.ColumnRef,
+    const names = (ctx.latestOnColumn ?? []).map(
+      (c: CstNode) => this.visit(c) as AST.QualifiedName,
     )
 
     if (ctx.On) {
       // LATEST ON timestamp PARTITION BY col1, col2, ...
       return {
         type: "latestOn",
-        timestamp: columnRefs[0].name,
-        partitionBy: columnRefs.slice(1).map((c: AST.ColumnRef) => c.name),
+        timestamp: names[0],
+        partitionBy: names.slice(1),
       }
     }
     // LATEST BY col1, col2, ...
     return {
       type: "latestOn",
-      partitionBy: columnRefs.map((c: AST.ColumnRef) => c.name),
+      partitionBy: names,
     }
+  }
+
+  // Column or @variable; a variable is kept as a one-part name "@var"
+  latestOnColumn(ctx: LatestOnColumnCstChildren): AST.QualifiedName {
+    if (ctx.VariableReference) {
+      return {
+        type: "qualifiedName",
+        parts: [ctx.VariableReference[0].image],
+      }
+    }
+    return (this.visit(ctx.columnRef!) as AST.ColumnRef).name
+  }
+
+  /** Records a PIVOT written before SAMPLE BY / GROUP BY (server order). */
+  private markPivotPosition(
+    result: AST.SelectStatement,
+    ctx: SimpleSelectCstChildren | ImplicitSelectBodyCstChildren,
+  ): void {
+    const pivotOffset = ctx.Pivot?.[0]?.startOffset
+    if (pivotOffset === undefined) return
+    const later = [ctx.sampleByClause?.[0], ctx.groupByClause?.[0]].some(
+      (c) => c !== undefined && this.getFirstTokenOffset(c) > pivotOffset,
+    )
+    if (later) result.pivotBeforeGroupBy = true
   }
 
   subsampleClause(ctx: SubsampleClauseCstChildren): AST.SubsampleClause {
@@ -1260,9 +1287,22 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   limitClause(ctx: LimitClauseCstChildren): AST.LimitClause {
+    if (!ctx.expression) {
+      // Only reachable from error recovery (`LIMIT;`)
+      throw new Error("LIMIT expression expected")
+    }
     const expressions = ctx.expression.map(
       (e: CstNode) => this.visit(e) as AST.Expression,
     )
+    // `LIMIT ,5`: the server defaults the missing lower bound to 0
+    if (ctx.openLowerBound) {
+      expressions.unshift({
+        type: "literal",
+        value: 0,
+        literalType: "number",
+        raw: "0",
+      })
+    }
 
     const result: AST.LimitClause = {
       type: "limit",

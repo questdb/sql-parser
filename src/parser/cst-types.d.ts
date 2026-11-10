@@ -132,14 +132,14 @@ export type SimpleSelectCstChildren = {
   selectList: SelectListCstNode[];
   From?: IToken[];
   fromClause?: FromClauseCstNode[];
-  whereClause?: WhereClauseCstNode[];
-  sampleByClause?: SampleByClauseCstNode[];
-  latestOnClause?: LatestOnClauseCstNode[];
-  groupByClause?: GroupByClauseCstNode[];
-  Pivot?: IToken[];
-  LParen?: IToken[];
-  pivotBody?: PivotBodyCstNode[];
-  RParen?: IToken[];
+  latestOnClause?: (LatestOnClauseCstNode)[];
+  whereClause?: (WhereClauseCstNode)[];
+  Pivot?: (IToken)[];
+  LParen?: (IToken)[];
+  pivotBody?: (PivotBodyCstNode)[];
+  RParen?: (IToken)[];
+  sampleByClause?: (SampleByClauseCstNode)[];
+  groupByClause?: (GroupByClauseCstNode)[];
   windowClause?: WindowClauseCstNode[];
   subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
@@ -266,14 +266,14 @@ export interface ImplicitSelectBodyCstNode extends CstNode {
 
 export type ImplicitSelectBodyCstChildren = {
   fromClause: FromClauseCstNode[];
-  whereClause?: WhereClauseCstNode[];
-  sampleByClause?: SampleByClauseCstNode[];
-  latestOnClause?: LatestOnClauseCstNode[];
-  groupByClause?: GroupByClauseCstNode[];
-  Pivot?: IToken[];
-  LParen?: IToken[];
-  pivotBody?: PivotBodyCstNode[];
-  RParen?: IToken[];
+  latestOnClause?: (LatestOnClauseCstNode)[];
+  whereClause?: (WhereClauseCstNode)[];
+  Pivot?: (IToken)[];
+  LParen?: (IToken)[];
+  pivotBody?: (PivotBodyCstNode)[];
+  RParen?: (IToken)[];
+  sampleByClause?: (SampleByClauseCstNode)[];
+  groupByClause?: (GroupByClauseCstNode)[];
   subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
@@ -524,10 +524,20 @@ export interface LatestOnClauseCstNode extends CstNode {
 export type LatestOnClauseCstChildren = {
   Latest: IToken[];
   On?: IToken[];
-  columnRef?: (ColumnRefCstNode)[];
+  latestOnColumn?: (LatestOnColumnCstNode)[];
   Partition?: IToken[];
   By?: (IToken)[];
   Comma?: (IToken)[];
+};
+
+export interface LatestOnColumnCstNode extends CstNode {
+  name: "latestOnColumn";
+  children: LatestOnColumnCstChildren;
+}
+
+export type LatestOnColumnCstChildren = {
+  VariableReference?: IToken[];
+  columnRef?: ColumnRefCstNode[];
 };
 
 export interface SubsampleClauseCstNode extends CstNode {
@@ -690,7 +700,8 @@ export interface LimitClauseCstNode extends CstNode {
 
 export type LimitClauseCstChildren = {
   Limit: IToken[];
-  expression: (ExpressionCstNode)[];
+  openLowerBound?: IToken[];
+  expression?: (ExpressionCstNode)[];
   Comma?: IToken[];
 };
 
@@ -3173,6 +3184,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   whereClause(children: WhereClauseCstChildren, param?: IN): OUT;
   sampleByClause(children: SampleByClauseCstChildren, param?: IN): OUT;
   latestOnClause(children: LatestOnClauseCstChildren, param?: IN): OUT;
+  latestOnColumn(children: LatestOnColumnCstChildren, param?: IN): OUT;
   subsampleClause(children: SubsampleClauseCstChildren, param?: IN): OUT;
   fillClause(children: FillClauseCstChildren, param?: IN): OUT;
   fillValue(children: FillValueCstChildren, param?: IN): OUT;

@@ -1560,5 +1560,53 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlOptimiserTest.java:4550",
     "feature": "sample-by-fill-align",
     "toSql": "SELECT timestamp + 60000000 AS timestamp, timestamp, count() FROM t WHERE name = 'a' SAMPLE BY (1m)"
+  },
+  {
+    "query": "SELECT ts, count() FROM (SELECT * FROM t) LATEST ON ts PARTITION BY sym SAMPLE BY 1d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByHoistEquivalenceTest.java:139",
+    "feature": "clause-order",
+    "toSql": "SELECT ts, count() FROM (SELECT * FROM t) LATEST ON ts PARTITION BY sym SAMPLE BY 1d"
+  },
+  {
+    "query": "select ts, count() c from (select * from nb) latest on ts partition by s sample by 1d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:1472",
+    "feature": "clause-order",
+    "toSql": "SELECT ts, count() AS c FROM (SELECT * FROM nb) LATEST ON ts PARTITION BY s SAMPLE BY 1d"
+  },
+  {
+    "query": "select * from x latest by b where b = 'HNR'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/QueryExecutionTimeoutTest.java:331",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM x LATEST BY b WHERE b = 'HNR'"
+  },
+  {
+    "query": "select * from x latest by b where b = 'PEHN' and a < 22 and test_match()",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:8285",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM x LATEST BY b WHERE b = 'PEHN' AND a < 22 AND test_match()"
+  },
+  {
+    "query": "DECLARE @c := (SELECT 1) SELECT * FROM k LATEST ON ts PARTITION BY @c",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:2005",
+    "feature": "clause-order",
+    "toSql": "DECLARE @c := (SELECT 1) SELECT * FROM k LATEST ON ts PARTITION BY @c"
+  },
+  {
+    "query": "DECLARE @ts := timestamp, @sym := symbol SELECT * FROM trades LATEST ON @ts PARTITION BY @sym;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:875",
+    "feature": "clause-order",
+    "toSql": "DECLARE @ts := timestamp, @sym := symbol SELECT * FROM trades LATEST ON @ts PARTITION BY @sym"
+  },
+  {
+    "query": "select * from y limit 5,",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:176",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM y LIMIT 5"
+  },
+  {
+    "query": "select * from y limit ,5",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:192",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM y LIMIT 0, 5"
   }
 ]

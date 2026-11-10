@@ -741,17 +741,8 @@ class QuestDBParser extends CstParser {
     this.OPTION1(() => {
       this.CONSUME(From)
       this.SUBRULE(this.fromClause)
-      this.OPTION2(() => this.SUBRULE(this.whereClause))
-      this.OPTION3(() => this.SUBRULE(this.sampleByClause))
-      this.OPTION4(() => this.SUBRULE(this.latestOnClause))
-      this.OPTION5(() => this.SUBRULE(this.groupByClause))
-      // PIVOT clause: SELECT * FROM t PIVOT (agg FOR col IN (...))
-      this.OPTION9(() => {
-        this.CONSUME(Pivot)
-        this.CONSUME(LParen)
-        this.SUBRULE(this.pivotBody)
-        this.CONSUME(RParen)
-      })
+      // WHERE / LATEST / PIVOT / SAMPLE BY / GROUP BY
+      this.selectClauseChain()
       // Named window clause: WINDOW w AS (...) [, w2 AS (...)]
       // Standard SQL places WINDOW between HAVING/GROUP BY and ORDER BY.
       // GATE: disambiguate from WINDOW JOIN (which lives inside fromClause,
@@ -768,6 +759,101 @@ class QuestDBParser extends CstParser {
       this.OPTION7(() => this.SUBRULE(this.limitClause))
     })
   })
+
+  // WHERE / LATEST ON|BY / PIVOT / SAMPLE BY / GROUP BY of simpleSelect and
+  // implicitSelectBody (inlined into the calling rule, so the CST children
+  // stay on that rule). Server order (SqlParser.parseFromClause):
+  //   [LATEST BY (deprecated)] WHERE, LATEST ON, PIVOT, SAMPLE BY, GROUP BY
+  // The orders accepted before are kept: SAMPLE BY -> LATEST and
+  // GROUP BY -> PIVOT. Written as alternatives (not a run of OPTIONs) so that
+  // autocomplete never offers a clause that was already used.
+  // Indexes start at 20 to stay clear of the calling rules' own indexes.
+  private selectClauseChain(): void {
+    // Every call site needs its own fixed occurrence index (the same at
+    // recording time and at parse time), hence the explicit numbers.
+    const latest = (i: number) => this.subrule(i, this.latestOnClause)
+    const where = (i: number) => this.subrule(i, this.whereClause)
+    const sample = (i: number) => this.subrule(i, this.sampleByClause)
+    const group = (i: number) => this.subrule(i, this.groupByClause)
+    const pivot = (i: number) => {
+      this.consume(i, Pivot)
+      this.consume(i, LParen)
+      this.subrule(i, this.pivotBody)
+      this.consume(i, RParen)
+    }
+    // Each helper call gets its own base `b` (spaced by 10) and uses each
+    // subrule at most once with index b, and option indexes b..b+2.
+    // PIVOT [SAMPLE BY] [GROUP BY]
+    const fromPivot = (b: number) => {
+      pivot(b)
+      this.option(b, () => sample(b))
+      this.option(b + 1, () => group(b))
+    }
+    // SAMPLE BY [LATEST] [GROUP BY] [PIVOT]
+    const fromSample = (b: number) => {
+      sample(b)
+      this.option(b, () => latest(b))
+      this.option(b + 1, () => group(b))
+      this.option(b + 2, () => pivot(b))
+    }
+    // GROUP BY [PIVOT]
+    const fromGroup = (b: number) => {
+      group(b)
+      this.option(b, () => pivot(b))
+    }
+    // after LATEST: PIVOT [SAMPLE BY] [GROUP BY] | SAMPLE BY [GROUP BY]
+    //               | GROUP BY [PIVOT]
+    const afterLatest = (b: number): void => {
+      this.option(b, () => {
+        this.or(b, [
+          { ALT: () => fromPivot(b + 10) },
+          {
+            ALT: () => {
+              sample(b + 20)
+              this.option(b + 20, () => group(b + 20))
+            },
+          },
+          { ALT: () => fromGroup(b + 30) },
+        ])
+      })
+    }
+    const withoutLatest = (b: number): void => {
+      this.or(b, [
+        { ALT: () => fromPivot(b + 10) },
+        { ALT: () => fromSample(b + 20) },
+        { ALT: () => fromGroup(b + 30) },
+      ])
+    }
+    this.option(20, () => {
+      this.or(20, [
+        {
+          // LATEST BY|ON [WHERE] ... (LATEST BY right after the table)
+          ALT: () => {
+            latest(20)
+            this.option(21, () => where(20))
+            afterLatest(30)
+          },
+        },
+        {
+          ALT: () => {
+            where(21)
+            this.option(22, () => {
+              this.or(21, [
+                {
+                  ALT: () => {
+                    latest(21)
+                    afterLatest(70)
+                  },
+                },
+                { ALT: () => withoutLatest(110) },
+              ])
+            })
+          },
+        },
+        { ALT: () => withoutLatest(150) },
+      ])
+    })
+  }
 
   private setOperation = this.RULE("setOperation", () => {
     this.OR([
@@ -966,17 +1052,8 @@ class QuestDBParser extends CstParser {
   // QuestDB treats these as implicit SELECT * FROM ...
   private implicitSelectBody = this.RULE("implicitSelectBody", () => {
     this.SUBRULE(this.fromClause)
-    this.OPTION(() => this.SUBRULE(this.whereClause))
-    this.OPTION1(() => this.SUBRULE(this.sampleByClause))
-    this.OPTION2(() => this.SUBRULE(this.latestOnClause))
-    this.OPTION3(() => this.SUBRULE(this.groupByClause))
-    // PIVOT clause, as in simpleSelect: (t PIVOT (...) ORDER BY ...)
-    this.OPTION7(() => {
-      this.CONSUME(Pivot)
-      this.CONSUME(LParen)
-      this.SUBRULE(this.pivotBody)
-      this.CONSUME(RParen)
-    })
+    // WHERE / LATEST / PIVOT / SAMPLE BY / GROUP BY, as in simpleSelect
+    this.selectClauseChain()
     this.OPTION6(() => this.SUBRULE(this.subsampleClause))
     this.OPTION4(() => this.SUBRULE(this.orderByClause))
     this.OPTION5(() => this.SUBRULE(this.limitClause))
@@ -1405,13 +1482,13 @@ class QuestDBParser extends CstParser {
         GATE: () => this.LA(1).tokenType === On,
         ALT: () => {
           this.CONSUME(On)
-          this.SUBRULE(this.columnRef)
+          this.SUBRULE(this.latestOnColumn)
           this.CONSUME(Partition)
           this.CONSUME(By)
-          this.SUBRULE1(this.columnRef)
+          this.SUBRULE1(this.latestOnColumn)
           this.MANY(() => {
             this.CONSUME(Comma)
-            this.SUBRULE2(this.columnRef)
+            this.SUBRULE2(this.latestOnColumn)
           })
         },
       },
@@ -1419,13 +1496,21 @@ class QuestDBParser extends CstParser {
         // LATEST BY col [, col...]
         ALT: () => {
           this.CONSUME1(By)
-          this.SUBRULE3(this.columnRef)
+          this.SUBRULE3(this.latestOnColumn)
           this.MANY1(() => {
             this.CONSUME1(Comma)
-            this.SUBRULE4(this.columnRef)
+            this.SUBRULE4(this.latestOnColumn)
           })
         },
       },
+    ])
+  })
+
+  // LATEST ON/BY operand: column or @variable (expectLiteral with decls)
+  private latestOnColumn = this.RULE("latestOnColumn", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(VariableReference) },
+      { ALT: () => this.SUBRULE(this.columnRef) },
     ])
   })
 
@@ -1626,11 +1711,24 @@ class QuestDBParser extends CstParser {
 
   private limitClause = this.RULE("limitClause", () => {
     this.CONSUME(Limit)
-    this.SUBRULE(this.expression)
-    this.OPTION(() => {
-      this.CONSUME(Comma)
-      this.SUBRULE1(this.expression)
-    })
+    // Open-ended limits `LIMIT 5,` and `LIMIT ,5` are accepted by the server
+    this.OR([
+      {
+        ALT: () => {
+          this.CONSUME1(Comma, { LABEL: "openLowerBound" })
+          this.SUBRULE2(this.expression)
+        },
+      },
+      {
+        ALT: () => {
+          this.SUBRULE(this.expression)
+          this.OPTION(() => {
+            this.CONSUME(Comma)
+            this.OPTION1(() => this.SUBRULE1(this.expression))
+          })
+        },
+      },
+    ])
   })
 
   // ==========================================================================

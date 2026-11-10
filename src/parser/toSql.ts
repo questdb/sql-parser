@@ -191,10 +191,25 @@ function selectToSql(stmt: AST.SelectStatement): string {
     }
   }
 
+  // deprecated LATEST BY: right after the table (server order)
+  if (stmt.latestOn && !stmt.latestOn.timestamp) {
+    parts.push(latestOnToSql(stmt.latestOn))
+  }
+
   // WHERE
   if (stmt.where) {
     parts.push("WHERE")
     parts.push(expressionToSql(stmt.where))
+  }
+
+  // LATEST ON (server order: after WHERE, before PIVOT / SAMPLE BY)
+  if (stmt.latestOn?.timestamp) {
+    parts.push(latestOnToSql(stmt.latestOn))
+  }
+
+  // PIVOT written before SAMPLE BY / GROUP BY
+  if (stmt.pivot && stmt.pivotBeforeGroupBy) {
+    parts.push(pivotClauseToSql(stmt.pivot))
   }
 
   // SAMPLE BY (QuestDB)
@@ -243,19 +258,6 @@ function selectToSql(stmt: AST.SelectStatement): string {
     }
   }
 
-  // LATEST ON / LATEST BY (QuestDB)
-  if (stmt.latestOn) {
-    if (stmt.latestOn.timestamp) {
-      parts.push("LATEST ON")
-      parts.push(qualifiedNameToSql(stmt.latestOn.timestamp))
-      parts.push("PARTITION BY")
-      parts.push(stmt.latestOn.partitionBy.map(qualifiedNameToSql).join(", "))
-    } else {
-      parts.push("LATEST BY")
-      parts.push(stmt.latestOn.partitionBy.map(qualifiedNameToSql).join(", "))
-    }
-  }
-
   // GROUP BY [plain keys][, ROLLUP(...) | CUBE(...) | GROUPING SETS (...)]
   const groupByItems = (stmt.groupBy ?? []).map(expressionToSql)
   if (stmt.groupingSets) {
@@ -267,7 +269,7 @@ function selectToSql(stmt: AST.SelectStatement): string {
   }
 
   // PIVOT (inline pivot clause in SELECT)
-  if (stmt.pivot) {
+  if (stmt.pivot && !stmt.pivotBeforeGroupBy) {
     parts.push(pivotClauseToSql(stmt.pivot))
   }
 
@@ -2224,6 +2226,18 @@ function arrayAccessToSql(expr: AST.ArrayAccessExpression): string {
 // =============================================================================
 // Helpers
 // =============================================================================
+
+function latestOnToSql(latest: AST.LatestOnClause): string {
+  // @variables are kept as one-part names and printed as written
+  const name = (n: AST.QualifiedName) =>
+    n.parts.length === 1 && n.parts[0].startsWith("@")
+      ? n.parts[0]
+      : qualifiedNameToSql(n)
+  const keys = latest.partitionBy.map(name).join(", ")
+  return latest.timestamp
+    ? `LATEST ON ${name(latest.timestamp)} PARTITION BY ${keys}`
+    : `LATEST BY ${keys}`
+}
 
 function qualifiedNameToSql(name: AST.QualifiedName): string {
   if (!name || !name.parts) return ""
