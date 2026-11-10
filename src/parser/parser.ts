@@ -3260,21 +3260,11 @@ class QuestDBParser extends CstParser {
 
   private alterTableAction = this.RULE("alterTableAction", () => {
     this.OR([
-      // ADD COLUMN
+      // ADD [COLUMN] [IF NOT EXISTS] col type [, [IF NOT EXISTS] col type ...]
       {
         ALT: () => {
           this.CONSUME(Add)
-          this.CONSUME(Column)
-          this.OPTION(() => {
-            this.CONSUME(If)
-            this.CONSUME(Not)
-            this.CONSUME(Exists)
-          })
-          this.SUBRULE(this.columnDefinition)
-          this.MANY(() => {
-            this.CONSUME(Comma)
-            this.SUBRULE1(this.columnDefinition)
-          })
+          this.SUBRULE(this.alterTableAddColumns)
         },
       },
       // DROP (COLUMN ... | PARTITION ... | STORAGE POLICY)
@@ -3335,6 +3325,13 @@ class QuestDBParser extends CstParser {
           this.SUBRULE2(this.columnRef)
           this.CONSUME(To)
           this.SUBRULE3(this.identifier)
+          // `, old TO new` pairs (SqlCompilerImpl.alterTableRenameColumn)
+          this.MANY6(() => {
+            this.CONSUME6(Comma)
+            this.SUBRULE4(this.columnRef)
+            this.CONSUME1(To)
+            this.SUBRULE4(this.identifier)
+          })
         },
       },
       // ALTER COLUMN (for TYPE, ADD INDEX, CACHE/NOCACHE)
@@ -3356,6 +3353,7 @@ class QuestDBParser extends CstParser {
                 // Optional CACHE/NOCACHE
                 this.OPTION5(() => this.CONSUME1(Cache))
                 this.OPTION6(() => this.CONSUME1(Nocache))
+                this.SUBRULE(this.alterColumnTypeIndex)
                 this.SUBRULE(this.columnNullModifier)
               },
             },
@@ -3571,6 +3569,35 @@ class QuestDBParser extends CstParser {
         },
       },
     ])
+  })
+
+  // ALTER TABLE ADD [COLUMN] [IF NOT EXISTS] col type [, [IF NOT EXISTS] col type]
+  // (SqlCompilerImpl.alterTableAddColumn: COLUMN optional, IF NOT EXISTS per column)
+  private alterTableAddColumns = this.RULE("alterTableAddColumns", () => {
+    this.OPTION(() => this.CONSUME(Column))
+    this.SUBRULE(this.addColumnItem)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.addColumnItem)
+    })
+  })
+
+  private addColumnItem = this.RULE("addColumnItem", () => {
+    this.OPTION(() => {
+      this.CONSUME(If)
+      this.CONSUME(Not)
+      this.CONSUME(Exists)
+    })
+    this.SUBRULE(this.columnDefinition)
+  })
+
+  // ALTER COLUMN .. TYPE SYMBOL .. [INDEX [TYPE ..] [CAPACITY n]]
+  // (SqlCompilerImpl.addColumnWithType). May match nothing.
+  private alterColumnTypeIndex = this.RULE("alterColumnTypeIndex", () => {
+    this.OPTION(() => {
+      this.CONSUME(Index)
+      this.SUBRULE(this.indexTypeOptions)
+    })
   })
 
   // FORCE DROP PARTITION LIST '<p>' [, ...]

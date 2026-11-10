@@ -174,6 +174,9 @@ import type {
   StoragePolicyTimeUnitCstChildren,
   StoragePolicyTtlCstChildren,
   TtlClauseCstChildren,
+  AlterTableAddColumnsCstChildren,
+  AddColumnItemCstChildren,
+  AlterColumnTypeIndexCstChildren,
   HorizonJoinCstChildren,
   HorizonOffsetCstChildren,
   StandardJoinCstChildren,
@@ -1794,6 +1797,44 @@ class QuestDBVisitor extends BaseVisitor {
     return result
   }
 
+  alterTableAddColumns(
+    ctx: AlterTableAddColumnsCstChildren,
+  ): AST.AddColumnAction {
+    const columns = ctx.addColumnItem.map(
+      (c) => this.visit(c) as AST.ColumnDefinition,
+    )
+    const result: AST.AddColumnAction = { actionType: "addColumn", columns }
+    // IF NOT EXISTS on the first column is the action-level flag
+    if (columns[0].ifNotExists) {
+      delete columns[0].ifNotExists
+      result.ifNotExists = true
+    }
+    return result
+  }
+
+  addColumnItem(ctx: AddColumnItemCstChildren): AST.ColumnDefinition {
+    const col = this.visit(ctx.columnDefinition) as AST.ColumnDefinition
+    if (ctx.If) col.ifNotExists = true
+    return col
+  }
+
+  alterColumnTypeIndex(ctx: AlterColumnTypeIndexCstChildren):
+    | {
+        capacity?: number
+        indexType?: AST.AlterColumnAction["indexType"]
+        include?: string[]
+      }
+    | undefined {
+    if (!ctx.Index) return undefined
+    return ctx.indexTypeOptions
+      ? (this.visit(ctx.indexTypeOptions) as {
+          capacity?: number
+          indexType?: AST.AlterColumnAction["indexType"]
+          include?: string[]
+        })
+      : {}
+  }
+
   // `[PRECISION] [NOT] NULL` is ignored (as on the server)
   columnNullModifier(): undefined {
     return undefined
@@ -2686,18 +2727,9 @@ class QuestDBVisitor extends BaseVisitor {
       return { actionType: "disableStoragePolicy" }
     }
 
-    // ADD COLUMN
-    if (ctx.Add && ctx.columnDefinition) {
-      const result: AST.AddColumnAction = {
-        actionType: "addColumn",
-        columns: ctx.columnDefinition.map(
-          (c: CstNode) => this.visit(c) as AST.ColumnDefinition,
-        ),
-      }
-      if (ctx.If) {
-        result.ifNotExists = true
-      }
-      return result
+    // ADD [COLUMN]
+    if (ctx.alterTableAddColumns) {
+      return this.visit(ctx.alterTableAddColumns) as AST.AddColumnAction
     }
 
     // DROP COLUMN (when Drop token exists but no Partition and no Alter — Alter + Drop = ALTER COLUMN DROP INDEX)
@@ -2716,11 +2748,23 @@ class QuestDBVisitor extends BaseVisitor {
       const oldRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       const oldName = oldRef.name.parts[oldRef.name.parts.length - 1]
       const newName = this.extractIdentifierName(ctx.identifier![0].children)
-      return {
+      const result: AST.RenameColumnAction = {
         actionType: "renameColumn",
         oldName,
         newName,
       }
+      if (ctx.columnRef!.length > 1) {
+        result.additionalRenames = ctx.columnRef!.slice(1).map((c, i) => {
+          const ref = this.visit(c) as AST.ColumnRef
+          return {
+            oldName: ref.name.parts[ref.name.parts.length - 1],
+            newName: this.extractIdentifierName(
+              ctx.identifier![i + 1].children,
+            ),
+          }
+        })
+      }
+      return result
     }
 
     // ALTER COLUMN
@@ -2794,6 +2838,21 @@ class QuestDBVisitor extends BaseVisitor {
       if (alterType === "type") {
         if (ctx.Cache) result.cache = true
         else if (ctx.Nocache) result.cache = false
+        const idx = ctx.alterColumnTypeIndex
+          ? (this.visit(ctx.alterColumnTypeIndex) as
+              | {
+                  capacity?: number
+                  indexType?: AST.AlterColumnAction["indexType"]
+                  include?: string[]
+                }
+              | undefined)
+          : undefined
+        if (idx) {
+          result.indexed = true
+          if (idx.indexType) result.indexType = idx.indexType
+          if (idx.include) result.indexInclude = idx.include
+          if (idx.capacity !== undefined) result.indexCapacity = idx.capacity
+        }
       }
       return result
     }

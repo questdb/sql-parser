@@ -1747,5 +1747,47 @@
     "feature": "mat-view-create-options",
     "toSql": "CREATE MATERIALIZED VIEW price_1h REFRESH IMMEDIATE PERIOD (LENGTH 1d) AS SELECT sym, last(price) AS price, ts FROM base_price SAMPLE BY 1h",
     "skipAutocomplete": "INCREMENTAL is an obsolete synonym of IMMEDIATE and intentionally not suggested"
+  },
+  {
+    "query": "ALTER TABLE t ALTER COLUMN s TYPE SYMBOL INDEX",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/composite/CompositeColumnMappingTest.java:87",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE t ALTER COLUMN s TYPE SYMBOL INDEX"
+  },
+  {
+    "query": "alter table x alter column ik type symbol index",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableChangeColumnTypeTest.java:933",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE x ALTER COLUMN ik TYPE SYMBOL INDEX"
+  },
+  {
+    "query": "alter table tab add val2 DOUBLE",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AggregateTest.java:2198",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE tab ADD COLUMN val2 DOUBLE"
+  },
+  {
+    "query": "alter table x add mycol int not null, mycol2 int",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAddColumnTest.java:82",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE x ADD COLUMN mycol INT, mycol2 INT"
+  },
+  {
+    "query": "alter table x add \"spa ce\" string",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAddColumnTest.java:324",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE x ADD COLUMN \"spa ce\" STRING"
+  },
+  {
+    "query": "alter table product rename column name to name1, timestamp to timestamp1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TableWriterAsyncCmdTest.java:406",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE product RENAME COLUMN name TO name1, timestamp TO timestamp1"
+  },
+  {
+    "query": "alter table test rename column col1 to colA, col2 to colB",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/integration/acl/HttpCallbackTest.java:33",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE test RENAME COLUMN col1 TO colA, col2 TO colB"
   }
 ]

@@ -381,6 +381,8 @@ export interface ColumnDefinition extends AstNode {
   type: "columnDefinition"
   name: string
   dataType: string
+  /** ALTER TABLE ADD COLUMN a INT, IF NOT EXISTS b INT (columns after the first) */
+  ifNotExists?: boolean
   /** SYMBOL CAPACITY value */
   symbolCapacity?: number
   /** SYMBOL CACHE/NOCACHE */
@@ -604,6 +606,8 @@ export interface RenameColumnAction {
   actionType: "renameColumn"
   oldName: string
   newName: string
+  /** further `, old TO new` pairs */
+  additionalRenames?: { oldName: string; newName: string }[]
 }
 
 export interface AlterColumnAction {
@@ -623,6 +627,10 @@ export interface AlterColumnAction {
   indexType?: "posting" | "posting_delta" | "posting_ef" | "bitmap" | "none"
   indexInclude?: string[]
   cache?: boolean
+  /** TYPE SYMBOL ... INDEX */
+  indexed?: boolean
+  /** TYPE SYMBOL ... INDEX CAPACITY n */
+  indexCapacity?: number
   /** PARQUET config for SET PARQUET(...) */
   parquetConfig?: ParquetConfig
 }

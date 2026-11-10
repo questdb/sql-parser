@@ -899,7 +899,15 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       if (action.ifNotExists) {
         parts.push("IF NOT EXISTS")
       }
-      parts.push(action.columns.map(columnDefToSql).join(", "))
+      parts.push(
+        action.columns
+          .map(
+            (c, i) =>
+              (i > 0 && c.ifNotExists ? "IF NOT EXISTS " : "") +
+              columnDefToSql(c),
+          )
+          .join(", "),
+      )
       break
     }
     case "dropColumn":
@@ -911,6 +919,14 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push(escapeIdentifier(action.oldName))
       parts.push("TO")
       parts.push(escapeIdentifier(action.newName))
+      for (const r of action.additionalRenames ?? []) {
+        parts[parts.length - 1] += ","
+        parts.push(
+          escapeIdentifier(r.oldName),
+          "TO",
+          escapeIdentifier(r.newName),
+        )
+      }
       break
     case "alterColumn":
       parts.push("ALTER COLUMN")
@@ -926,6 +942,16 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
           parts.push("CACHE")
         } else if (action.cache === false) {
           parts.push("NOCACHE")
+        }
+        if (action.indexed) {
+          parts.push(
+            "INDEX" +
+              indexOptionsToSql(
+                action.indexType,
+                action.indexInclude,
+                action.indexCapacity,
+              ),
+          )
         }
       } else if (action.alterType === "addIndex") {
         parts.push(

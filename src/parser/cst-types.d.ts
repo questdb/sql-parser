@@ -1620,14 +1620,11 @@ export interface AlterTableActionCstNode extends CstNode {
 
 export type AlterTableActionCstChildren = {
   Add?: (IToken)[];
-  Column?: (IToken)[];
-  If?: IToken[];
-  Not?: IToken[];
-  Exists?: IToken[];
-  columnDefinition?: (ColumnDefinitionCstNode)[];
-  Comma?: (IToken)[];
+  alterTableAddColumns?: AlterTableAddColumnsCstNode[];
   Drop?: (IToken)[];
+  Column?: (IToken)[];
   columnRef?: (ColumnRefCstNode)[];
+  Comma?: (IToken)[];
   Partition?: (IToken)[];
   List?: (IToken)[];
   StringLiteral?: (IToken)[];
@@ -1636,8 +1633,8 @@ export type AlterTableActionCstChildren = {
   Storage?: (IToken)[];
   Policy?: (IToken)[];
   Rename?: IToken[];
-  To?: IToken[];
-  identifier?: IdentifierCstNode[];
+  To?: (IToken)[];
+  identifier?: (IdentifierCstNode)[];
   Alter?: IToken[];
   Type?: (IToken)[];
   dataType?: DataTypeCstNode[];
@@ -1645,6 +1642,7 @@ export type AlterTableActionCstChildren = {
   NumberLiteral?: (IToken)[];
   Cache?: (IToken)[];
   Nocache?: (IToken)[];
+  alterColumnTypeIndex?: AlterColumnTypeIndexCstNode[];
   columnNullModifier?: ColumnNullModifierCstNode[];
   Index?: (IToken)[];
   indexTypeOptions?: IndexTypeOptionsCstNode[];
@@ -1679,6 +1677,39 @@ export type AlterTableActionCstChildren = {
   Into?: IToken[];
   Convert?: IToken[];
   convertPartitionTarget?: ConvertPartitionTargetCstNode[];
+};
+
+export interface AlterTableAddColumnsCstNode extends CstNode {
+  name: "alterTableAddColumns";
+  children: AlterTableAddColumnsCstChildren;
+}
+
+export type AlterTableAddColumnsCstChildren = {
+  Column?: IToken[];
+  addColumnItem: (AddColumnItemCstNode)[];
+  Comma?: IToken[];
+};
+
+export interface AddColumnItemCstNode extends CstNode {
+  name: "addColumnItem";
+  children: AddColumnItemCstChildren;
+}
+
+export type AddColumnItemCstChildren = {
+  If?: IToken[];
+  Not?: IToken[];
+  Exists?: IToken[];
+  columnDefinition: ColumnDefinitionCstNode[];
+};
+
+export interface AlterColumnTypeIndexCstNode extends CstNode {
+  name: "alterColumnTypeIndex";
+  children: AlterColumnTypeIndexCstChildren;
+}
+
+export type AlterColumnTypeIndexCstChildren = {
+  Index?: IToken[];
+  indexTypeOptions?: IndexTypeOptionsCstNode[];
 };
 
 export interface AlterTableForceActionCstNode extends CstNode {
@@ -3268,6 +3299,9 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   memoryLimit(children: MemoryLimitCstChildren, param?: IN): OUT;
   alterTableStatement(children: AlterTableStatementCstChildren, param?: IN): OUT;
   alterTableAction(children: AlterTableActionCstChildren, param?: IN): OUT;
+  alterTableAddColumns(children: AlterTableAddColumnsCstChildren, param?: IN): OUT;
+  addColumnItem(children: AddColumnItemCstChildren, param?: IN): OUT;
+  alterColumnTypeIndex(children: AlterColumnTypeIndexCstChildren, param?: IN): OUT;
   alterTableForceAction(children: AlterTableForceActionCstChildren, param?: IN): OUT;
   convertPartitionTarget(children: ConvertPartitionTargetCstChildren, param?: IN): OUT;
   alterMaterializedViewStatement(children: AlterMaterializedViewStatementCstChildren, param?: IN): OUT;
