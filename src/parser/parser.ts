@@ -242,6 +242,7 @@ import {
   Memory,
   Resource,
   Unset,
+  Audit,
   Mapping,
   Priority,
   MemoryLimit,
@@ -2074,11 +2075,29 @@ class QuestDBParser extends CstParser {
         ALT: () => this.SUBRULE1(this.implicitSelectStatement),
       },
     ])
-    // Optional OWNED BY
-    this.OPTION2(() => {
-      this.CONSUME(Owned)
-      this.CONSUME(By)
-      this.SUBRULE(this.stringOrIdentifier)
+    // Trailing WITH AUDIT / OWNED BY in either order (Enterprise
+    // EntSqlCompilerImpl.parseCreateViewExt)
+    this.MANY({
+      // WITH not followed by AUDIT starts a new (CTE) statement
+      GATE: () =>
+        this.LA(1).tokenType !== With || this.LA(2).tokenType === Audit,
+      DEF: () => {
+        this.OR1([
+          {
+            ALT: () => {
+              this.CONSUME(With)
+              this.CONSUME(Audit)
+            },
+          },
+          {
+            ALT: () => {
+              this.CONSUME(Owned)
+              this.CONSUME(By)
+              this.SUBRULE(this.stringOrIdentifier)
+            },
+          },
+        ])
+      },
     })
   })
 

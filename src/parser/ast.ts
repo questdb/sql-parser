@@ -784,6 +784,8 @@ export interface CreateViewStatement extends AstNode {
   query: SelectStatement
   asParens?: boolean
   ownedBy?: string
+  /** Enterprise: WITH AUDIT */
+  audit?: boolean
 }
 
 export interface AlterViewStatement extends AstNode {

@@ -16,6 +16,7 @@ export const keywords: string[] = [
   "at",
   "atomic",
   "attach",
+  "audit",
   "audited",
   "backup",
   "base",

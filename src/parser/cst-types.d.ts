@@ -847,6 +847,8 @@ export type CreateViewBodyCstChildren = {
   selectStatement?: (SelectStatementCstNode)[];
   RParen?: (IToken)[];
   implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
+  With?: IToken[];
+  Audit?: IToken[];
   Owned?: IToken[];
   By?: IToken[];
   stringOrIdentifier?: StringOrIdentifierCstNode[];

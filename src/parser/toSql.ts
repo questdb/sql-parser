@@ -837,6 +837,7 @@ function createViewToSql(stmt: AST.CreateViewStatement): string {
   } else {
     parts.push(`AS ${selectToSql(stmt.query)}`)
   }
+  if (stmt.audit) parts.push("WITH AUDIT")
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
 }

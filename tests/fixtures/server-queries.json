@@ -2037,5 +2037,29 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1048",
     "feature": "ent-resource-groups",
     "toSql": "ALTER SERVICE ACCOUNT svc UNSET RESOURCE GROUP"
+  },
+  {
+    "query": "CREATE VIEW v_audit_owned AS (SELECT ts, x FROM foo) WITH AUDIT OWNED BY 'group1'",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateViewTest.java:131",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE VIEW v_audit_owned AS (SELECT ts, x FROM foo) WITH AUDIT OWNED BY group1"
+  },
+  {
+    "query": "CREATE VIEW v_owned_audit AS (SELECT ts, x FROM foo) OWNED BY 'group1' WITH AUDIT;",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateViewTest.java:87",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE VIEW v_owned_audit AS (SELECT ts, x FROM foo) WITH AUDIT OWNED BY group1"
+  },
+  {
+    "query": "CREATE OR REPLACE VIEW v_audit AS (SELECT ts, x FROM foo WHERE x > 0) WITH AUDIT",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateViewTest.java:58",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE OR REPLACE VIEW v_audit AS (SELECT ts, x FROM foo WHERE x > 0) WITH AUDIT"
+  },
+  {
+    "query": "CREATE VIEW view_c AS (SELECT ts, symbol, price FROM trades WHERE symbol = 'MSFT') WITH AUDIT",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:674",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE VIEW view_c AS (SELECT ts, symbol, price FROM trades WHERE symbol = 'MSFT') WITH AUDIT"
   }
 ]

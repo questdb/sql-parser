@@ -2013,6 +2013,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Owned && ctx.stringOrIdentifier) {
       result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
     }
+    if (ctx.Audit) {
+      result.audit = true
+    }
     return result
   }
 

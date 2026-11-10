@@ -450,6 +450,8 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Priority",
   "Resource",
   "Unset",
+  // CREATE VIEW ... WITH AUDIT (Enterprise)
+  "Audit",
   "Daily",
   "Expression",
   "Posting",
@@ -916,6 +918,7 @@ export const Now = getToken("Now")
 export const Memory = getToken("Memory")
 export const Resource = getToken("Resource")
 export const Unset = getToken("Unset")
+export const Audit = getToken("Audit")
 export const Mapping = getToken("Mapping")
 export const Priority = getToken("Priority")
 export const MemoryLimit = getToken("MemoryLimit")
