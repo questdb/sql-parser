@@ -909,8 +909,28 @@ export interface DedupClauseCstNode extends CstNode {
 }
 
 export type DedupClauseCstChildren = {
-  Dedup: IToken[];
-  Upsert: IToken[];
+  dedupKeyword: DedupKeywordCstNode[];
+  dedupModeKeys: DedupModeKeysCstNode[];
+};
+
+export interface DedupKeywordCstNode extends CstNode {
+  name: "dedupKeyword";
+  children: DedupKeywordCstChildren;
+}
+
+export type DedupKeywordCstChildren = {
+  Dedup?: IToken[];
+  Deduplicate?: IToken[];
+};
+
+export interface DedupModeKeysCstNode extends CstNode {
+  name: "dedupModeKeys";
+  children: DedupModeKeysCstChildren;
+}
+
+export type DedupModeKeysCstChildren = {
+  Upsert?: IToken[];
+  Skip?: IToken[];
   Keys: IToken[];
   LParen: IToken[];
   identifier: (IdentifierCstNode)[];
@@ -1574,7 +1594,7 @@ export type AlterTableActionCstChildren = {
   Policy?: (IToken)[];
   Rename?: IToken[];
   To?: IToken[];
-  identifier?: (IdentifierCstNode)[];
+  identifier?: IdentifierCstNode[];
   Alter?: IToken[];
   Type?: (IToken)[];
   dataType?: DataTypeCstNode[];
@@ -1601,13 +1621,10 @@ export type AlterTableActionCstChildren = {
   Wal?: (IToken)[];
   storagePolicy?: StoragePolicyCstNode[];
   tableFormatKind?: TableFormatKindCstNode[];
-  Dedup?: IToken[];
+  dedupKeyword?: DedupKeywordCstNode[];
   Disable?: (IToken)[];
   Enable?: (IToken)[];
-  Upsert?: IToken[];
-  Keys?: IToken[];
-  LParen?: IToken[];
-  RParen?: IToken[];
+  dedupModeKeys?: DedupModeKeysCstNode[];
   Suspend?: IToken[];
   With?: IToken[];
   Resume?: IToken[];
@@ -3110,6 +3127,8 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   optionalTableFormat(children: OptionalTableFormatCstChildren, param?: IN): OUT;
   batchClause(children: BatchClauseCstChildren, param?: IN): OUT;
   dedupClause(children: DedupClauseCstChildren, param?: IN): OUT;
+  dedupKeyword(children: DedupKeywordCstChildren, param?: IN): OUT;
+  dedupModeKeys(children: DedupModeKeysCstChildren, param?: IN): OUT;
   createUserStatement(children: CreateUserStatementCstChildren, param?: IN): OUT;
   createGroupStatement(children: CreateGroupStatementCstChildren, param?: IN): OUT;
   createServiceAccountStatement(children: CreateServiceAccountStatementCstChildren, param?: IN): OUT;

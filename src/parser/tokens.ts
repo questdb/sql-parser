@@ -214,6 +214,8 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Partitions",
   "PartitionBy",
   "Dedup",
+  "Deduplicate",
+  "Skip",
   "Wal",
   "Bypass",
   "Batch",
@@ -520,6 +522,7 @@ export const Database = getToken("Database")
 export const Datestyle = getToken("Datestyle")
 export const Declare = getToken("Declare")
 export const Dedup = getToken("Dedup")
+export const Deduplicate = getToken("Deduplicate")
 export const Default = getToken("Default")
 export const DefaultTransactionReadOnly = getToken("DefaultTransactionReadOnly")
 export const Deferred = getToken("Deferred")

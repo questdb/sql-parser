@@ -182,8 +182,13 @@ export interface CreateTableStatement extends AstNode {
   volume?: string
   ownedBy?: string
   dedupKeys?: string[]
+  /** DEDUP UPSERT | SKIP KEYS(...) mode; set whenever dedupKeys is */
+  dedupMode?: DedupMode
   tableFormat?: "parquet" | "native"
 }
+
+/** Deduplication mode: UPSERT replaces the existing row, SKIP keeps it */
+export type DedupMode = "upsert" | "skip"
 
 export interface TableParam extends AstNode {
   type: "tableParam"
@@ -686,6 +691,8 @@ export interface DedupDisableAction {
 export interface DedupEnableAction {
   actionType: "dedupEnable"
   keys: string[]
+  /** UPSERT | SKIP; printed as UPSERT when absent */
+  dedupMode?: DedupMode
 }
 
 export interface SetTypeWalAction {

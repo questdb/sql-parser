@@ -767,7 +767,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
 
   if (stmt.dedupKeys && stmt.dedupKeys.length > 0) {
     parts.push(
-      `DEDUP UPSERT KEYS(${stmt.dedupKeys.map(escapeIdentifier).join(", ")})`,
+      `DEDUP ${(stmt.dedupMode ?? "upsert").toUpperCase()} KEYS(${stmt.dedupKeys.map(escapeIdentifier).join(", ")})`,
     )
   }
 
@@ -1009,7 +1009,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push("DEDUP DISABLE")
       break
     case "dedupEnable":
-      parts.push("DEDUP ENABLE UPSERT KEYS")
+      parts.push(
+        `DEDUP ENABLE ${(action.dedupMode ?? "upsert").toUpperCase()} KEYS`,
+      )
       parts.push(`(${action.keys.map(escapeIdentifier).join(", ")})`)
       break
     case "setTypeWal":

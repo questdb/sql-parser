@@ -51,6 +51,7 @@ export const keywords: string[] = [
   "database",
   "declare",
   "dedup",
+  "deduplicate",
   "default",
   "deferred",
   "delay",

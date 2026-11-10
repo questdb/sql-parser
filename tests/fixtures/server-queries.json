@@ -346,5 +346,101 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByFillTest.java:2452",
     "feature": "grouping-sets",
     "toSql": "SELECT ts, sum(val) FROM x SAMPLE BY 1d GROUPING SETS (()) FILL(NULL)"
+  },
+  {
+    "query": "CREATE TABLE pt (s SYMBOL INDEX, v INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, s)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/parquet/O3ParquetStaleReaderTest.java:2806",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE pt (s SYMBOL INDEX, v INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, s)"
+  },
+  {
+    "query": "CREATE TABLE t (ts TIMESTAMP, k1 VARCHAR, k2 STRING, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k1, k2)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:1390",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE t (ts TIMESTAMP, k1 VARCHAR, k2 STRING, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k1, k2)"
+  },
+  {
+    "query": "CREATE TABLE t (ts TIMESTAMP, sym SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL DEDUP SKIP KEYS(ts, sym)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:405",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE t (ts TIMESTAMP, sym SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET DEDUP SKIP KEYS(ts, sym)"
+  },
+  {
+    "query": "CREATE TABLE c (ts TIMESTAMP, k INT, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableSetTypeRestartTest.java:711",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE c (ts TIMESTAMP, k INT, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k)"
+  },
+  {
+    "query": "CREATE TABLE x AS (\n    SELECT timestamp_sequence('2024-01-01', 1_000_000) ts, 'a'::SYMBOL sym, x v FROM long_sequence(3)\n) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, sym)\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:190",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE x AS (SELECT timestamp_sequence('2024-01-01', 1_000_000) AS ts, 'a'::SYMBOL AS sym, x AS v FROM long_sequence(3)) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, sym)"
+  },
+  {
+    "query": "create table testAddIndexOnDeduplicatedColumn (ts TIMESTAMP, x long, s symbol, i int) timestamp(ts) PARTITION BY DAY WAL DEDUPLICATE UPSERT KEYS (ts, i, s ) ",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:61",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE testAddIndexOnDeduplicatedColumn (ts TIMESTAMP, x LONG, s SYMBOL, i INT) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP UPSERT KEYS(ts, i, s)"
+  },
+  {
+    "query": "create table testDeduplicationEnabledTimestampAndSymbol (ts TIMESTAMP, x long, s symbol) timestamp(ts) PARTITION BY DAY WAL DEDUPLICATE UPSERT KEYS(ts, s)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:715",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE testDeduplicationEnabledTimestampAndSymbol (ts TIMESTAMP, x LONG, s SYMBOL) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP UPSERT KEYS(ts, s)"
+  },
+  {
+    "query": "CREATE TABLE 'foo' ( \n\tts TIMESTAMP,\n\ts SYMBOL,\n\ti INT\n) timestamp(ts) PARTITION BY DAY\nDEDUP SKIP KEYS(ts,s);\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/ShowCreateTableTest.java:110",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE foo (ts TIMESTAMP, s SYMBOL, i INT) TIMESTAMP(ts) PARTITION BY DAY DEDUP SKIP KEYS(ts, s)"
+  },
+  {
+    "query": "create table foo ( ts timestamp, s symbol, i int ) timestamp(ts) partition by day wal dedup skip keys(ts, s)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateTableTest.java:67",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE foo (ts TIMESTAMP, s SYMBOL, i INT) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, s)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP ENABLE SKIP KEYS(ts, k)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:190",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE SKIP KEYS (ts, k)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP ENABLE SKIP KEYS(ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/WalWriterTest.java:5983",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE SKIP KEYS (ts)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP SKIP KEYS(ts, sym)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:1484",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE SKIP KEYS (ts, sym)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP UPSERT KEYS(ts, sym)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:1477",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE UPSERT KEYS (ts, sym)"
+  },
+  {
+    "query": "alter table trips dedup upsert keys(Pickup_DateTime)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/ImportIODispatcherTest.java:1063",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE trips DEDUP ENABLE UPSERT KEYS (Pickup_DateTime)"
+  },
+  {
+    "query": "Alter table dups dedup upsert keys(ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:125",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE dups DEDUP ENABLE UPSERT KEYS (ts)"
+  },
+  {
+    "query": "ALTER TABLE x DEDUPLICATE SKIP KEYS(ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:149",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE x DEDUP ENABLE SKIP KEYS (ts)"
   }
 ]

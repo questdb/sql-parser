@@ -70,6 +70,8 @@ import type {
   DeclareAssignmentCstChildren,
   DeclareClauseCstChildren,
   DedupClauseCstChildren,
+  DedupKeywordCstChildren,
+  DedupModeKeysCstChildren,
   DropGroupStatementCstChildren,
   DropMaterializedViewStatementCstChildren,
   DropServiceAccountStatementCstChildren,
@@ -241,6 +243,8 @@ function tokenFloat(image: string): number {
 }
 
 type StoragePolicyKind = "toParquet" | "toRemote" | "dropLocal" | "dropRemote"
+
+type DedupModeKeys = { mode: AST.DedupMode; keys: string[] }
 
 // Get the base visitor class from the parser
 const BaseVisitor = parser.getBaseCstVisitorConstructor()
@@ -1461,7 +1465,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     if (ctx.dedupClause) {
-      result.dedupKeys = this.visit(ctx.dedupClause) as string[]
+      const dedup = this.visit(ctx.dedupClause) as DedupModeKeys
+      result.dedupKeys = dedup.keys
+      result.dedupMode = dedup.mode
     }
 
     // FORMAT { PARQUET | NATIVE } — accepted in three positions; take the
@@ -2143,10 +2149,21 @@ class QuestDBVisitor extends BaseVisitor {
     return "DAYS"
   }
 
-  dedupClause(ctx: DedupClauseCstChildren): string[] {
-    return ctx.identifier.map((id: IdentifierCstNode) =>
-      this.extractIdentifierName(id.children),
-    )
+  dedupClause(ctx: DedupClauseCstChildren): DedupModeKeys {
+    return this.visit(ctx.dedupModeKeys) as DedupModeKeys
+  }
+
+  dedupKeyword(_ctx: DedupKeywordCstChildren): void {
+    // DEDUP | DEDUPLICATE carry no value; printed as DEDUP
+  }
+
+  dedupModeKeys(ctx: DedupModeKeysCstChildren): DedupModeKeys {
+    return {
+      mode: ctx.Skip ? "skip" : "upsert",
+      keys: ctx.identifier.map((id: IdentifierCstNode) =>
+        this.extractIdentifierName(id.children),
+      ),
+    }
   }
 
   // ==========================================================================
@@ -2668,18 +2685,18 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
-    if (ctx.Dedup && ctx.Disable) {
+    if (ctx.dedupKeyword && ctx.Disable) {
       return {
         actionType: "dedupDisable",
       }
     }
 
-    if (ctx.Dedup && ctx.Enable) {
+    if (ctx.dedupKeyword && ctx.dedupModeKeys) {
+      const dedup = this.visit(ctx.dedupModeKeys) as DedupModeKeys
       return {
         actionType: "dedupEnable",
-        keys: ctx.identifier!.map((id: IdentifierCstNode) =>
-          this.extractIdentifierName(id.children),
-        ),
+        keys: dedup.keys,
+        dedupMode: dedup.mode,
       }
     }
 

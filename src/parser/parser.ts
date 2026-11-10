@@ -125,7 +125,9 @@ import {
   Nanosecond,
   Nanoseconds,
   Dedup,
+  Deduplicate,
   Upsert,
+  Skip,
   Keys,
   Add,
   Attach,
@@ -1903,12 +1905,12 @@ class QuestDBParser extends CstParser {
       ])
     })
 
-    // Optional DEDUP UPSERT KEYS
+    // Optional DEDUP | DEDUPLICATE  UPSERT | SKIP  KEYS(...)
     this.OPTION8(() => {
       this.SUBRULE(this.dedupClause)
     })
 
-    // Optional FORMAT { PARQUET | NATIVE } (after DEDUP UPSERT KEYS)
+    // Optional FORMAT { PARQUET | NATIVE } (after DEDUP UPSERT|SKIP KEYS)
     this.SUBRULE2(this.optionalTableFormat)
 
     // Optional OWNED BY
@@ -1948,9 +1950,26 @@ class QuestDBParser extends CstParser {
     })
   })
 
+  // CREATE TABLE ... (DEDUP | DEDUPLICATE) (UPSERT | SKIP) KEYS(col, ...)
   private dedupClause = this.RULE("dedupClause", () => {
-    this.CONSUME(Dedup)
-    this.CONSUME(Upsert)
+    this.SUBRULE(this.dedupKeyword)
+    this.SUBRULE(this.dedupModeKeys)
+  })
+
+  // DEDUPLICATE is a server synonym of DEDUP (SqlKeywords.isDeduplicateKeyword)
+  private dedupKeyword = this.RULE("dedupKeyword", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Dedup) },
+      { ALT: () => this.CONSUME(Deduplicate) },
+    ])
+  })
+
+  // (UPSERT | SKIP) KEYS(col, ...) — shared by CREATE TABLE and ALTER TABLE
+  private dedupModeKeys = this.RULE("dedupModeKeys", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Upsert) },
+      { ALT: () => this.CONSUME(Skip) },
+    ])
     this.CONSUME(Keys)
     this.CONSUME(LParen)
     this.SUBRULE(this.identifier)
@@ -3112,24 +3131,18 @@ class QuestDBParser extends CstParser {
           ])
         },
       },
-      // DEDUP (DISABLE | ENABLE UPSERT KEYS (...))
+      // (DEDUP | DEDUPLICATE) (DISABLE | [ENABLE] (UPSERT | SKIP) KEYS (...))
+      // ENABLE is optional on the server since v7.3
+      // (SqlCompilerImpl.alterTableDedupEnable).
       {
         ALT: () => {
-          this.CONSUME(Dedup)
+          this.SUBRULE(this.dedupKeyword)
           this.OR6([
             { ALT: () => this.CONSUME(Disable) },
             {
               ALT: () => {
-                this.CONSUME(Enable)
-                this.CONSUME(Upsert)
-                this.CONSUME(Keys)
-                this.CONSUME(LParen)
-                this.SUBRULE5(this.identifier)
-                this.MANY6(() => {
-                  this.CONSUME6(Comma)
-                  this.SUBRULE6(this.identifier)
-                })
-                this.CONSUME(RParen)
+                this.OPTION2(() => this.CONSUME(Enable))
+                this.SUBRULE(this.dedupModeKeys)
               },
             },
           ])
