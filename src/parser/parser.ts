@@ -4691,7 +4691,14 @@ class QuestDBParser extends CstParser {
     this.OPTION(() => {
       this.OR([
         { ALT: () => this.CONSUME(Equals) },
-        { ALT: () => this.CONSUME(NotEquals) },
+        {
+          // `<> ALL (...)` / `!= ALL (...)`: the server rewrites the operator
+          // to the <>all function; no other operator takes ALL.
+          ALT: () => {
+            this.CONSUME(NotEquals)
+            this.OPTION1(() => this.CONSUME(All))
+          },
+        },
         { ALT: () => this.CONSUME(Like) },
         { ALT: () => this.CONSUME(Ilike) },
         { ALT: () => this.CONSUME(RegexMatch) },
@@ -4702,7 +4709,7 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // Precedence 12: <, <=, >, >=, IS [NOT] NULL
+  // Precedence 12: <, <=, >, >=, IS [NOT] NULL|TRUE|FALSE
   private relationalExpression = this.RULE("relationalExpression", () => {
     this.SUBRULE(this.setExpression)
     this.OPTION(() => {
@@ -4722,14 +4729,18 @@ class QuestDBParser extends CstParser {
           ALT: () => {
             this.CONSUME(Is)
             this.OPTION1(() => this.CONSUME(Not))
-            this.CONSUME(Null)
+            this.OR2([
+              { ALT: () => this.CONSUME(Null) },
+              { ALT: () => this.CONSUME(True) },
+              { ALT: () => this.CONSUME(False) },
+            ])
           },
         },
       ])
     })
   })
 
-  // Precedence 11: [NOT] IN, [NOT] BETWEEN, [NOT] LIKE, [NOT] ILIKE, WITHIN
+  // Precedence 11: [NOT] IN, [NOT] BETWEEN, [NOT] LIKE, [NOT] ILIKE, [NOT] WITHIN
   private setExpression = this.RULE("setExpression", () => {
     this.SUBRULE(this.bitOrExpression)
     this.OPTION({
@@ -4779,6 +4790,7 @@ class QuestDBParser extends CstParser {
           },
           {
             ALT: () => {
+              this.OPTION3(() => this.CONSUME3(Not))
               this.CONSUME(Within)
               this.CONSUME1(LParen)
               this.SUBRULE5(this.expression)

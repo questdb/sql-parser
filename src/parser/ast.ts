@@ -1264,6 +1264,7 @@ export type Expression =
   | BetweenExpression
   | WithinExpression
   | IsNullExpression
+  | IsBooleanExpression
   | ParenExpression
   | ArrayLiteral
   | ArrayAccessExpression
@@ -1400,11 +1401,21 @@ export interface WithinExpression extends AstNode {
   type: "within"
   expression: Expression
   values: Expression[]
+  /** `NOT WITHIN` (set only when true) */
+  not?: boolean
 }
 
 export interface IsNullExpression extends AstNode {
   type: "isNull"
   expression: Expression
+  not?: boolean
+}
+
+/** `<expr> IS [NOT] TRUE|FALSE` (the server rewrites it to `= / != true|false`) */
+export interface IsBooleanExpression extends AstNode {
+  type: "isBoolean"
+  expression: Expression
+  value: boolean
   not?: boolean
 }
 

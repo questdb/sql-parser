@@ -1870,6 +1870,8 @@ function expressionToSql(expr: AST.Expression): string {
       return withinExprToSql(expr)
     case "isNull":
       return isNullExprToSql(expr)
+    case "isBoolean":
+      return `${expressionToSql(expr.expression)} IS ${expr.not ? "NOT " : ""}${expr.value ? "TRUE" : "FALSE"}`
     case "paren": {
       const inner = [expressionToSql(expr.expression)]
       if (expr.additionalExpressions) {
@@ -1914,6 +1916,8 @@ const OPERATOR_PRECEDENCE: Record<string, number> = {
   "~": 13,
   "!=": 13,
   "<>": 13,
+  "<> ALL": 13,
+  "!= ALL": 13,
   "!~": 13,
   LIKE: 13,
   ILIKE: 13,
@@ -2158,7 +2162,7 @@ function betweenExprToSql(expr: AST.BetweenExpression): string {
 function withinExprToSql(expr: AST.WithinExpression): string {
   const left = expressionToSql(expr.expression)
   const values = expr.values.map(expressionToSql).join(", ")
-  return `${left} WITHIN (${values})`
+  return `${left}${expr.not ? " NOT" : ""} WITHIN (${values})`
 }
 
 function isNullExprToSql(expr: AST.IsNullExpression): string {

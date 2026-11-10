@@ -1343,5 +1343,42 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGArraysTest.java:1014",
     "feature": "type-syntax",
     "toSql": "SELECT '{{1},{2}}'::DOUBLE PRECISION[][] AS arr FROM long_sequence(1)"
+  },
+  {
+    "query": "select * from long_sequence(1) where 'aaa' <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:34",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM long_sequence(1) WHERE 'aaa' <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:45",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{}'::TEXT[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:60",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{добрий,вечір}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:74",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{добрий,вечір}'::TEXT[])",
+    "format": "select *\nfrom tab\nwhere a <> all('{добрий,вечір}'::text[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{aaa,bbb,ccc}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:86",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{aaa,bbb,ccc}'::TEXT[])"
+  },
+  {
+    "query": "select * from long_sequence(1) where null <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:100",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM long_sequence(1) WHERE NULL <> ALL ('{abc,xyz}'::TEXT[])"
   }
 ]

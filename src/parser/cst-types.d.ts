@@ -2504,6 +2504,7 @@ export type EqualityExpressionCstChildren = {
   relationalExpression: (RelationalExpressionCstNode)[];
   Equals?: IToken[];
   NotEquals?: IToken[];
+  All?: IToken[];
   Like?: IToken[];
   Ilike?: IToken[];
   RegexMatch?: IToken[];
@@ -2525,6 +2526,8 @@ export type RelationalExpressionCstChildren = {
   Is?: IToken[];
   Not?: IToken[];
   Null?: IToken[];
+  True?: IToken[];
+  False?: IToken[];
 };
 
 export interface SetExpressionCstNode extends CstNode {

@@ -3912,8 +3912,10 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.relationalExpression && ctx.relationalExpression.length > 1) {
       let operator = ""
       if (ctx.Equals) operator = "="
-      else if (ctx.NotEquals) operator = "!="
-      else if (ctx.Like) operator = "LIKE"
+      else if (ctx.NotEquals) {
+        // `<> ALL` / `!= ALL` keeps the operator as written
+        operator = ctx.All ? `${ctx.NotEquals[0].image} ALL` : "!="
+      } else if (ctx.Like) operator = "LIKE"
       else if (ctx.Ilike) operator = "ILIKE"
       else if (ctx.RegexMatch) operator = "~"
       else if (ctx.RegexNotMatch) operator = "!~"
@@ -3932,6 +3934,16 @@ class QuestDBVisitor extends BaseVisitor {
 
   relationalExpression(ctx: RelationalExpressionCstChildren): AST.Expression {
     const left = this.visit(ctx.setExpression[0]) as AST.Expression
+
+    // Check for IS [NOT] TRUE / FALSE
+    if (ctx.Is && (ctx.True || ctx.False)) {
+      return {
+        type: "isBoolean",
+        expression: left,
+        value: !!ctx.True,
+        not: !!ctx.Not,
+      }
+    }
 
     // Check for IS [NOT] NULL
     if (ctx.Is) {
@@ -3998,13 +4010,15 @@ class QuestDBVisitor extends BaseVisitor {
 
     // Check for WITHIN
     if (ctx.Within) {
-      return {
+      const result: AST.WithinExpression = {
         type: "within",
         expression: left,
         values: ctx.expression!.map(
           (e: CstNode) => this.visit(e) as AST.Expression,
         ),
       }
+      if (ctx.Not) result.not = true
+      return result
     }
 
     // Check for NOT LIKE / NOT ILIKE
