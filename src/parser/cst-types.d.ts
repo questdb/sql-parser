@@ -42,6 +42,10 @@ export type StatementCstChildren = {
   vacuumTableStatement?: VacuumTableStatementCstNode[];
   resumeWalStatement?: ResumeWalStatementCstNode[];
   setTypeStatement?: SetTypeStatementCstNode[];
+  setStatement?: SetStatementCstNode[];
+  transactionStatement?: TransactionStatementCstNode[];
+  deallocateStatement?: DeallocateStatementCstNode[];
+  pgNoOpStatement?: PgNoOpStatementCstNode[];
   reindexTableStatement?: ReindexTableStatementCstNode[];
   refreshMaterializedViewStatement?: RefreshMaterializedViewStatementCstNode[];
   pivotStatement?: PivotStatementCstNode[];
@@ -2425,6 +2429,70 @@ export type SetTypeStatementCstChildren = {
   Wal: IToken[];
 };
 
+export interface SetStatementCstNode extends CstNode {
+  name: "setStatement";
+  children: SetStatementCstChildren;
+}
+
+export type SetStatementCstChildren = {
+  Set: IToken[];
+  identifier?: IdentifierCstNode[];
+  NumberLiteral?: IToken[];
+  LongLiteral?: IToken[];
+  FloatLiteral?: IToken[];
+  DecimalLiteral?: IToken[];
+  DurationLiteral?: IToken[];
+  Equals?: IToken[];
+  To?: IToken[];
+  Comma?: IToken[];
+  Minus?: IToken[];
+  Plus?: IToken[];
+  Dot?: IToken[];
+  On?: IToken[];
+  As?: IToken[];
+  All?: IToken[];
+  True?: IToken[];
+  False?: IToken[];
+  Null?: IToken[];
+};
+
+export interface TransactionStatementCstNode extends CstNode {
+  name: "transactionStatement";
+  children: TransactionStatementCstChildren;
+}
+
+export type TransactionStatementCstChildren = {
+  Begin?: IToken[];
+  Commit?: IToken[];
+  Rollback?: IToken[];
+  Transaction?: IToken[];
+};
+
+export interface DeallocateStatementCstNode extends CstNode {
+  name: "deallocateStatement";
+  children: DeallocateStatementCstChildren;
+}
+
+export type DeallocateStatementCstChildren = {
+  Deallocate: IToken[];
+  identifier: IdentifierCstNode[];
+};
+
+export interface PgNoOpStatementCstNode extends CstNode {
+  name: "pgNoOpStatement";
+  children: PgNoOpStatementCstChildren;
+}
+
+export type PgNoOpStatementCstChildren = {
+  Discard?: IToken[];
+  Close?: IToken[];
+  Unlisten?: IToken[];
+  Reset?: IToken[];
+  All?: IToken[];
+  Star?: IToken[];
+  identifier?: IdentifierCstNode[];
+};
+
 export interface ReindexTableStatementCstNode extends CstNode {
   name: "reindexTableStatement";
   children: ReindexTableStatementCstChildren;
@@ -3359,6 +3427,10 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   vacuumTableStatement(children: VacuumTableStatementCstChildren, param?: IN): OUT;
   resumeWalStatement(children: ResumeWalStatementCstChildren, param?: IN): OUT;
   setTypeStatement(children: SetTypeStatementCstChildren, param?: IN): OUT;
+  setStatement(children: SetStatementCstChildren, param?: IN): OUT;
+  transactionStatement(children: TransactionStatementCstChildren, param?: IN): OUT;
+  deallocateStatement(children: DeallocateStatementCstChildren, param?: IN): OUT;
+  pgNoOpStatement(children: PgNoOpStatementCstChildren, param?: IN): OUT;
   reindexTableStatement(children: ReindexTableStatementCstChildren, param?: IN): OUT;
   refreshMaterializedViewStatement(children: RefreshMaterializedViewStatementCstChildren, param?: IN): OUT;
   pivotStatement(children: PivotStatementCstChildren, param?: IN): OUT;

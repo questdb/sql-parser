@@ -54,6 +54,10 @@ export type Statement =
   | VacuumTableStatement
   | ResumeWalStatement
   | SetTypeStatement
+  | SetStatement
+  | TransactionStatement
+  | DeallocateStatement
+  | PgNoOpStatement
   | ReindexTableStatement
   | RefreshMaterializedViewStatement
   | PivotStatement
@@ -995,6 +999,33 @@ export interface SetTypeStatement extends AstNode {
   type: "setType"
   bypass?: boolean
   wal: boolean
+}
+
+/** PG-compatible `SET ...` (a no-op on the server); `args` are the raw tokens after SET */
+export interface SetStatement extends AstNode {
+  type: "set"
+  args: string[]
+}
+
+/** BEGIN | COMMIT | ROLLBACK [TRANSACTION] */
+export interface TransactionStatement extends AstNode {
+  type: "transaction"
+  action: "begin" | "commit" | "rollback"
+  transaction?: boolean
+}
+
+export interface DeallocateStatement extends AstNode {
+  type: "deallocate"
+  /** Statement name as written (quotes kept) */
+  name: string
+}
+
+/** DISCARD | CLOSE | UNLISTEN | RESET <argument> (no-ops on the server) */
+export interface PgNoOpStatement extends AstNode {
+  type: "pgNoOp"
+  keyword: "discard" | "close" | "unlisten" | "reset"
+  /** Argument as written: ALL, *, or a name */
+  argument: string
 }
 
 export interface ReindexTableStatement extends AstNode {

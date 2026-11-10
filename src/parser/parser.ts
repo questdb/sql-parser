@@ -210,6 +210,14 @@ import {
   Native,
   Error,
   Abort,
+  Begin,
+  Close,
+  Commit,
+  Deallocate,
+  Discard,
+  Reset,
+  Rollback,
+  Unlisten,
   StatisticsEnabled,
   Stats,
   Primary,
@@ -670,7 +678,16 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.revokeStatement) },
       { ALT: () => this.SUBRULE(this.vacuumTableStatement) },
       { ALT: () => this.SUBRULE(this.resumeWalStatement) },
-      { ALT: () => this.SUBRULE(this.setTypeStatement) },
+      {
+        GATE: () =>
+          this.LA(2).tokenType === Type &&
+          (this.LA(3).tokenType === Bypass || this.LA(3).tokenType === Wal),
+        ALT: () => this.SUBRULE(this.setTypeStatement),
+      },
+      { ALT: () => this.SUBRULE(this.setStatement) },
+      { ALT: () => this.SUBRULE(this.transactionStatement) },
+      { ALT: () => this.SUBRULE(this.deallocateStatement) },
+      { ALT: () => this.SUBRULE(this.pgNoOpStatement) },
       { ALT: () => this.SUBRULE(this.reindexTableStatement) },
       { ALT: () => this.SUBRULE(this.refreshMaterializedViewStatement) },
       {
@@ -4787,6 +4804,66 @@ class QuestDBParser extends CstParser {
     this.CONSUME(Type)
     this.OPTION(() => this.CONSUME(Bypass))
     this.CONSUME(Wal)
+  })
+
+  // PG compatibility no-ops (SqlCompilerImpl.compileSet / compileBegin /
+  // compileCommit / compileRollback / compileDeallocate / compileNoOp).
+  // SET [SESSION | LOCAL] name {= | TO} value [, ...] or any other tokens up
+  // to `;` (SET TIME ZONE 'UTC'); accepted loosely as a run of plain tokens.
+  private setStatement = this.RULE("setStatement", () => {
+    this.CONSUME(Set)
+    this.AT_LEAST_ONE(() => {
+      this.OR([
+        { ALT: () => this.SUBRULE(this.identifier) },
+        { ALT: () => this.CONSUME(NumberLiteral) },
+        { ALT: () => this.CONSUME(LongLiteral) },
+        { ALT: () => this.CONSUME(FloatLiteral) },
+        { ALT: () => this.CONSUME(DecimalLiteral) },
+        { ALT: () => this.CONSUME(DurationLiteral) },
+        { ALT: () => this.CONSUME(Equals) },
+        { ALT: () => this.CONSUME(To) },
+        { ALT: () => this.CONSUME(Comma) },
+        { ALT: () => this.CONSUME(Minus) },
+        { ALT: () => this.CONSUME(Plus) },
+        { ALT: () => this.CONSUME(Dot) },
+        { ALT: () => this.CONSUME(On) },
+        { ALT: () => this.CONSUME(As) },
+        { ALT: () => this.CONSUME(All) },
+        { ALT: () => this.CONSUME(True) },
+        { ALT: () => this.CONSUME(False) },
+        { ALT: () => this.CONSUME(Null) },
+      ])
+    })
+  })
+
+  // BEGIN | COMMIT | ROLLBACK [TRANSACTION]
+  private transactionStatement = this.RULE("transactionStatement", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Begin) },
+      { ALT: () => this.CONSUME(Commit) },
+      { ALT: () => this.CONSUME(Rollback) },
+    ])
+    this.OPTION(() => this.CONSUME(Transaction))
+  })
+
+  private deallocateStatement = this.RULE("deallocateStatement", () => {
+    this.CONSUME(Deallocate)
+    this.SUBRULE(this.identifier)
+  })
+
+  // DISCARD | CLOSE | UNLISTEN | RESET <one token>, e.g. ALL, *, a name
+  private pgNoOpStatement = this.RULE("pgNoOpStatement", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Discard) },
+      { ALT: () => this.CONSUME(Close) },
+      { ALT: () => this.CONSUME(Unlisten) },
+      { ALT: () => this.CONSUME(Reset) },
+    ])
+    this.OR1([
+      { ALT: () => this.CONSUME(All) },
+      { ALT: () => this.CONSUME(Star) },
+      { ALT: () => this.SUBRULE(this.identifier) },
+    ])
   })
 
   private reindexTableStatement = this.RULE("reindexTableStatement", () => {

@@ -164,6 +164,10 @@ import type {
   SetExpressionCstChildren,
   SetOperationCstChildren,
   SetTypeStatementCstChildren,
+  SetStatementCstChildren,
+  TransactionStatementCstChildren,
+  DeallocateStatementCstChildren,
+  PgNoOpStatementCstChildren,
   ShowCreateDatabaseCategoryCstChildren,
   ShowStatementCstChildren,
   SimpleSelectCstChildren,
@@ -399,6 +403,18 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.setTypeStatement) {
       return this.visit(ctx.setTypeStatement) as AST.SetTypeStatement
+    }
+    if (ctx.setStatement) {
+      return this.visit(ctx.setStatement) as AST.SetStatement
+    }
+    if (ctx.transactionStatement) {
+      return this.visit(ctx.transactionStatement) as AST.TransactionStatement
+    }
+    if (ctx.deallocateStatement) {
+      return this.visit(ctx.deallocateStatement) as AST.DeallocateStatement
+    }
+    if (ctx.pgNoOpStatement) {
+      return this.visit(ctx.pgNoOpStatement) as AST.PgNoOpStatement
     }
     if (ctx.reindexTableStatement) {
       return this.visit(ctx.reindexTableStatement) as AST.ReindexTableStatement
@@ -3888,6 +3904,68 @@ class QuestDBVisitor extends BaseVisitor {
       bypass: !!ctx.Bypass,
       wal: !!ctx.Wal,
     }
+  }
+
+  setStatement(ctx: SetStatementCstChildren): AST.SetStatement {
+    const tokens: IToken[] = []
+    const collect = (children: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(children)) {
+        if (key === "Set") continue
+        for (const el of value as (IToken | CstNode)[]) {
+          if ("image" in el) tokens.push(el)
+          else collect(el.children)
+        }
+      }
+    }
+    collect(ctx as unknown as Record<string, unknown>)
+    tokens.sort((a, b) => a.startOffset - b.startOffset)
+    return { type: "set", args: tokens.map((t) => t.image) }
+  }
+
+  transactionStatement(
+    ctx: TransactionStatementCstChildren,
+  ): AST.TransactionStatement {
+    const result: AST.TransactionStatement = {
+      type: "transaction",
+      action: ctx.Begin ? "begin" : ctx.Commit ? "commit" : "rollback",
+    }
+    if (ctx.Transaction) result.transaction = true
+    return result
+  }
+
+  deallocateStatement(
+    ctx: DeallocateStatementCstChildren,
+  ): AST.DeallocateStatement {
+    const id = ctx.identifier[0].children
+    const token = [
+      ...(id.Identifier ?? []),
+      ...(id.QuotedIdentifier ?? []),
+      ...(id.StringLiteral ?? []),
+      ...(id.IdentifierKeyword ?? []),
+    ][0]
+    return { type: "deallocate", name: token.image }
+  }
+
+  pgNoOpStatement(ctx: PgNoOpStatementCstChildren): AST.PgNoOpStatement {
+    const keyword = ctx.Discard
+      ? "discard"
+      : ctx.Close
+        ? "close"
+        : ctx.Unlisten
+          ? "unlisten"
+          : "reset"
+    let argument = "ALL"
+    if (ctx.Star) argument = "*"
+    else if (ctx.identifier) {
+      const id = ctx.identifier[0].children
+      argument = [
+        ...(id.Identifier ?? []),
+        ...(id.QuotedIdentifier ?? []),
+        ...(id.StringLiteral ?? []),
+        ...(id.IdentifierKeyword ?? []),
+      ][0].image
+    }
+    return { type: "pgNoOp", keyword, argument }
   }
 
   reindexTableStatement(

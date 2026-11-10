@@ -432,6 +432,16 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   // reserved on the server.
   "At",
   "Precision",
+  // PG session statements (BEGIN/COMMIT/ROLLBACK, DEALLOCATE, DISCARD/CLOSE/
+  // UNLISTEN/RESET): statement-start words on the server, not reserved.
+  "Begin",
+  "Close",
+  "Commit",
+  "Deallocate",
+  "Discard",
+  "Reset",
+  "Rollback",
+  "Unlisten",
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
@@ -480,6 +490,14 @@ function getToken(name: string): TokenType {
 
 // Keywords (from grammar/keywords.ts)
 export const Abort = getToken("Abort")
+export const Begin = getToken("Begin")
+export const Close = getToken("Close")
+export const Commit = getToken("Commit")
+export const Deallocate = getToken("Deallocate")
+export const Discard = getToken("Discard")
+export const Reset = getToken("Reset")
+export const Rollback = getToken("Rollback")
+export const Unlisten = getToken("Unlisten")
 export const Account = getToken("Account")
 export const Accounts = getToken("Accounts")
 export const Add = getToken("Add")

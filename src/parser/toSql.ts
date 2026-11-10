@@ -125,6 +125,16 @@ function statementToSql(stmt: AST.Statement): string {
       return resumeWalToSql(stmt)
     case "setType":
       return setTypeToSql(stmt)
+    case "set":
+      return ["SET", ...stmt.args].join(" ").replace(/ ,/g, ",")
+    case "transaction":
+      return (
+        stmt.action.toUpperCase() + (stmt.transaction ? " TRANSACTION" : "")
+      )
+    case "deallocate":
+      return `DEALLOCATE ${stmt.name}`
+    case "pgNoOp":
+      return `${stmt.keyword.toUpperCase()} ${stmt.argument}`
     case "reindexTable":
       return reindexTableToSql(stmt)
     case "copyCancel":

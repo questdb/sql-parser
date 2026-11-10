@@ -1819,5 +1819,61 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexParquetNativeRoundTripTest.java:273",
     "feature": "convert-partition",
     "toSql": "ALTER TABLE t_cov CONVERT PARTITION TO PARQUET LIST '2024-01-01', '2024-01-02'"
+  },
+  {
+    "query": "BEGIN TRANSACTION",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:3241",
+    "feature": "pg-session-statements",
+    "toSql": "BEGIN TRANSACTION"
+  },
+  {
+    "query": "COMMIT TRANSACTION;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:125",
+    "feature": "pg-session-statements",
+    "toSql": "COMMIT TRANSACTION"
+  },
+  {
+    "query": "BEGIN; select 2",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:324",
+    "feature": "pg-session-statements",
+    "toSql": "BEGIN;\nSELECT 2",
+    "statements": 2
+  },
+  {
+    "query": "DEALLOCATE qwp_stmt",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressDdlExecTest.java:296",
+    "feature": "pg-session-statements",
+    "toSql": "DEALLOCATE qwp_stmt"
+  },
+  {
+    "query": "SET TIME ZONE 'UTC'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:3357",
+    "feature": "pg-session-statements",
+    "toSql": "SET TIME ZONE 'UTC'"
+  },
+  {
+    "query": "SET x TO y, z",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:3330",
+    "feature": "pg-session-statements",
+    "toSql": "SET x TO y, z"
+  },
+  {
+    "query": "SET application_name = 'qwp'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressDdlExecTest.java:291",
+    "feature": "pg-session-statements",
+    "toSql": "SET application_name = 'qwp'"
+  },
+  {
+    "query": "DISCARD ALL",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:860",
+    "feature": "pg-session-statements",
+    "toSql": "DISCARD ALL"
+  },
+  {
+    "query": "CLOSE ALL;UNLISTEN *;RESET ALL;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:103",
+    "feature": "pg-session-statements",
+    "toSql": "CLOSE ALL;\nUNLISTEN *;\nRESET ALL",
+    "statements": 3
   }
 ]

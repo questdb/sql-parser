@@ -1043,6 +1043,10 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       (s.nextTokenType.name === "Precision" &&
         (s.ruleStack.includes("alterTableAction") ||
           s.ruleStack[s.ruleStack.length - 1] === "columnNullModifier")) ||
+      // SET <name> ... takes free-form tokens; only offer TO after the name
+      (s.ruleStack[s.ruleStack.length - 1] === "setStatement" &&
+        (s.nextTokenType.name !== "To" ||
+          tokens[tokens.length - 1]?.tokenType.name === "Set")) ||
       // INCREMENTAL is an obsolete synonym of IMMEDIATE in REFRESH modes
       (s.nextTokenType.name === "Incremental" &&
         s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh")
