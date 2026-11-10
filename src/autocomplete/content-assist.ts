@@ -1047,6 +1047,10 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       (s.ruleStack[s.ruleStack.length - 1] === "setStatement" &&
         (s.nextTokenType.name !== "To" ||
           tokens[tokens.length - 1]?.tokenType.name === "Set")) ||
+      // ARRAY[...] literals: not offered at every expression start (it was an
+      // identifier before); ARRAY stays suggested as a type name
+      (s.nextTokenType.name === "Array" &&
+        s.ruleStack[s.ruleStack.length - 1] === "arrayLiteral") ||
       // INCREMENTAL is an obsolete synonym of IMMEDIATE in REFRESH modes
       (s.nextTokenType.name === "Incremental" &&
         s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh")

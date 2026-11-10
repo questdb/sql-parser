@@ -1213,6 +1213,7 @@ export type ParquetEncodingCstChildren = {
   RleDictionary?: IToken[];
   DeltaBinaryPacked?: IToken[];
   DeltaLengthByteArray?: IToken[];
+  ByteStreamSplit?: IToken[];
   Default?: IToken[];
 };
 
@@ -1228,6 +1229,7 @@ export type ParquetCompressionCstChildren = {
   Brotli?: IToken[];
   Zstd?: IToken[];
   Lz4Raw?: IToken[];
+  Default?: IToken[];
 };
 
 export interface OptionalStoragePolicyCstNode extends CstNode {
@@ -1325,6 +1327,8 @@ export type IndexTypeOptionsCstChildren = {
   Posting?: IToken[];
   Delta?: IToken[];
   Ef?: IToken[];
+  PostingDelta?: IToken[];
+  PostingEf?: IToken[];
   Bitmap?: IToken[];
   None?: IToken[];
   Include?: IToken[];
@@ -2077,6 +2081,7 @@ export type ExplainStatementCstChildren = {
   LParen?: IToken[];
   Format?: IToken[];
   Identifier?: IToken[];
+  Text?: IToken[];
   RParen?: IToken[];
   statement: StatementCstNode[];
 };
@@ -2188,6 +2193,7 @@ export type CopyOptionCstChildren = {
   Lz4Raw?: IToken[];
   Brotli?: IToken[];
   Lzo?: IToken[];
+  Default?: IToken[];
   CompressionLevel?: IToken[];
   expression?: (ExpressionCstNode)[];
   RowGroupSize?: IToken[];
@@ -2850,7 +2856,7 @@ export interface ArrayLiteralCstNode extends CstNode {
 }
 
 export type ArrayLiteralCstChildren = {
-  Identifier: IToken[];
+  Array: IToken[];
   arrayBracketBody: ArrayBracketBodyCstNode[];
 };
 
@@ -2960,6 +2966,14 @@ export type DataTypeCstChildren = {
   Comma?: IToken[];
   Interval?: IToken[];
   TimestampNs?: IToken[];
+  Text?: IToken[];
+  Smallint?: IToken[];
+  Bigint?: IToken[];
+  Real?: IToken[];
+  Bytea?: IToken[];
+  Regclass?: IToken[];
+  Regprocedure?: IToken[];
+  Array?: IToken[];
   Identifier?: IToken[];
   LBracket?: IToken[];
   RBracket?: IToken[];

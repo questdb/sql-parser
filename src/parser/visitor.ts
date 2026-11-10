@@ -1908,6 +1908,10 @@ class QuestDBVisitor extends BaseVisitor {
           : ctx.Ef
             ? "posting_ef"
             : "posting"
+      } else if (ctx.PostingDelta) {
+        r.indexType = "posting_delta"
+      } else if (ctx.PostingEf) {
+        r.indexType = "posting_ef"
       } else if (ctx.Bitmap) {
         r.indexType = "bitmap"
       } else if (ctx.None) {
@@ -3447,8 +3451,9 @@ class QuestDBVisitor extends BaseVisitor {
       type: "explain",
       statement: this.visit(ctx.statement) as AST.Statement,
     }
-    if (ctx.Format && ctx.Identifier) {
-      result.format = ctx.Identifier[0].image.toUpperCase()
+    const formatToken = ctx.Identifier?.[0] ?? ctx.Text?.[0]
+    if (ctx.Format && formatToken) {
+      result.format = formatToken.image.toUpperCase()
     }
     return result
   }
@@ -3599,7 +3604,8 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.Zstd ||
       ctx.Lz4Raw ||
       ctx.Brotli ||
-      ctx.Lzo
+      ctx.Lzo ||
+      ctx.Default
     ) {
       const codecToken =
         ctx.Uncompressed?.[0] ??
@@ -3609,7 +3615,8 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.Zstd?.[0] ??
         ctx.Lz4Raw?.[0] ??
         ctx.Brotli?.[0] ??
-        ctx.Lzo?.[0]
+        ctx.Lzo?.[0] ??
+        ctx.Default?.[0]
       result.value = codecToken?.image
     } else if (ctx.partitionPeriod && (ctx.Partition || ctx.PartitionBy)) {
       result.value = this.visit(ctx.partitionPeriod) as

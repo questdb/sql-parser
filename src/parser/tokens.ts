@@ -411,8 +411,20 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Daily",
   "Expression",
   "Posting",
+  "PostingDelta",
+  "PostingEf",
   "Delta",
   "Ef",
+  "ByteStreamSplit",
+  // PG type aliases (ColumnType.nameTypeMap); not reserved on the server
+  "Array",
+  "Bigint",
+  "Bytea",
+  "Real",
+  "Regclass",
+  "Regprocedure",
+  "Smallint",
+  "Text",
   "Bitmap",
   "Schema",
   "Acl",
@@ -786,6 +798,14 @@ export const Timestamp = getToken("Timestamp")
 export const TimestampNs = getToken("TimestampNs")
 export const Uuid = getToken("Uuid")
 export const Varchar = getToken("Varchar")
+export const ArrayType = getToken("Array")
+export const Bigint = getToken("Bigint")
+export const Bytea = getToken("Bytea")
+export const Real = getToken("Real")
+export const Regclass = getToken("Regclass")
+export const Regprocedure = getToken("Regprocedure")
+export const Smallint = getToken("Smallint")
+export const Text = getToken("Text")
 
 // Constants (from grammar/constants.ts)
 export const True = getToken("True")
@@ -854,6 +874,9 @@ export const Memory = getToken("Memory")
 export const Daily = getToken("Daily")
 export const Expression = getToken("Expression")
 export const Posting = getToken("Posting")
+export const ByteStreamSplit = getToken("ByteStreamSplit")
+export const PostingDelta = getToken("PostingDelta")
+export const PostingEf = getToken("PostingEf")
 export const Delta = getToken("Delta")
 export const Ef = getToken("Ef")
 export const Bitmap = getToken("Bitmap")

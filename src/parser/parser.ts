@@ -243,6 +243,17 @@ import {
   Daily,
   Expression,
   Posting,
+  ByteStreamSplit,
+  PostingDelta,
+  PostingEf,
+  ArrayType,
+  Bigint,
+  Bytea,
+  Real,
+  Regclass,
+  Regprocedure,
+  Smallint,
+  Text,
   Delta,
   Ef,
   Bitmap,
@@ -423,13 +434,11 @@ const TYPED_LITERAL_TYPE_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
   Ipv4,
   Varchar,
   Decimal,
-])
-const TYPED_LITERAL_TYPE_ALIASES: ReadonlySet<string> = new globalThis.Set([
-  "text",
-  "smallint",
-  "bigint",
-  "real",
-  "bytea",
+  Text,
+  Smallint,
+  Bigint,
+  Real,
+  Bytea,
 ])
 
 class QuestDBParser extends CstParser {
@@ -2712,6 +2721,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(RleDictionary) },
       { ALT: () => this.CONSUME(DeltaBinaryPacked) },
       { ALT: () => this.CONSUME(DeltaLengthByteArray) },
+      { ALT: () => this.CONSUME(ByteStreamSplit) },
       { ALT: () => this.CONSUME(Default) },
     ])
   })
@@ -2724,6 +2734,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Brotli) },
       { ALT: () => this.CONSUME(Zstd) },
       { ALT: () => this.CONSUME(Lz4Raw) },
+      { ALT: () => this.CONSUME(Default) },
     ])
   })
 
@@ -2852,6 +2863,9 @@ class QuestDBParser extends CstParser {
             )
           },
         },
+        // IndexType.valueOf also takes POSTING_DELTA / POSTING_EF
+        { ALT: () => this.CONSUME(PostingDelta) },
+        { ALT: () => this.CONSUME(PostingEf) },
         { ALT: () => this.CONSUME(Bitmap) },
         { ALT: () => this.CONSUME(None) },
       ])
@@ -4249,7 +4263,8 @@ class QuestDBParser extends CstParser {
       this.CONSUME(LParen)
       this.CONSUME(Format)
       this.OR1([
-        { ALT: () => this.CONSUME(Identifier) }, // TEXT or JSON
+        { ALT: () => this.CONSUME(Identifier) }, // JSON
+        { ALT: () => this.CONSUME(Text) },
       ])
       this.CONSUME(RParen)
     })
@@ -4408,6 +4423,7 @@ class QuestDBParser extends CstParser {
             { ALT: () => this.CONSUME(Lz4Raw) },
             { ALT: () => this.CONSUME(Brotli) },
             { ALT: () => this.CONSUME(Lzo) },
+            { ALT: () => this.CONSUME(Default) },
             // expectLiteral unquotes: compression_codec 'zstd'
             { ALT: () => this.CONSUME2(StringLiteral) },
           ])
@@ -5398,15 +5414,10 @@ class QuestDBParser extends CstParser {
       },
       {
         // ARRAY[...] literal — must come before functionCall/columnRef
-        // since ARRAY is tokenized as Identifier
-        GATE: () => {
-          const la1 = this.LA(1)
-          return (
-            la1.tokenType === Identifier &&
-            la1.image.toUpperCase() === "ARRAY" &&
-            this.LA(2).tokenType === LBracket
-          )
-        },
+        // since ARRAY is a non-reserved keyword (usable as a name)
+        GATE: () =>
+          this.LA(1).tokenType === ArrayType &&
+          this.LA(2).tokenType === LBracket,
         ALT: () => this.SUBRULE(this.arrayLiteral),
       },
       {
@@ -5464,7 +5475,7 @@ class QuestDBParser extends CstParser {
 
   // ARRAY[...] literal: ARRAY[expr, expr, ...] or ARRAY[[...], [...], ...]
   private arrayLiteral = this.RULE("arrayLiteral", () => {
-    this.CONSUME(Identifier) // 'ARRAY'
+    this.CONSUME(ArrayType)
     this.SUBRULE(this.arrayBracketBody)
   })
 
@@ -5607,6 +5618,15 @@ class QuestDBParser extends CstParser {
       },
       { ALT: () => this.CONSUME(Interval) },
       { ALT: () => this.CONSUME(TimestampNs) },
+      // PG aliases (ColumnType.nameTypeMap)
+      { ALT: () => this.CONSUME(Text) },
+      { ALT: () => this.CONSUME(Smallint) },
+      { ALT: () => this.CONSUME(Bigint) },
+      { ALT: () => this.CONSUME(Real) },
+      { ALT: () => this.CONSUME(Bytea) },
+      { ALT: () => this.CONSUME(Regclass) },
+      { ALT: () => this.CONSUME(Regprocedure) },
+      { ALT: () => this.CONSUME(ArrayType) },
       { ALT: () => this.CONSUME(Identifier) }, // For custom types
     ])
     // Optional array dimensions: DOUBLE[], DOUBLE[][]
@@ -5718,10 +5738,7 @@ class QuestDBParser extends CstParser {
       input: IToken[]
     }
     if (internals.input[internals.currIdx] !== first) return false
-    const isType =
-      TYPED_LITERAL_TYPE_TOKENS.has(first.tokenType) ||
-      (first.tokenType === Identifier &&
-        TYPED_LITERAL_TYPE_ALIASES.has(first.image.toLowerCase()))
+    const isType = TYPED_LITERAL_TYPE_TOKENS.has(first.tokenType)
     const next = this.LA(1).tokenType
     return isType && (next === StringLiteral || next === EscapeStringLiteral)
   }

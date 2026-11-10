@@ -1911,5 +1911,29 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/VacuumTablePartitionTest.java:43",
     "feature": "misc-statements",
     "toSql": "VACUUM TABLE таблица"
+  },
+  {
+    "query": "ALTER TABLE x ALTER COLUMN e SET PARQUET(BYTE_STREAM_SPLIT)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAlterColumnTest.java:881",
+    "feature": "option-names",
+    "toSql": "ALTER TABLE x ALTER COLUMN e SET PARQUET(byte_stream_split)"
+  },
+  {
+    "query": "SELECT count() c FROM j WHERE json_extract(text,'$.a')::real = 0.1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/json/JsonExtractCastScenariosTest.java:393",
+    "feature": "option-names",
+    "toSql": "SELECT count() AS c FROM j WHERE json_extract(text, '$.a')::REAL = 0.1"
+  },
+  {
+    "query": "select cast(a as string)::regclass b, a from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastTest.java:5588",
+    "feature": "option-names",
+    "toSql": "SELECT CAST(a AS STRING)::REGCLASS AS b, a FROM tab"
+  },
+  {
+    "query": "select * from tab where a <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:60",
+    "feature": "option-names",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{abc,xyz}'::TEXT[])"
   }
 ]
