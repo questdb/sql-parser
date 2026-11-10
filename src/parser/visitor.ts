@@ -97,6 +97,10 @@ import type {
   GrantStatementCstChildren,
   GrantTableTargetCstChildren,
   GroupByClauseCstChildren,
+  GroupingSetCstChildren,
+  GroupingSetsSpecCstChildren,
+  ExplicitGroupingSetsCstChildren,
+  RollupOrCubeSpecCstChildren,
   IdentifierCstChildren,
   IdentifierCstNode,
   IdentifierExpressionCstChildren,
@@ -212,6 +216,10 @@ type ConvertPartitionTargetResult = {
   target: string
   where?: AST.Expression
   withParams?: AST.TableParam[]
+}
+type GroupByClauseResult = {
+  groupBy?: AST.Expression[]
+  groupingSets?: AST.GroupingSets
 }
 type PivotBodyResult = {
   aggregations: AST.PivotAggregation[]
@@ -477,7 +485,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     if (ctx.groupByClause) {
-      result.groupBy = this.visit(ctx.groupByClause) as AST.Expression[]
+      const groupBy = this.visit(ctx.groupByClause) as GroupByClauseResult
+      if (groupBy.groupBy) result.groupBy = groupBy.groupBy
+      if (groupBy.groupingSets) result.groupingSets = groupBy.groupingSets
     }
 
     if (ctx.pivotBody) {
@@ -702,7 +712,11 @@ class QuestDBVisitor extends BaseVisitor {
       result.latestOn = this.visitSafe(ctx.latestOnClause) as AST.LatestOnClause
     }
     if (ctx.groupByClause) {
-      result.groupBy = this.visitSafe(ctx.groupByClause) as AST.Expression[]
+      const groupBy = this.visitSafe(ctx.groupByClause) as
+        | GroupByClauseResult
+        | undefined
+      if (groupBy?.groupBy) result.groupBy = groupBy.groupBy
+      if (groupBy?.groupingSets) result.groupingSets = groupBy.groupingSets
     }
     if (ctx.subsampleClause) {
       result.subsample = this.visitSafe(
@@ -1000,6 +1014,9 @@ class QuestDBVisitor extends BaseVisitor {
           ? this.tokenImage(ctx.VariableReference[0])
           : this.tokenImage(ctx.Identifier![0]),
     }
+    if (ctx.groupingSetsSpec) {
+      result.groupingSets = this.visit(ctx.groupingSetsSpec) as AST.GroupingSets
+    }
     if (ctx.fillClause) {
       result.fill = this.visit(ctx.fillClause) as string[]
     }
@@ -1092,8 +1109,55 @@ class QuestDBVisitor extends BaseVisitor {
   // GROUP BY, HAVING, ORDER BY, LIMIT
   // ==========================================================================
 
-  groupByClause(ctx: GroupByClauseCstChildren): AST.Expression[] {
-    return ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression)
+  groupByClause(ctx: GroupByClauseCstChildren): GroupByClauseResult {
+    const result: GroupByClauseResult = {}
+    if (!ctx.expression && !ctx.groupingSetsSpec) {
+      // Only reachable from error recovery (`GROUP BY;`): no key at all.
+      throw new Error("GROUP BY key expected")
+    }
+    if (ctx.expression) {
+      result.groupBy = ctx.expression.map(
+        (e: CstNode) => this.visit(e) as AST.Expression,
+      )
+    }
+    if (ctx.groupingSetsSpec) {
+      result.groupingSets = this.visit(ctx.groupingSetsSpec) as AST.GroupingSets
+    } else if (ctx.rollupOrCubeSpec) {
+      result.groupingSets = this.visit(ctx.rollupOrCubeSpec) as AST.GroupingSets
+    }
+    return result
+  }
+
+  groupingSetsSpec(ctx: GroupingSetsSpecCstChildren): AST.GroupingSets {
+    return this.visit(
+      (ctx.rollupOrCubeSpec ?? ctx.explicitGroupingSets)!,
+    ) as AST.GroupingSets
+  }
+
+  rollupOrCubeSpec(ctx: RollupOrCubeSpecCstChildren): AST.GroupingSets {
+    return {
+      type: "groupingSets",
+      kind: ctx.Cube ? "cube" : "rollup",
+      columns: ctx.columnRef.map(
+        (c: CstNode) => this.visit(c) as AST.ColumnRef,
+      ),
+    }
+  }
+
+  explicitGroupingSets(ctx: ExplicitGroupingSetsCstChildren): AST.GroupingSets {
+    return {
+      type: "groupingSets",
+      kind: "groupingSets",
+      sets: ctx.groupingSet.map(
+        (g: CstNode) => this.visit(g) as AST.ColumnRef[],
+      ),
+    }
+  }
+
+  groupingSet(ctx: GroupingSetCstChildren): AST.ColumnRef[] {
+    return (ctx.columnRef ?? []).map(
+      (c: CstNode) => this.visit(c) as AST.ColumnRef,
+    )
   }
 
   orderByClause(ctx: OrderByClauseCstChildren): AST.OrderByItem[] {

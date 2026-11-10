@@ -178,5 +178,173 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGJobContextTest.java:8217",
     "feature": "literal-escape-string",
     "toSql": "SELECT * FROM (SELECT n.nspname, c.relname, a.attname, a.atttypid, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull) AS attnotnull, a.atttypmod, a.attlen, t.typtypmod, row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS attnum, nullif(a.attidentity, '') AS attidentity, NULL AS attgenerated, pg_catalog.pg_get_expr(def.adbin, def.adrelid) AS adsrc, dsc.description, t.typbasetype, t.typtype FROM pg_catalog.pg_namespace AS n JOIN pg_catalog.pg_class AS c ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute AS a ON (a.attrelid = c.oid) JOIN pg_catalog.pg_type AS t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef AS def ON (a.attrelid = def.adrelid AND a.attnum = def.adnum) LEFT JOIN pg_catalog.pg_description AS dsc ON (c.oid = dsc.objoid AND a.attnum = dsc.objsubid) LEFT JOIN pg_catalog.pg_class AS dc ON (dc.oid = dsc.classoid AND dc.relname = 'pg_class') LEFT JOIN pg_catalog.pg_namespace AS dn ON (dc.relnamespace = dn.oid AND dn.nspname = 'pg_catalog') WHERE c.relkind IN ('r', 'p', 'v', 'f', 'm') AND a.attnum > 0 AND NOT a.attisdropped AND c.relname LIKE E'test') AS c WHERE TRUE ORDER BY nspname, c.relname, attnum"
+  },
+  {
+    "query": "SELECT a, b, grouping_id(a, b) g, sum(v) FROM t GROUP BY CUBE(a, b)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:72",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, b, grouping_id(a, b) AS g, sum(v) FROM t GROUP BY CUBE(a, b)"
+  },
+  {
+    "query": "SELECT trim(s) k, a, sum(v) sv FROM t WHERE v > 10 GROUP BY k, ROLLUP(a)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:73",
+    "feature": "grouping-sets",
+    "toSql": "SELECT trim(s) AS k, a, sum(v) AS sv FROM t WHERE v > 10 GROUP BY k, ROLLUP(a)"
+  },
+  {
+    "query": "SELECT a, b, GROUPING_ID(a, b) AS gid, SUM(v) FROM t GROUP BY GROUPING SETS ((a, b), (a), ()) ORDER BY gid, a, b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:128",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, b, GROUPING_ID(a, b) AS gid, SUM(v) FROM t GROUP BY GROUPING SETS ((a, b), (a), ()) ORDER BY gid, a, b"
+  },
+  {
+    "query": "SELECT trim(s) k, b, GROUPING(b) g, SUM(v) s FROM t GROUP BY trim(s), ROLLUP(b) ORDER BY k, g",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:166",
+    "feature": "grouping-sets",
+    "toSql": "SELECT trim(s) AS k, b, GROUPING(b) AS g, SUM(v) AS s FROM t GROUP BY trim(s), ROLLUP(b) ORDER BY k, g"
+  },
+  {
+    "query": "SELECT x, SUM(y) FROM t GROUP BY cube(x) ORDER BY x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:427",
+    "feature": "grouping-sets",
+    "toSql": "SELECT x, SUM(y) FROM t GROUP BY CUBE(x) ORDER BY x"
+  },
+  {
+    "query": "SELECT * FROM (SELECT a,b,SUM(v) s FROM t GROUP BY CUBE(a,b)) WHERE a=1 ORDER BY a,b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:439",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM (SELECT a, b, SUM(v) AS s FROM t GROUP BY CUBE(a, b)) WHERE a = 1 ORDER BY a, b"
+  },
+  {
+    "query": "SELECT * FROM t2 JOIN t3 ON t2.a = t3.b GROUP BY ROLLUP(a, b) ORDER BY a, b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:649",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM t2 JOIN t3 ON t2.a = t3.b GROUP BY ROLLUP(a, b) ORDER BY a, b"
+  },
+  {
+    "query": "SELECT 1 AS x FROM t GROUP BY GROUPING SETS (())",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:683",
+    "feature": "grouping-sets",
+    "toSql": "SELECT 1 AS x FROM t GROUP BY GROUPING SETS (())"
+  },
+  {
+    "query": "SELECT * FROM (t GROUP BY GROUPING SETS (()))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:829",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM (t GROUP BY GROUPING SETS (()))"
+  },
+  {
+    "query": "SELECT t.b AS w, GROUPING(w) g, count() n FROM t JOIN u ON t.a = u.a GROUP BY ROLLUP(t.b, w) ORDER BY w, g",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:989",
+    "feature": "grouping-sets",
+    "toSql": "SELECT t.b AS w, GROUPING(w) AS g, count() AS n FROM t JOIN u ON t.a = u.a GROUP BY ROLLUP(t.b, w) ORDER BY w, g"
+  },
+  {
+    "query": "SELECT a + 1 AS k, b, GROUPING(k) gk, GROUPING(b) gb, sum(v) s FROM t GROUP BY a + 1, ROLLUP(b) ORDER BY k, b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:1012",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a + 1 AS k, b, GROUPING(k) AS gk, GROUPING(b) AS gb, sum(v) AS s FROM t GROUP BY a + 1, ROLLUP(b) ORDER BY k, b"
+  },
+  {
+    "query": "SELECT a, CASE WHEN GROUPING(a) = 1 THEN 'total' ELSE 'row' END k, sum(v) s FROM t GROUP BY ROLLUP(a) ORDER BY a",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:1610",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, CASE WHEN GROUPING(a) = 1 THEN 'total' ELSE 'row' END AS k, sum(v) AS s FROM t GROUP BY ROLLUP(a) ORDER BY a"
+  },
+  {
+    "query": "SELECT a,b,SUM(v) FROM t GROUP BY a, CUBE(b) LIMIT 0",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:1813",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, b, SUM(v) FROM t GROUP BY a, CUBE(b) LIMIT 0"
+  },
+  {
+    "query": "CREATE TABLE t (cube INT, rollup INT, grouping INT, v INT)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2055",
+    "feature": "grouping-sets",
+    "toSql": "CREATE TABLE t (cube INT, rollup INT, grouping INT, v INT)"
+  },
+  {
+    "query": "SELECT cube, rollup, grouping, SUM(v) FROM t GROUP BY cube, rollup, grouping ORDER BY cube, rollup, grouping",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2058",
+    "feature": "grouping-sets",
+    "toSql": "SELECT cube, rollup, grouping, SUM(v) FROM t GROUP BY cube, rollup, grouping ORDER BY cube, rollup, grouping"
+  },
+  {
+    "query": "SELECT rollup, cube, SUM(v) FROM t GROUP BY rollup, cube ORDER BY rollup, cube",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2063",
+    "feature": "grouping-sets",
+    "toSql": "SELECT rollup, cube, SUM(v) FROM t GROUP BY rollup, cube ORDER BY rollup, cube"
+  },
+  {
+    "query": "SELECT cube::string AS k, SUM(v) AS s FROM t GROUP BY cube::string ORDER BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2081",
+    "feature": "grouping-sets",
+    "toSql": "SELECT cube::STRING AS k, SUM(v) AS s FROM t GROUP BY cube::STRING ORDER BY k"
+  },
+  {
+    "query": "SELECT grouping + 1 AS k, SUM(v) AS s FROM t GROUP BY grouping + 1 ORDER BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2084",
+    "feature": "grouping-sets",
+    "toSql": "SELECT grouping + 1 AS k, SUM(v) AS s FROM t GROUP BY grouping + 1 ORDER BY k"
+  },
+  {
+    "query": "SELECT cube, SUM(v) AS s FROM t GROUP BY grouping sets ((cube), ()) ORDER BY cube",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2088",
+    "feature": "grouping-sets",
+    "toSql": "SELECT cube, SUM(v) AS s FROM t GROUP BY GROUPING SETS ((cube), ()) ORDER BY cube"
+  },
+  {
+    "query": "SELECT o.k, l.a, l.cnt\nFROM o LEFT JOIN LATERAL (\n    SELECT a, count(*) AS cnt\n    FROM t\n    WHERE t.k = o.k\n    GROUP BY GROUPING SETS ((a), ())\n) l ON true\nORDER BY o.k, l.a\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/LateralJoinTest.java:54",
+    "feature": "grouping-sets",
+    "toSql": "SELECT o.k, l.a, l.cnt FROM o LEFT JOIN LATERAL (SELECT a, count(*) AS cnt FROM t WHERE t.k = o.k GROUP BY GROUPING SETS ((a), ())) AS l ON TRUE ORDER BY o.k, l.a"
+  },
+  {
+    "query": "SELECT ts, x, a, count() c FROM v SAMPLE BY 1d ROLLUP(x, a) FILL(NULL) ORDER BY ts, x, a",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:3522",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, x, a, count() AS c FROM v SAMPLE BY 1d ROLLUP(x, a) FILL(NULL) ORDER BY ts, x, a"
+  },
+  {
+    "query": "SELECT ts, a, COUNT(*) FROM t SAMPLE BY 1d CUBE(a, a) FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:3965",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, a, COUNT(*) FROM t SAMPLE BY 1d CUBE(a, a) FILL(NULL)"
+  },
+  {
+    "query": "SELECT ts, a, b, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((a, b), (b, a)) FILL(0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:4009",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, a, b, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((a, b), (b, a)) FILL(0)"
+  },
+  {
+    "query": "SELECT ts, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((), ()) FROM '2024-01-01' TO '2024-01-03' FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:3998",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((), ()) FROM '2024-01-01' TO '2024-01-03' FILL(NULL)"
+  },
+  {
+    "query": "SELECT ts, a, count() c FROM t WHERE v < 0 SAMPLE BY 1d ROLLUP(a) FROM '2024-01-01' TO '2024-01-04' FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:4340",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, a, count() AS c FROM t WHERE v < 0 SAMPLE BY 1d ROLLUP(a) FROM '2024-01-01' TO '2024-01-04' FILL(NULL)"
+  },
+  {
+    "query": "SELECT * FROM t o JOIN LATERAL (SELECT ts, count() n FROM u WHERE u.a = o.a SAMPLE BY 1d GROUPING SETS (())) l",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2194",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM t AS o JOIN LATERAL (SELECT ts, count() AS n FROM u WHERE u.a = o.a SAMPLE BY 1d GROUPING SETS (())) AS l"
+  },
+  {
+    "query": "WITH s AS (SELECT ts, a, v FROM t) SELECT ts, a, sum(v) FROM s SAMPLE BY 1d ROLLUP(a) ORDER BY ts, a",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:4709",
+    "feature": "grouping-sets",
+    "toSql": "WITH s AS (SELECT ts, a, v FROM t) SELECT ts, a, sum(v) FROM s SAMPLE BY 1d ROLLUP(a) ORDER BY ts, a"
+  },
+  {
+    "query": "SELECT ts, sum(val) FROM x SAMPLE BY 1d GROUPING SETS (()) FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByFillTest.java:2452",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, sum(val) FROM x SAMPLE BY 1d GROUPING SETS (()) FILL(NULL)"
   }
 ]

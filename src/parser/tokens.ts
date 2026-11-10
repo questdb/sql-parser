@@ -416,6 +416,13 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "ServiceAccounts",
   // CREATE LIVE VIEW ... START FROM NOW (same word as the now() function)
   "Now",
+  // GROUP BY / SAMPLE BY grouping sets (questdb#6853). Not reserved on the
+  // server: grouping syntax only when `(` (ROLLUP/CUBE) or SETS (GROUPING)
+  // follows, so they stay usable as column/table names and grouping(x).
+  "Cube",
+  "Grouping",
+  "Rollup",
+  "Sets",
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
@@ -714,6 +721,12 @@ export const Subsample = getToken("Subsample")
 export const Policy = getToken("Policy")
 export const Local = getToken("Local")
 export const Remote = getToken("Remote")
+
+// GROUP BY / SAMPLE BY grouping sets
+export const Cube = getToken("Cube")
+export const Grouping = getToken("Grouping")
+export const Rollup = getToken("Rollup")
+export const Sets = getToken("Sets")
 
 // Data types (from grammar/dataTypes.ts)
 export const Binary = getToken("Binary")

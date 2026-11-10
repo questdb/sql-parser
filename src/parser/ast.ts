@@ -74,7 +74,10 @@ export interface SelectStatement extends AstNode {
   where?: Expression
   sampleBy?: SampleByClause
   latestOn?: LatestOnClause
+  /** Plain GROUP BY keys (the prefix of a composite `GROUP BY a, ROLLUP(b)`) */
   groupBy?: Expression[]
+  /** GROUP BY ROLLUP(...) / CUBE(...) / GROUPING SETS (...), after any plain keys */
+  groupingSets?: GroupingSets
   pivot?: PivotClause
   /** Named window definitions: SELECT ... WINDOW w AS (...) [, w2 AS (...)] */
   namedWindows?: NamedWindow[]
@@ -1172,6 +1175,21 @@ export interface SampleByClause extends AstNode {
   alignTo?: AlignToClause
   from?: Expression
   to?: Expression
+  /** SAMPLE BY 1h ROLLUP(...) / CUBE(...) / GROUPING SETS (...) */
+  groupingSets?: GroupingSets
+}
+
+/**
+ * ROLLUP(a, b), CUBE(a, b) or GROUPING SETS ((a, b), (a), ()) in GROUP BY or
+ * after the SAMPLE BY interval. Keys are column references.
+ */
+export interface GroupingSets extends AstNode {
+  type: "groupingSets"
+  kind: "rollup" | "cube" | "groupingSets"
+  /** ROLLUP / CUBE keys */
+  columns?: ColumnRef[]
+  /** GROUPING SETS: one entry per set, `[]` is the empty set `()` */
+  sets?: ColumnRef[][]
 }
 
 export interface AlignToClause extends AstNode {

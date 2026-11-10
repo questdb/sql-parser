@@ -201,6 +201,9 @@ function selectToSql(stmt: AST.SelectStatement): string {
   if (stmt.sampleBy) {
     parts.push("SAMPLE BY")
     parts.push(stmt.sampleBy.duration)
+    if (stmt.sampleBy.groupingSets) {
+      parts.push(groupingSetsToSql(stmt.sampleBy.groupingSets))
+    }
     // FROM/TO (must come before FILL and ALIGN TO per Java order)
     if (stmt.sampleBy.from) {
       parts.push("FROM")
@@ -246,10 +249,14 @@ function selectToSql(stmt: AST.SelectStatement): string {
     }
   }
 
-  // GROUP BY
-  if (stmt.groupBy && stmt.groupBy.length > 0) {
+  // GROUP BY [plain keys][, ROLLUP(...) | CUBE(...) | GROUPING SETS (...)]
+  const groupByItems = (stmt.groupBy ?? []).map(expressionToSql)
+  if (stmt.groupingSets) {
+    groupByItems.push(groupingSetsToSql(stmt.groupingSets))
+  }
+  if (groupByItems.length > 0) {
     parts.push("GROUP BY")
-    parts.push(stmt.groupBy.map(expressionToSql).join(", "))
+    parts.push(groupByItems.join(", "))
   }
 
   // PIVOT (inline pivot clause in SELECT)
@@ -2191,6 +2198,16 @@ function arrayAccessToSql(expr: AST.ArrayAccessExpression): string {
 function qualifiedNameToSql(name: AST.QualifiedName): string {
   if (!name || !name.parts) return ""
   return name.parts.map(escapeIdentifier).join(".")
+}
+
+function groupingSetsToSql(spec: AST.GroupingSets): string {
+  const keys = (cols: AST.ColumnRef[] | undefined) =>
+    (cols ?? []).map(expressionToSql).join(", ")
+  if (spec.kind === "groupingSets") {
+    const sets = (spec.sets ?? []).map((set) => `(${keys(set)})`)
+    return `GROUPING SETS (${sets.join(", ")})`
+  }
+  return `${spec.kind === "cube" ? "CUBE" : "ROLLUP"}(${keys(spec.columns)})`
 }
 
 function escapeString(value: string): string {

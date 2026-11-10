@@ -493,6 +493,7 @@ export type SampleByClauseCstChildren = {
   DurationLiteral?: IToken[];
   VariableReference?: IToken[];
   Identifier?: IToken[];
+  groupingSetsSpec?: GroupingSetsSpecCstNode[];
   fromToClause?: FromToClauseCstNode[];
   fillClause?: FillClauseCstNode[];
   alignToClause?: AlignToClauseCstNode[];
@@ -590,8 +591,60 @@ export interface GroupByClauseCstNode extends CstNode {
 export type GroupByClauseCstChildren = {
   Group: IToken[];
   By: IToken[];
-  expression: (ExpressionCstNode)[];
+  groupingSetsSpec?: GroupingSetsSpecCstNode[];
+  expression?: (ExpressionCstNode)[];
+  Comma?: (IToken)[];
+  rollupOrCubeSpec?: RollupOrCubeSpecCstNode[];
+};
+
+export interface GroupingSetsSpecCstNode extends CstNode {
+  name: "groupingSetsSpec";
+  children: GroupingSetsSpecCstChildren;
+}
+
+export type GroupingSetsSpecCstChildren = {
+  rollupOrCubeSpec?: RollupOrCubeSpecCstNode[];
+  explicitGroupingSets?: ExplicitGroupingSetsCstNode[];
+};
+
+export interface RollupOrCubeSpecCstNode extends CstNode {
+  name: "rollupOrCubeSpec";
+  children: RollupOrCubeSpecCstChildren;
+}
+
+export type RollupOrCubeSpecCstChildren = {
+  Rollup?: IToken[];
+  Cube?: IToken[];
+  LParen: IToken[];
+  columnRef: (ColumnRefCstNode)[];
   Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface ExplicitGroupingSetsCstNode extends CstNode {
+  name: "explicitGroupingSets";
+  children: ExplicitGroupingSetsCstChildren;
+}
+
+export type ExplicitGroupingSetsCstChildren = {
+  Grouping: IToken[];
+  Sets: IToken[];
+  LParen: IToken[];
+  groupingSet: (GroupingSetCstNode)[];
+  Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface GroupingSetCstNode extends CstNode {
+  name: "groupingSet";
+  children: GroupingSetCstChildren;
+}
+
+export type GroupingSetCstChildren = {
+  LParen: IToken[];
+  columnRef?: (ColumnRefCstNode)[];
+  Comma?: IToken[];
+  RParen: IToken[];
 };
 
 export interface OrderByClauseCstNode extends CstNode {
@@ -3036,6 +3089,10 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   alignToClause(children: AlignToClauseCstChildren, param?: IN): OUT;
   fromToClause(children: FromToClauseCstChildren, param?: IN): OUT;
   groupByClause(children: GroupByClauseCstChildren, param?: IN): OUT;
+  groupingSetsSpec(children: GroupingSetsSpecCstChildren, param?: IN): OUT;
+  rollupOrCubeSpec(children: RollupOrCubeSpecCstChildren, param?: IN): OUT;
+  explicitGroupingSets(children: ExplicitGroupingSetsCstChildren, param?: IN): OUT;
+  groupingSet(children: GroupingSetCstChildren, param?: IN): OUT;
   orderByClause(children: OrderByClauseCstChildren, param?: IN): OUT;
   orderByItem(children: OrderByItemCstChildren, param?: IN): OUT;
   limitClause(children: LimitClauseCstChildren, param?: IN): OUT;

@@ -375,6 +375,10 @@ import {
   // Storage policy tokens
   Storage,
   Subsample,
+  Cube,
+  Grouping,
+  Rollup,
+  Sets,
   Policy,
   Local,
   Remote,
@@ -509,6 +513,23 @@ class QuestDBParser extends CstParser {
       tokenType === Microseconds ||
       tokenType === Nanosecond ||
       tokenType === Nanoseconds
+    )
+  }
+
+  // ROLLUP( / CUBE( at LA(offset): SqlParser.hasGroupingSyntaxLookahead.
+  private isRollupOrCubeStart(offset: number): boolean {
+    const t = this.LA(offset).tokenType
+    return (
+      (t === Rollup || t === Cube) && this.LA(offset + 1).tokenType === LParen
+    )
+  }
+
+  // ROLLUP( / CUBE( / GROUPING SETS at LA(offset).
+  private isGroupingSetsStart(offset: number): boolean {
+    return (
+      this.isRollupOrCubeStart(offset) ||
+      (this.LA(offset).tokenType === Grouping &&
+        this.LA(offset + 1).tokenType === Sets)
     )
   }
 
@@ -1291,6 +1312,9 @@ class QuestDBParser extends CstParser {
         ALT: () => this.CONSUME(Identifier),
       },
     ])
+    // SAMPLE BY 1h ROLLUP(a) | CUBE(a) | GROUPING SETS ((a), ()): right after
+    // the interval, without a plain-key prefix (questdb#6853).
+    this.OPTION3(() => this.SUBRULE(this.groupingSetsSpec))
     // Java order: FROM/TO → FILL → ALIGN TO
     this.OPTION(() => this.SUBRULE(this.fromToClause))
     this.OPTION1(() => this.SUBRULE(this.fillClause))
@@ -1433,14 +1457,90 @@ class QuestDBParser extends CstParser {
   // GROUP BY, HAVING, ORDER BY, LIMIT
   // ==========================================================================
 
+  // GROUP BY keys (SqlParser.parseGroupByColumns, questdb#6853):
+  //   GROUP BY ROLLUP(a, ...) | CUBE(a, ...) | GROUPING SETS ((a, b), (a), ())
+  //   GROUP BY expr, ... [, ROLLUP(...) | CUBE(...)]
+  // ROLLUP/CUBE must be the last item and GROUPING SETS the only one. The
+  // words are not reserved: they are grouping syntax only when `(` (ROLLUP,
+  // CUBE) or SETS (GROUPING) follows, otherwise plain keys (`GROUP BY rollup`,
+  // `GROUP BY grouping(x)`), hence the LA(2) gates.
   private groupByClause = this.RULE("groupByClause", () => {
     this.CONSUME(Group)
     this.CONSUME(By)
-    this.SUBRULE(this.expression)
+    this.OR([
+      {
+        GATE: () => this.isGroupingSetsStart(1),
+        ALT: () => this.SUBRULE(this.groupingSetsSpec),
+      },
+      {
+        ALT: () => {
+          this.SUBRULE(this.expression)
+          // Stop before `, ROLLUP(` / `, CUBE(` (taken below) and before
+          // `, GROUPING SETS`, which the server rejects after plain keys.
+          this.MANY({
+            GATE: () => !this.isGroupingSetsStart(2),
+            DEF: () => {
+              this.CONSUME(Comma)
+              this.SUBRULE1(this.expression)
+            },
+          })
+          this.OPTION(() => {
+            this.CONSUME1(Comma)
+            this.SUBRULE(this.rollupOrCubeSpec)
+          })
+        },
+      },
+    ])
+  })
+
+  // ROLLUP(...) | CUBE(...) | GROUPING SETS (...)
+  private groupingSetsSpec = this.RULE("groupingSetsSpec", () => {
+    this.OR([
+      { ALT: () => this.SUBRULE(this.rollupOrCubeSpec) },
+      { ALT: () => this.SUBRULE(this.explicitGroupingSets) },
+    ])
+  })
+
+  // ROLLUP(col, ...) | CUBE(col, ...): at least one key, column references
+  // only (SqlParser.parseParenthesizedColumnList + ensureColumnReferences).
+  private rollupOrCubeSpec = this.RULE("rollupOrCubeSpec", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Rollup) },
+      { ALT: () => this.CONSUME(Cube) },
+    ])
+    this.CONSUME(LParen)
+    this.SUBRULE(this.columnRef)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.expression)
+      this.SUBRULE1(this.columnRef)
     })
+    this.CONSUME(RParen)
+  })
+
+  // GROUPING SETS ((a, b), (a), ()): every set is parenthesised, `()` is the
+  // empty set (SqlParser.parseExplicitGroupingSets).
+  private explicitGroupingSets = this.RULE("explicitGroupingSets", () => {
+    this.CONSUME(Grouping)
+    this.CONSUME(Sets)
+    this.CONSUME(LParen)
+    this.SUBRULE(this.groupingSet)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.groupingSet)
+    })
+    this.CONSUME(RParen)
+  })
+
+  private groupingSet = this.RULE("groupingSet", () => {
+    this.CONSUME(LParen)
+    this.OPTION(() => {
+      this.SUBRULE(this.columnRef)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE1(this.columnRef)
+      })
+    })
+    this.CONSUME(RParen)
   })
 
   private orderByClause = this.RULE("orderByClause", () => {
