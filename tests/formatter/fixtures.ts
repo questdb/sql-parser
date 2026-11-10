@@ -76,6 +76,23 @@ export const fixtures: Fixture[] = [
     expected: ["ALTER TABLE t", "SUSPEND WAL"].join("\n"),
   },
   {
+    name: "ALTER TABLE FORCE REINDEX PARQUET starts a line",
+    input:
+      "ALTER TABLE trades FORCE REINDEX PARQUET COLUMN symbol PARTITION LIST '2026-03-01'",
+    expected: [
+      "ALTER TABLE trades",
+      "FORCE REINDEX PARQUET COLUMN symbol PARTITION LIST '2026-03-01'",
+    ].join("\n"),
+  },
+  {
+    name: "ALTER TABLE FORCE DROP PARTITION starts a line",
+    input: "ALTER TABLE trades FORCE DROP PARTITION LIST '2026-03-01'",
+    expected: [
+      "ALTER TABLE trades",
+      "FORCE DROP PARTITION LIST '2026-03-01'",
+    ].join("\n"),
+  },
+  {
     name: "ALTER TABLE DROP STORAGE POLICY starts a line",
     input: "ALTER TABLE t DROP STORAGE POLICY",
     expected: ["ALTER TABLE t", "DROP STORAGE POLICY"].join("\n"),
