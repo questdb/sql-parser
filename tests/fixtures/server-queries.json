@@ -1935,5 +1935,17 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:60",
     "feature": "option-names",
     "toSql": "SELECT * FROM tab WHERE a <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "SELECT * FROM checkpoint_status();",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/SqlValidationTest.java:117",
+    "feature": "functions-list",
+    "toSql": "SELECT * FROM checkpoint_status()"
+  },
+  {
+    "query": "select worker_id, username, start_time, phase, export_path, request_source, export_sql, message from export_activity()",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/activity/ExportActivityFunctionFactoryTest.java:68",
+    "feature": "functions-list",
+    "toSql": "SELECT worker_id, username, start_time, phase, export_path, request_source, export_sql, message FROM export_activity()"
   }
 ]

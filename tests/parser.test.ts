@@ -2939,9 +2939,9 @@ describe("QuestDB Parser", () => {
         })
       })
 
-      describe("storage_policies() meta function", () => {
-        it("parses SELECT * FROM storage_policies()", () => {
-          const result = parseToAst("SELECT * FROM storage_policies()")
+      describe("storage_policies (Enterprise view)", () => {
+        it("parses SELECT * FROM storage_policies", () => {
+          const result = parseToAst("SELECT * FROM storage_policies")
           expect(result.errors).toHaveLength(0)
           expect(result.ast[0].type).toBe("select")
         })
