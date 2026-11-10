@@ -1114,5 +1114,119 @@
     "feature": "comments-empty-statements",
     "toSql": "SELECT 1;\nSELECT 2",
     "statements": 2
+  },
+  {
+    "query": "SELECT cast(99m as byte)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:217",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT CAST(99m AS BYTE)"
+  },
+  {
+    "query": "select cast(-127m as byte)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:470",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT CAST(-127m AS BYTE)"
+  },
+  {
+    "query": "select cast(cast(2147483647m as DECIMAL(19)) as byte)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:526",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT CAST(CAST(2147483647m AS DECIMAL(19)) AS BYTE)"
+  },
+  {
+    "query": "select 123::byte + 123m",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastByteToDecimalFunctionFactoryTest.java:429",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT 123::BYTE + 123m"
+  },
+  {
+    "query": "WITH data AS (SELECT 123m AS value) SELECT cast(value as byte) FROM data",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:113",
+    "feature": "numeric-literal-typing",
+    "toSql": "WITH data AS (SELECT 123m AS value) SELECT CAST(value AS BYTE) FROM data"
+  },
+  {
+    "query": "insert into target select id, val * 2m as price, val, ts from source where id > 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:742",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO target SELECT id, val * 2m AS price, val, ts FROM source WHERE id > 1"
+  },
+  {
+    "query": "insert into mixed_types values (1, 99.99m, 'Item1', true, 100m, 1.5, 'ABC', 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:819",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO mixed_types VALUES (1, 99.99m, 'Item1', TRUE, 100m, 1.5, 'ABC', 0)"
+  },
+  {
+    "query": "INSERT INTO t VALUES (0m), (0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DecimalFullScaleTest.java:232",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO t VALUES (0m), (0)"
+  },
+  {
+    "query": "INSERT INTO base (ts, sym, d) VALUES ('2026-10-01T02:00:00.000000Z', 1, 20m)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewSmokeTest.java:9080",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO base (ts, sym, d) VALUES ('2026-10-01T02:00:00.000000Z', 1, 20m)"
+  },
+  {
+    "query": "DECLARE @minp := 150.00m SELECT * FROM v_sec",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:1427",
+    "feature": "numeric-literal-typing",
+    "toSql": "DECLARE @minp := 150.00m SELECT * FROM v_sec"
+  },
+  {
+    "query": "select 10d * 0d x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/math/MulDoubleFunctionFactoryTest.java:49",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT 10d * 0d AS x"
+  },
+  {
+    "query": "create table y as (select 0d a union select 3d union select 5d union select 9d union select 8d)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UnionAllCastTest.java:864",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE TABLE y AS (SELECT 0d AS a UNION SELECT 3d UNION SELECT 5d UNION SELECT 9d UNION SELECT 8d)"
+  },
+  {
+    "query": "select greatest(4::decimal(2,1), 1d, null::decimal(1,0))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/math/GreatestNumericFunctionFactoryTest.java:61",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT greatest(4::DECIMAL(2, 1), 1d, NULL::DECIMAL(1, 0))"
+  },
+  {
+    "query": "create table y as ( select x + 0.1d as d from long_sequence(10) )",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupByRewriteTest.java:340",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE TABLE y AS (SELECT x + 0.1d AS d FROM long_sequence(10))"
+  },
+  {
+    "query": "INSERT INTO TS values(to_timestamp('2019-12-04T13:20:49', 'yyyy-MM-ddTHH:mm:ss'),'X',123.33d)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1221",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO TS VALUES (to_timestamp('2019-12-04T13:20:49', 'yyyy-MM-ddTHH:mm:ss'), 'X', 123.33d)"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1M",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/TtlTest.java:769",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1 MONTH"
+  },
+  {
+    "query": "alter table x1 set param o3MaxLag = 7d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableO3MaxLagTest.java:414",
+    "feature": "numeric-literal-typing",
+    "toSql": "ALTER TABLE x1 SET PARAM o3MaxLag = 7d"
+  },
+  {
+    "query": "SELECT avg(p.price) FROM trades AS t HORIZON JOIN prices AS p ON (t.sym = p.sym) LIST (100T, 1s, 1m, 1h, 1d) AS h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6658",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT avg(p.price) FROM trades AS t HORIZON JOIN prices AS p ON (t.sym = p.sym) LIST (100T, 1s, 1m, 1h, 1d) AS h"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv3 AS (SELECT ts, avg(x) AS avg_x FROM tab SAMPLE BY 10m) PARTITION BY DAY",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/DdlListenerTest.java:388",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE MATERIALIZED VIEW mv3 AS (SELECT ts, avg(x) AS avg_x FROM tab SAMPLE BY 10m) PARTITION BY DAY"
   }
 ]

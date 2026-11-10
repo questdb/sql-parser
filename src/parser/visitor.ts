@@ -1349,7 +1349,11 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.DeclareAssignment = {
       type: "declareAssignment",
       name: image.substring(1), // strip leading @
-      value: this.visit(ctx.expression) as AST.Expression,
+      // A bare duration stays a duration: the variable may be substituted
+      // into SAMPLE BY (`DECLARE @unit := 1m ... SAMPLE BY @unit`).
+      value:
+        this.bareDurationLiteral(ctx.expression[0]) ??
+        (this.visit(ctx.expression) as AST.Expression),
     }
     if (ctx.Overridable) result.overridable = true
     return result
@@ -1771,9 +1775,40 @@ class QuestDBVisitor extends BaseVisitor {
       name,
     }
     if (ctx.expression) {
-      result.value = this.visit(ctx.expression) as AST.Expression
+      // o3MaxLag = 10m / 7d is a duration (SqlUtil.expectMicros), not a number
+      result.value =
+        this.bareDurationLiteral(ctx.expression[0]) ??
+        (this.visit(ctx.expression) as AST.Expression)
     }
     return result
+  }
+
+  /**
+   * If an expression CST is nothing but one DurationLiteral token, returns it
+   * as a duration literal. Used where a value is a duration (o3MaxLag, DECLARE
+   * values that may feed SAMPLE BY), since `literal` types `10m` / `7d` as
+   * numbers.
+   */
+  private bareDurationLiteral(node: CstNode): AST.Literal | undefined {
+    const tokens: IToken[] = []
+    const collect = (n: CstNode) => {
+      for (const children of Object.values(n.children)) {
+        for (const c of children) {
+          if ("image" in c) tokens.push(c)
+          else collect(c)
+          if (tokens.length > 1) return
+        }
+      }
+    }
+    collect(node)
+    if (tokens.length !== 1 || tokens[0].tokenType.name !== "DurationLiteral") {
+      return undefined
+    }
+    return {
+      type: "literal",
+      value: this.tokenImage(tokens[0]),
+      literalType: "duration",
+    }
   }
 
   createViewBody(ctx: CreateViewBodyCstChildren): AST.CreateViewStatement {
@@ -3333,7 +3368,14 @@ class QuestDBVisitor extends BaseVisitor {
       result.quoted = true
     } else if (ctx.expression) {
       const expr = this.visit(ctx.expression) as AST.Expression
-      if (expr?.type === "literal" && expr.literalType === "number") {
+      if (
+        expr?.type === "literal" &&
+        expr.literalType === "number" &&
+        /[mMdD]$/.test(expr.raw ?? "")
+      ) {
+        // keep a suffixed number (3d, 1m) verbatim; it used to be a duration
+        result.value = expr.raw!
+      } else if (expr?.type === "literal" && expr.literalType === "number") {
         result.value = expr.value as number
       } else if (expr?.type === "literal" && expr.literalType === "string") {
         result.value = expr.value as string
@@ -4753,7 +4795,7 @@ class QuestDBVisitor extends BaseVisitor {
       const image = this.tokenImage(ctx.DecimalLiteral[0])
       return {
         type: "literal",
-        value: parseFloat(image.replace(/[m_]/g, "")),
+        value: parseFloat(image.replace(/[mM_]/g, "")),
         literalType: "number",
         raw: image,
       }
@@ -4773,9 +4815,22 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
     if (ctx.DurationLiteral) {
+      const image = this.tokenImage(ctx.DurationLiteral[0])
+      // In an expression the server types `99m` / `1.5M` as DECIMAL and
+      // `1d` / `1.5D` as DOUBLE (FunctionParser.createConstant: parseDouble
+      // skips a d/D suffix, a trailing m/M means decimal). Other units
+      // (1h, 30s, 1ms, ...) are not numbers there and stay durations.
+      if (/[mMdD]$/.test(image)) {
+        return {
+          type: "literal",
+          value: parseFloat(image.slice(0, -1).replace(/_/g, "")),
+          literalType: "number",
+          raw: image,
+        }
+      }
       return {
         type: "literal",
-        value: this.tokenImage(ctx.DurationLiteral[0]),
+        value: image,
         literalType: "duration",
       }
     }

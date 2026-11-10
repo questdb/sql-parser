@@ -888,11 +888,14 @@ export const LongLiteral = createToken({
   pattern: /\d[\d_]*[Ll]\b/,
 })
 
-// QuestDB DECIMAL literal with m suffix: 10.5m, 99.99m (fractional only)
-// Integer + m (like 5m) is DurationLiteral (minutes), so we only match when there's a decimal point
+// QuestDB DECIMAL literal with m suffix: 10.5m, 99.99m, and the exponent form
+// 1.5e3m / 2.5e-3M (FunctionParser.createConstant -> DecimalParser.parse, which
+// takes an exponent and `m` in either case). Integer + m (like 5m) and 1.5M
+// stay DurationLiteral (minutes / months); the visitor types them as decimals
+// in expressions. An exponent never forms a duration, so `[mM]` is safe there.
 export const DecimalLiteral = createToken({
   name: "DecimalLiteral",
-  pattern: /\d[\d_]*\.\d[\d_]*m\b/,
+  pattern: /\d[\d_]*(\.\d[\d_]*m|(\.[\d_]*)?[eE][+-]?\d[\d_]*[mM])\b/,
 })
 
 // QuestDB time units for SAMPLE BY (e.g., 1h, 5m, 30s, 1d, 1M, 1y, 100T, 1U, 1.5d)
