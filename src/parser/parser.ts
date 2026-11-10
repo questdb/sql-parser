@@ -414,6 +414,45 @@ import {
 // Types the server accepts in a typed literal `<type> '<string>'`
 // (ExpressionParser.processPgTimestampCast + cannotCastTo): BOOLEAN..LONG256,
 // UUID, IPv4, VARCHAR, DECIMAL, plus nameTypeMap aliases.
+// Non-reserved words (server SqlKeywords.KEYWORDS does not list them) that
+// start a join, a clause or a statement: never taken as an implicit (no AS)
+// alias. Join/clause words mirror the server's tableAliasStop; the statement
+// starters keep `... FROM t\nSHOW TABLES` a statement boundary as before.
+export const ALIAS_STOP_STATEMENT_TOKENS: ReadonlySet<TokenType> =
+  new globalThis.Set([Show, Copy, Truncate, Vacuum, Grant, Revoke, Declare])
+const TABLE_ALIAS_STOP_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
+  ...ALIAS_STOP_STATEMENT_TOKENS,
+  Left,
+  Right,
+  Full,
+  Inner,
+  Cross,
+  Asof,
+  Lt,
+  Splice,
+  Horizon,
+  Window,
+  Group,
+  Pivot,
+])
+// Server columnAliasStop: FROM , OVER UNION EXCEPT INTERSECT ) ; FOR
+const COLUMN_ALIAS_STOP_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
+  ...ALIAS_STOP_STATEMENT_TOKENS,
+  For,
+])
+
+// Content assist ignores GATEs: the implicit-alias stops above, keyed by the
+// rule whose `identifier` subrule is the alias (tableRef / selectItem /
+// pivotAggregation only call `identifier` for aliases).
+export const IMPLICIT_ALIAS_STOP_TOKENS: ReadonlyMap<
+  string,
+  ReadonlySet<TokenType>
+> = new Map([
+  ["tableRef", TABLE_ALIAS_STOP_TOKENS],
+  ["selectItem", COLUMN_ALIAS_STOP_TOKENS],
+  ["pivotAggregation", COLUMN_ALIAS_STOP_TOKENS],
+])
+
 const TYPED_LITERAL_TYPE_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
   Boolean,
   Byte,
@@ -503,6 +542,7 @@ class QuestDBParser extends CstParser {
     if (la1 === Owned) return this.LA(2).tokenType !== By
     // If next token is AS, always allow (explicit alias)
     if (la1 === As) return true
+    if (TABLE_ALIAS_STOP_TOKENS.has(la1)) return false
     // Join clause words (server tableAliasStop): `ASOF JOIN t TOLERANCE 2s`,
     // `WINDOW JOIN t RANGE BETWEEN ...`, `... EXCLUDE PREVAILING`
     if (la1 === Tolerance || la1 === Range) return false
@@ -710,7 +750,12 @@ class QuestDBParser extends CstParser {
           this.LA(1).tokenType === Compile && this.LA(2).tokenType === View,
         ALT: () => this.SUBRULE(this.compileViewStatement),
       },
-      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+      {
+        // SHOW / COPY / GRANT ... at statement start are statement keywords
+        // on the server, never the table of an implicit SELECT
+        GATE: () => !ALIAS_STOP_STATEMENT_TOKENS.has(this.LA(1).tokenType),
+        ALT: () => this.SUBRULE(this.implicitSelectStatement),
+      },
     ])
   })
 
@@ -1025,6 +1070,7 @@ class QuestDBParser extends CstParser {
       GATE: () => {
         // If next token is AS, always allow (explicit alias)
         if (this.LA(1).tokenType === As) return true
+        if (COLUMN_ALIAS_STOP_TOKENS.has(this.LA(1).tokenType)) return false
         // Don't consume identifier as alias if followed by LParen —
         // it's a function call starting a new statement, not an alias
         return this.LA(2).tokenType !== LParen
@@ -2618,7 +2664,14 @@ class QuestDBParser extends CstParser {
   private columnDefinition = this.RULE(
     "columnDefinition",
     (allowDoublePrecision?: boolean) => {
-      this.SUBRULE(this.identifier)
+      // IS / ILIKE / DECLARE are reserved in expressions here but valid
+      // column names on the server (not in SqlKeywords.KEYWORDS)
+      this.OR6([
+        { ALT: () => this.SUBRULE(this.identifier) },
+        { ALT: () => this.CONSUME(Is, { LABEL: "keywordName" }) },
+        { ALT: () => this.CONSUME(Ilike, { LABEL: "keywordName" }) },
+        { ALT: () => this.CONSUME(Declare, { LABEL: "keywordName" }) },
+      ])
       this.OR5({
         IGNORE_AMBIGUITIES: true,
         DEF: [
@@ -4995,9 +5048,13 @@ class QuestDBParser extends CstParser {
     this.CONSUME(For)
     this.SUBRULE(this.pivotForClause)
     // Additional FOR clauses (FOR keyword optional per QuestDB syntax)
-    this.MANY1(() => {
-      this.OPTION1(() => this.CONSUME1(For))
-      this.SUBRULE1(this.pivotForClause)
+    this.MANY1({
+      GATE: () =>
+        !(this.LA(1).tokenType === Group && this.LA(2).tokenType === By),
+      DEF: () => {
+        this.OPTION1(() => this.CONSUME1(For))
+        this.SUBRULE1(this.pivotForClause)
+      },
     })
     this.OPTION(() => {
       this.CONSUME(Group)
@@ -5012,9 +5069,12 @@ class QuestDBParser extends CstParser {
 
   private pivotAggregation = this.RULE("pivotAggregation", () => {
     this.SUBRULE(this.expression)
-    this.OPTION(() => {
-      this.OPTION1(() => this.CONSUME(As))
-      this.SUBRULE(this.identifier)
+    this.OPTION({
+      GATE: () => this.LA(1).tokenType !== For,
+      DEF: () => {
+        this.OPTION1(() => this.CONSUME(As))
+        this.SUBRULE(this.identifier)
+      },
     })
   })
 

@@ -3,6 +3,7 @@ import { createToken, IToken, Lexer, TokenType } from "chevrotain"
 // Import all keyword tokens from tokens.ts (auto-generated from grammar arrays)
 // Re-export all named tokens for parser usage
 import {
+  CLAUSE_IDENTIFIER_KEYWORD_NAMES,
   IdentifierKeyword,
   keywordTokenArray,
   Abort,
@@ -868,7 +869,8 @@ function endsOperand(prev: IToken, colonOffset: number): boolean {
   return (
     prev.endOffset !== undefined &&
     prev.endOffset + 1 === colonOffset &&
-    (type.CATEGORIES ?? []).includes(IdentifierKeyword)
+    (type.CATEGORIES ?? []).includes(IdentifierKeyword) &&
+    !CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(type.name)
   )
 }
 

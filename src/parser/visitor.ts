@@ -1643,7 +1643,9 @@ class QuestDBVisitor extends BaseVisitor {
   columnDefinition(ctx: ColumnDefinitionCstChildren): AST.ColumnDefinition {
     const result: AST.ColumnDefinition = {
       type: "columnDefinition",
-      name: this.extractIdentifierName(ctx.identifier[0].children),
+      name: ctx.identifier
+        ? this.extractIdentifierName(ctx.identifier[0].children)
+        : (ctx.keywordName?.[0].image ?? ""),
       dataType: this.visit(ctx.doublePrecisionType ?? ctx.dataType!) as string,
     }
 

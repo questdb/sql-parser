@@ -217,7 +217,9 @@ class StatementBuilder {
     if (
       piece !== undefined &&
       this.previous !== null &&
-      isGluedWords(this.previous, piece)
+      (isGluedWords(this.previous, piece) ||
+        // `t.window`, `t.left`: a qualified name part, not a clause word
+        this.previous.token.tokenName === "Dot")
     ) {
       return null
     }

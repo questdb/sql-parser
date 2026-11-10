@@ -1947,5 +1947,41 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/activity/ExportActivityFunctionFactoryTest.java:68",
     "feature": "functions-list",
     "toSql": "SELECT worker_id, username, start_time, phase, export_path, request_source, export_sql, message FROM export_activity()"
+  },
+  {
+    "query": "CREATE TABLE tango (left DOUBLE[][], right DOUBLE[][])",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:1020",
+    "feature": "reserved-words",
+    "toSql": "CREATE TABLE tango (\"left\" DOUBLE[][], \"right\" DOUBLE[][])"
+  },
+  {
+    "query": "SELECT typeOf(f) ft, typeOf(l) lt FROM a4b LIMIT 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:8501",
+    "feature": "reserved-words",
+    "toSql": "SELECT typeOf(f) AS ft, typeOf(l) AS \"lt\" FROM a4b LIMIT 1"
+  },
+  {
+    "query": "CREATE TABLE payload (k INT, b BOOLEAN, by BYTE, sh SHORT, ch CHAR, i INT, l LONG, d DATE, ts TIMESTAMP, ns TIMESTAMP_NS, f FLOAT, dbl DOUBLE, s SYMBOL, unused STRING)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/HashJoinBuildFramesTest.java:75",
+    "feature": "reserved-words",
+    "toSql": "CREATE TABLE payload (k INT, b BOOLEAN, \"by\" BYTE, sh SHORT, ch CHAR, i INT, l LONG, d DATE, ts TIMESTAMP, ns TIMESTAMP_NS, f FLOAT, dbl DOUBLE, s SYMBOL, unused STRING)"
+  },
+  {
+    "query": "create table tab (value int, when long, ts timestamp) timestamp(ts) partition by day bypass wal;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/IODispatcherTest.java:248",
+    "feature": "reserved-words",
+    "toSql": "CREATE TABLE tab (value INT, \"when\" LONG, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY BYPASS WAL"
+  },
+  {
+    "query": "select when, version, temperature from forecasts latest on version partition by when",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:2261",
+    "feature": "reserved-words",
+    "toSql": "SELECT \"when\", version, temperature FROM forecasts LATEST ON version PARTITION BY \"when\""
+  },
+  {
+    "query": "SELECT sum(x) OVER window FROM t WINDOW window AS (ORDER BY ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:10011",
+    "feature": "reserved-words",
+    "toSql": "SELECT sum(x) OVER window FROM t WINDOW window AS (ORDER BY ts)"
   }
 ]

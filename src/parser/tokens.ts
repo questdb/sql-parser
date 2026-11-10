@@ -110,15 +110,57 @@ const allGeneratedTokens = new Map<string, TokenType>([
 // only ~61 keywords are reserved and everything else is non-reserved.
 //
 // Reserved keywords NOT included (would cause parsing ambiguity):
-//   Structural:  Select, From, Where, As, By, With, If, Exists, Into,
-//                Values, Set, For, Table, To, Declare, Rename
-//   Joins:       Join, Inner, Left, Right, Full, Outer, Cross,
-//                Asof, Lt, Splice, On
+//   Structural:  Select, From, Where, As, With, Exists, Into,
+//                Values, Set, Table, To, Declare, Rename
+//   Joins:       Join, Outer, On
 //   Operators:   And, Or, Not, In, Between, Like, Ilike, Is
-//   Expressions: Case, When, Then, Else, End, Cast, True, False, Null, NaN,
+//   Expressions: Case, End, Cast, True, False, Null, NaN,
 //                All, Any, Distinct, Over
-//   Clauses:     Group, Order, Asc, Desc, Limit, Sample, Window,
-//                Union, Intersect, Except, Pivot, Unpivot, Lock, Truncate
+//   Clauses:     Order, Asc, Desc, Limit, Sample,
+//                Union, Intersect, Except, Lock
+// (IS / ILIKE / DECLARE are still accepted as column names in columnDefinition;
+// join / clause words are in CLAUSE_IDENTIFIER_KEYWORD_NAMES.)
+
+/**
+ * Join / clause / statement words that the server does not reserve
+ * (SqlKeywords.KEYWORDS): usable as identifiers (`CREATE TABLE t (left INT,
+ * by BYTE, when LONG)`, `t.window`, `SELECT x lt FROM t`). Parser alias gates
+ * keep them from being taken as implicit aliases where they start a join /
+ * clause / statement. toSql still quotes them and the formatter does not treat
+ * them as operands (`THEN -1` keeps its unary minus).
+ */
+export const CLAUSE_IDENTIFIER_KEYWORD_NAMES: ReadonlySet<string> =
+  new globalThis.Set([
+    "Left",
+    "Right",
+    "Full",
+    "Inner",
+    "Cross",
+    "Asof",
+    "Lt",
+    "Splice",
+    "Horizon",
+    "Window",
+    "By",
+    "Group",
+    "When",
+    "Then",
+    "Else",
+    "Details",
+    "Repair",
+    "Unpivot",
+    "Pivot",
+    "Show",
+    "Copy",
+    "Truncate",
+    "Vacuum",
+    "Grant",
+    "Revoke",
+    "If",
+    "Include",
+    "Respect",
+    "For",
+  ])
 
 export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   // Data type keywords
@@ -454,6 +496,7 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Reset",
   "Rollback",
   "Unlisten",
+  ...CLAUSE_IDENTIFIER_KEYWORD_NAMES,
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {

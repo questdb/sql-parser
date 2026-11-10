@@ -2,6 +2,7 @@ import { type ILexingError, IToken, TokenType } from "chevrotain"
 import { parse as parseRaw } from "../parser/parser"
 import { visitor } from "../parser/visitor"
 import { QuestDBLexer } from "../parser/lexer"
+import { CLAUSE_IDENTIFIER_KEYWORD_NAMES } from "../parser/tokens"
 import type { Statement } from "../parser/ast"
 import {
   IDENTIFIER_KEYWORD_TOKENS,
@@ -581,10 +582,18 @@ function extractTables(fullSql: string, tokens: IToken[]): ExtractResult {
 
       let alias: string | undefined
       let aliasStart = tableNameResult.nextIndex
-      if (tokens[aliasStart]?.tokenType.name === "As") {
+      const explicitAs = tokens[aliasStart]?.tokenType.name === "As"
+      if (explicitAs) {
         aliasStart++
       }
-      if (isIdentifierLike(tokens[aliasStart])) {
+      if (
+        isIdentifierLike(tokens[aliasStart]) &&
+        // `FROM t GROUP BY`, `FROM t LEFT JOIN`: clause words are no alias
+        (explicitAs ||
+          !CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(
+            tokens[aliasStart].tokenType.name,
+          ))
+      ) {
         alias = tokenToNamePart(tokens[aliasStart])
       }
 
@@ -1051,6 +1060,11 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       // identifier before); ARRAY stays suggested as a type name
       (s.nextTokenType.name === "Array" &&
         s.ruleStack[s.ruleStack.length - 1] === "arrayLiteral") ||
+      // IS / ILIKE / DECLARE are accepted as column names, not suggested
+      (s.ruleStack[s.ruleStack.length - 1] === "columnDefinition" &&
+        (s.nextTokenType.name === "Is" ||
+          s.nextTokenType.name === "Ilike" ||
+          s.nextTokenType.name === "Declare")) ||
       // INCREMENTAL is an obsolete synonym of IMMEDIATE in REFRESH modes
       (s.nextTokenType.name === "Incremental" &&
         s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh")

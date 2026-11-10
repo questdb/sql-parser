@@ -1163,7 +1163,8 @@ export interface ColumnDefinitionCstNode extends CstNode {
 }
 
 export type ColumnDefinitionCstChildren = {
-  identifier: IdentifierCstNode[];
+  identifier?: IdentifierCstNode[];
+  keywordName?: (IToken)[];
   doublePrecisionType?: DoublePrecisionTypeCstNode[];
   dataType?: DataTypeCstNode[];
   Capacity?: IToken[];

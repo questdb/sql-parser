@@ -5,7 +5,10 @@
 import * as AST from "./ast"
 import { keywords } from "../grammar/keywords"
 import { constants } from "../grammar/constants"
-import { IDENTIFIER_KEYWORD_NAMES } from "./tokens"
+import {
+  CLAUSE_IDENTIFIER_KEYWORD_NAMES,
+  IDENTIFIER_KEYWORD_NAMES,
+} from "./tokens"
 
 function toPascalCase(str: string): string {
   if (str.includes("_")) {
@@ -19,7 +22,14 @@ function toPascalCase(str: string): string {
 
 const RESERVED_KEYWORDS = new Set(
   [...keywords, ...constants]
-    .filter((k) => !IDENTIFIER_KEYWORD_NAMES.has(toPascalCase(k)))
+    .filter((k) => {
+      const name = toPascalCase(k)
+      // Clause words stay quoted: usable unquoted, but quoting is clearer.
+      return (
+        !IDENTIFIER_KEYWORD_NAMES.has(name) ||
+        CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(name)
+      )
+    })
     .map((k) => k.toLowerCase()),
 )
 
