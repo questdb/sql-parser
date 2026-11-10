@@ -1205,6 +1205,10 @@ export interface AlignToClause extends AstNode {
   mode: "firstObservation" | "calendar"
   timeZone?: string
   offset?: string
+  /** TIME ZONE value when it is not a string literal / plain name (@tz, $1, f(...)) */
+  timeZoneExpression?: Expression
+  /** WITH OFFSET value when it is not a string literal / plain name */
+  offsetExpression?: Expression
 }
 
 export interface LatestOnClause extends AstNode {

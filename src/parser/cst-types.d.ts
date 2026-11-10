@@ -507,11 +507,9 @@ export interface SampleByClauseCstNode extends CstNode {
 export type SampleByClauseCstChildren = {
   Sample: IToken[];
   By: IToken[];
-  DurationLiteral?: IToken[];
-  VariableReference?: IToken[];
-  BindVariable?: IToken[];
-  sampleByUnit?: IToken[];
   Identifier?: IToken[];
+  sampleByExpression?: ExpressionCstNode[];
+  sampleByUnit?: IToken[];
   groupingSetsSpec?: GroupingSetsSpecCstNode[];
   fromToClause?: FromToClauseCstNode[];
   fillClause?: FillClauseCstNode[];
@@ -565,11 +563,7 @@ export interface FillValueCstNode extends CstNode {
 }
 
 export type FillValueCstChildren = {
-  Null?: IToken[];
-  NumberLiteral?: IToken[];
-  identifier?: (IdentifierCstNode)[];
-  LParen?: IToken[];
-  RParen?: IToken[];
+  expression: ExpressionCstNode[];
 };
 
 export interface AlignToClauseCstNode extends CstNode {
@@ -585,10 +579,10 @@ export type AlignToClauseCstChildren = {
   Calendar?: IToken[];
   Time?: IToken[];
   Zone?: IToken[];
-  timeZoneValue?: TimeZoneValueCstNode[];
+  timeZoneExpression?: ExpressionCstNode[];
   With?: IToken[];
   Offset?: IToken[];
-  stringOrIdentifier?: StringOrIdentifierCstNode[];
+  offsetExpression?: ExpressionCstNode[];
 };
 
 export interface FromToClauseCstNode extends CstNode {

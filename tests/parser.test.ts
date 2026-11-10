@@ -7944,10 +7944,11 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         if (s.type === "select") expect(s.sampleBy?.duration).toBe(u)
       })
     }
-    it("rejects an arbitrary identifier unit", () => {
-      expect(
-        parseToAst("SELECT ts, avg(x) FROM t SAMPLE BY foo").errors.length,
-      ).toBeGreaterThan(0)
+    it("parses any other name as a SAMPLE BY expression", () => {
+      // SAMPLE BY takes an expression (SqlParser.expectSample); the server
+      // then wants a full period or a unit letter, sql-parser stays looser.
+      const r = parseToAst("SELECT ts, avg(x) FROM t SAMPLE BY foo")
+      expect(r.errors).toHaveLength(0)
     })
   })
 

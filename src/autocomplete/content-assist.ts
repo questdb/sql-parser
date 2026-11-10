@@ -952,6 +952,44 @@ function contextKeywordSuggestions(
   return [...out]
 }
 
+const QUIET_EXPRESSION_ANCHORS = [
+  "sampleByClause",
+  "alignToClause",
+  "fillValue",
+]
+// Literal / variable / punctuation tokens stay valid there (no keyword noise)
+const QUIET_EXPRESSION_KEPT_TOKENS = new Set([
+  "DurationLiteral",
+  "NumberLiteral",
+  "LongLiteral",
+  "DecimalLiteral",
+  "FloatLiteral",
+  "StringLiteral",
+  "EscapeStringLiteral",
+  "VariableReference",
+  "BindVariable",
+  "Minus",
+  "LParen",
+])
+
+/**
+ * If the ruleStack is at the top level of the expression directly under
+ * SAMPLE BY, ALIGN TO (TIME ZONE / WITH OFFSET) or a FILL value, return that
+ * anchor rule. Nested expressions (function arguments, parentheses) are not
+ * top level.
+ */
+function quietExpressionAnchor(ruleStack: string[]): string | undefined {
+  for (let i = ruleStack.length - 2; i >= 0; i--) {
+    if (!QUIET_EXPRESSION_ANCHORS.includes(ruleStack[i])) continue
+    if (ruleStack[i + 1] !== "expression") return undefined
+    const nested = ruleStack
+      .slice(i + 2)
+      .some((r) => r === "expression" || r === "selectStatement")
+    return nested ? undefined : ruleStack[i]
+  }
+  return undefined
+}
+
 /**
  * Compute content assist suggestions, handling CTE context specially.
  *
@@ -985,17 +1023,27 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   // columnDefinition only takes DOUBLE PRECISION in CREATE TABLE (a rule
   // argument gates it); ALTER TABLE ADD COLUMN shares the rule, so drop
   // PRECISION there as well.
-  const suggestions = rawSuggestions.filter(
-    (s) =>
-      !(
-        (s.ruleStack[s.ruleStack.length - 1] ===
-          "timestampWithTimeZoneLiteral" &&
-          (s.nextTokenType.name === "Timestamp" ||
-            s.nextTokenType.name === "TimestampNs")) ||
-        (s.nextTokenType.name === "Precision" &&
-          s.ruleStack.includes("alterTableAction"))
-      ),
-  )
+  // SAMPLE BY / FILL / ALIGN TO ... TIME ZONE / WITH OFFSET take any
+  // expression on the server, but at the top level of those expressions we
+  // keep the short lists offered before (nothing for SAMPLE BY and ALIGN TO,
+  // NULL / PREV / LINEAR / NONE for FILL) instead of every column, function
+  // and operator.
+  let fillOperandStart = false
+  const suggestions = rawSuggestions.filter((s) => {
+    const quiet = quietExpressionAnchor(s.ruleStack)
+    if (quiet === "fillValue" && s.nextTokenType.name === "Null") {
+      fillOperandStart = true
+      return true
+    }
+    return !(
+      (quiet && !QUIET_EXPRESSION_KEPT_TOKENS.has(s.nextTokenType.name)) ||
+      (s.ruleStack[s.ruleStack.length - 1] === "timestampWithTimeZoneLiteral" &&
+        (s.nextTokenType.name === "Timestamp" ||
+          s.nextTokenType.name === "TimestampNs")) ||
+      (s.nextTokenType.name === "Precision" &&
+        s.ruleStack.includes("alterTableAction"))
+    )
+  })
   const result = suggestions.map((s) => s.nextTokenType)
 
   // Walk every IdentifierKeyword path and union the category flags valid at
@@ -1050,6 +1098,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   )
 
   const contextKeywords = contextKeywordSuggestions(tokens, suggestions)
+  if (fillOperandStart) contextKeywords.push("PREV", "LINEAR", "NONE")
   const contextFunctions = contextFunctionSuggestions(tokens, suggestions)
 
   return {

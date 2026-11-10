@@ -224,13 +224,20 @@ function selectToSql(stmt: AST.SelectStatement): string {
         parts.push("FIRST OBSERVATION")
       } else {
         parts.push("CALENDAR")
-        if (stmt.sampleBy.alignTo.timeZone) {
+        const align = stmt.sampleBy.alignTo
+        if (align.timeZoneExpression) {
           parts.push("TIME ZONE")
-          parts.push(escapeString(stmt.sampleBy.alignTo.timeZone))
+          parts.push(expressionToSql(align.timeZoneExpression))
+        } else if (align.timeZone) {
+          parts.push("TIME ZONE")
+          parts.push(escapeString(align.timeZone))
         }
-        if (stmt.sampleBy.alignTo.offset) {
+        if (align.offsetExpression) {
           parts.push("WITH OFFSET")
-          parts.push(escapeString(stmt.sampleBy.alignTo.offset))
+          parts.push(expressionToSql(align.offsetExpression))
+        } else if (align.offset) {
+          parts.push("WITH OFFSET")
+          parts.push(escapeString(align.offset))
         }
       }
     }
@@ -1838,7 +1845,7 @@ function pivotToSql(stmt: AST.PivotStatement): string {
 // Expressions
 // =============================================================================
 
-function expressionToSql(expr: AST.Expression): string {
+export function expressionToSql(expr: AST.Expression): string {
   if (!expr) return ""
   switch (expr.type) {
     case "binary":

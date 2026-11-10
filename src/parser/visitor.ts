@@ -9,6 +9,7 @@ type CstChildrenRecord = Record<string, CstElement[] | undefined>
 
 import { parser } from "./parser"
 import * as AST from "./ast"
+import { expressionToSql } from "./toSql"
 import type {
   AddUserStatementCstChildren,
   AdditiveExpressionCstChildren,
@@ -1063,13 +1064,9 @@ class QuestDBVisitor extends BaseVisitor {
   sampleByClause(ctx: SampleByClauseCstChildren): AST.SampleByClause {
     const result: AST.SampleByClause = {
       type: "sampleBy",
-      duration: ctx.DurationLiteral
-        ? this.tokenImage(ctx.DurationLiteral[0])
-        : ctx.VariableReference
-          ? this.tokenImage(ctx.VariableReference[0])
-          : ctx.BindVariable
-            ? `${this.tokenImage(ctx.BindVariable[0])} ${this.tokenImage(ctx.sampleByUnit![0])}`
-            : this.tokenImage(ctx.Identifier![0]),
+      duration: ctx.sampleByExpression
+        ? this.sampleByDuration(ctx.sampleByExpression[0], ctx.sampleByUnit)
+        : this.tokenImage(ctx.Identifier![0]),
     }
     if (ctx.groupingSetsSpec) {
       result.groupingSets = this.visit(ctx.groupingSetsSpec) as AST.GroupingSets
@@ -1092,20 +1089,29 @@ class QuestDBVisitor extends BaseVisitor {
     return ctx.fillValue.map((v: CstNode) => this.visit(v) as string)
   }
 
+  /** SAMPLE BY text: the expression as SQL, plus the unit letter if any */
+  private sampleByDuration(node: CstNode, unit: IToken[] | undefined): string {
+    // A lone duration literal keeps its image (`1h`, `30m`, `1d`)
+    const bare = this.bareDurationLiteral(node)
+    const text = bare
+      ? String(bare.value)
+      : expressionToSql(this.visit(node) as AST.Expression)
+    return unit ? `${text} ${this.tokenImage(unit[0])}` : text
+  }
+
+  // FILL values: plain names (PREV, LINEAR, NONE, NULL) are upper-cased and
+  // PREV(...) keeps an upper-case name, as before; other values are printed
+  // as expressions (-1, @f, 1 + 2, '5').
   fillValue(ctx: FillValueCstChildren): string {
-    if (ctx.Null) return "NULL"
-    if (ctx.NumberLiteral) return this.tokenImage(ctx.NumberLiteral[0])
-    if (ctx.identifier) {
-      const name = this.extractIdentifierName(
-        ctx.identifier[0].children,
-      ).toUpperCase()
-      if (ctx.LParen && ctx.identifier[1]) {
-        const column = this.extractIdentifierName(ctx.identifier[1].children)
-        return `${name}(${column})`
-      }
-      return name
+    const expr = this.visit(ctx.expression) as AST.Expression
+    if (expr.type === "column" && expr.name.parts.length === 1) {
+      return expr.name.parts[0].toUpperCase()
     }
-    return ""
+    if (expr.type === "literal" && expr.literalType === "null") return "NULL"
+    if (expr.type === "function" && expr.name.toUpperCase() === "PREV") {
+      return expressionToSql({ ...expr, name: "PREV" })
+    }
+    return expressionToSql(expr)
   }
 
   alignToClause(ctx: AlignToClauseCstChildren): AST.AlignToClause {
@@ -1113,11 +1119,29 @@ class QuestDBVisitor extends BaseVisitor {
       type: "alignTo",
       mode: ctx.Calendar ? "calendar" : "firstObservation",
     }
-    if (ctx.Zone && ctx.timeZoneValue) {
-      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0])
+    // A string literal or plain name stays a string; anything else (@tz, $1,
+    // f(...)) is kept as an expression too.
+    const value = (
+      node: CstNode,
+    ): { text: string; expression?: AST.Expression } => {
+      const expr = this.visit(node) as AST.Expression
+      if (expr.type === "literal" && expr.literalType === "string") {
+        return { text: String(expr.value) }
+      }
+      if (expr.type === "column" && expr.name.parts.length === 1) {
+        return { text: expr.name.parts[0] }
+      }
+      return { text: expressionToSql(expr), expression: expr }
     }
-    if (ctx.Offset && ctx.stringOrIdentifier) {
-      result.offset = this.extractMaybeString(ctx.stringOrIdentifier[0])
+    if (ctx.timeZoneExpression) {
+      const v = value(ctx.timeZoneExpression[0])
+      result.timeZone = v.text
+      if (v.expression) result.timeZoneExpression = v.expression
+    }
+    if (ctx.offsetExpression) {
+      const v = value(ctx.offsetExpression[0])
+      result.offset = v.text
+      if (v.expression) result.offsetExpression = v.expression
     }
     return result
   }

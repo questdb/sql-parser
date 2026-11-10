@@ -1512,5 +1512,53 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/WithClauseTest.java:654",
     "feature": "declare",
     "toSql": "WITH c AS (SELECT 'a'::SYMBOL AS x) SELECT * FROM c UNION ALL WITH c AS (SELECT 'b'::SYMBOL AS x) SELECT * FROM c UNION ALL SELECT * FROM c"
+  },
+  {
+    "query": "SELECT ts, percentile_cont(v, 0.25) p FROM t SAMPLE BY 1h FILL(-1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/groupby/PercentileContDoubleGroupByFunctionFactoryTest.java:530",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT ts, percentile_cont(v, 0.25) AS p FROM t SAMPLE BY 1h FILL(-1)"
+  },
+  {
+    "query": "SELECT ts, sum(a) FROM t SAMPLE BY 1h FILL(PREV(abs(a))) ALIGN TO CALENDAR",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByFillPrevTest.java:1988",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT ts, sum(a) FROM t SAMPLE BY 1h FILL(PREV(abs(a))) ALIGN TO CALENDAR"
+  },
+  {
+    "query": "DECLARE @f := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY 12h FILL(@f)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:2028",
+    "feature": "sample-by-fill-align",
+    "toSql": "DECLARE @f := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY 12h FILL(@f)"
+  },
+  {
+    "query": "select b, sum(a), k k1, k from x y sample by 3h align to calendar time zone rnd_str('foo','bar') with offset '00:15'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SampleBySqlParserTest.java:57",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT b, sum(a), k AS k1, k FROM x AS y SAMPLE BY 3h ALIGN TO CALENDAR TIME ZONE rnd_str('foo', 'bar') WITH OFFSET '00:15'"
+  },
+  {
+    "query": "DECLARE @tz := 'Antarctica/McMurdo' SELECT timestamp, symbol, avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ZONE @tz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:1036",
+    "feature": "sample-by-fill-align",
+    "toSql": "DECLARE @tz := 'Antarctica/McMurdo' SELECT timestamp, symbol, avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ZONE @tz"
+  },
+  {
+    "query": "DECLARE @q := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY @q h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:3750",
+    "feature": "sample-by-fill-align",
+    "toSql": "DECLARE @q := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY @q h"
+  },
+  {
+    "query": "select sum(a), k from x sample by (1+2)*10L m align to calendar",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByNanoTimestampTest.java:16610",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT sum(a), k FROM x SAMPLE BY (1 + 2) * 10L m ALIGN TO CALENDAR"
+  },
+  {
+    "query": "select timestamp + 60000000 as 'timestamp', timestamp, count() from t where name = 'a' sample by (1m)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlOptimiserTest.java:4550",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT timestamp + 60000000 AS timestamp, timestamp, count() FROM t WHERE name = 'a' SAMPLE BY (1m)"
   }
 ]

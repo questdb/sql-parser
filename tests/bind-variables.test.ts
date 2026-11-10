@@ -249,11 +249,8 @@ describe("round trip", () => {
 
 describe("errors", () => {
   it.each([
-    // SqlParser.expectSample: a bind variable interval needs a unit letter
-    "SELECT * FROM t SAMPLE BY $1",
-    "SELECT * FROM t SAMPLE BY $1 FILL(NULL)",
-    // not a sample by period letter
-    "SELECT * FROM t SAMPLE BY $1 x",
+    // (SAMPLE BY $1 without a unit letter is accepted: SAMPLE BY takes any
+    // expression and the unit stays optional, looser than SqlParser.expectSample)
     // a bare colon is not a value
     "SELECT * FROM t WHERE a = : sym",
     // a colon after a completed operand is not a bind variable

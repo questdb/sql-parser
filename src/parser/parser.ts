@@ -1359,28 +1359,29 @@ class QuestDBParser extends CstParser {
     this.CONSUME(Sample)
     this.CONSUME(By)
     this.OR([
-      { ALT: () => this.CONSUME(DurationLiteral) },
-      { ALT: () => this.CONSUME(VariableReference) },
-      {
-        // SAMPLE BY $1 d / :n h — a bind variable is not a full period, so
-        // the server requires a one-letter unit after it
-        // (SqlParser.expectSample: "one letter sample by period unit expected").
-        ALT: () => {
-          this.CONSUME(BindVariable)
-          this.OR1([
-            {
-              GATE: () => this.isSampleByPeriodLetter(this.LA(1).image),
-              ALT: () => this.CONSUME1(Identifier, { LABEL: "sampleByUnit" }),
-            },
-          ])
-        },
-      },
       // Bare single-letter period unit with no leading digit, e.g. `SAMPLE BY w`
       // (equivalent to `SAMPLE BY 1w`). Lexes as an Identifier; the GATE keeps
       // this alternative restricted to valid unit letters.
       {
-        GATE: () => this.isSampleByPeriodLetter(this.LA(1).image),
+        GATE: () =>
+          this.LA(1).tokenType === Identifier &&
+          this.isSampleByPeriodLetter(this.LA(1).image),
         ALT: () => this.CONSUME(Identifier),
+      },
+      {
+        // SAMPLE BY <expr> [unit letter] (SqlParser.expectSample): a full
+        // period (`1h`, `@unit`) or an expression followed by a one-letter
+        // unit: `@q h`, `2 h`, `(10+20)m`, `$1 d`. The unit is optional here
+        // (the server requires it unless the expression is a full period).
+        ALT: () => {
+          this.SUBRULE(this.expression, { LABEL: "sampleByExpression" })
+          this.OPTION4({
+            GATE: () =>
+              this.LA(1).tokenType === Identifier &&
+              this.isSampleByPeriodLetter(this.LA(1).image),
+            DEF: () => this.CONSUME1(Identifier, { LABEL: "sampleByUnit" }),
+          })
+        },
       },
     ])
     // SAMPLE BY 1h ROLLUP(a) | CUBE(a) | GROUPING SETS ((a), ()): right after
@@ -1456,21 +1457,10 @@ class QuestDBParser extends CstParser {
     this.CONSUME(RParen)
   })
 
+  // FILL values are expressions on the server (NULL, PREV, LINEAR, NONE,
+  // PREV(col), -1, @var, 1+2, '5', ...).
   private fillValue = this.RULE("fillValue", () => {
-    this.OR([
-      { ALT: () => this.CONSUME(Null) },
-      { ALT: () => this.CONSUME(NumberLiteral) },
-      {
-        ALT: () => {
-          this.SUBRULE(this.identifier)
-          this.OPTION(() => {
-            this.CONSUME(LParen)
-            this.SUBRULE1(this.identifier)
-            this.CONSUME(RParen)
-          })
-        },
-      },
-    ])
+    this.SUBRULE(this.expression)
   })
 
   private alignToClause = this.RULE("alignToClause", () => {
@@ -1486,17 +1476,17 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(Calendar)
-          // Optional TIME ZONE clause
+          // Optional TIME ZONE <expr> (string, @var, $1, function call, ...)
           this.OPTION(() => {
             this.CONSUME(Time)
             this.CONSUME(Zone)
-            this.SUBRULE(this.timeZoneValue)
+            this.SUBRULE(this.expression, { LABEL: "timeZoneExpression" })
           })
-          // Optional WITH OFFSET clause (can appear with or without TIME ZONE)
+          // Optional WITH OFFSET <expr> (with or without TIME ZONE)
           this.OPTION1(() => {
             this.CONSUME(With)
             this.CONSUME(Offset)
-            this.SUBRULE(this.stringOrIdentifier)
+            this.SUBRULE1(this.expression, { LABEL: "offsetExpression" })
           })
         },
       },
