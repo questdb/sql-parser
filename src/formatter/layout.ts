@@ -82,6 +82,10 @@ const opensBlock = (next: Piece | undefined) => startsQuery(next)
 
 type Clause = { doc: Doc; headless: boolean }
 
+const timestampWithTimeZone: Phrase[] = [
+  { names: ["With", "Time", "Zone"], role: "clause" },
+]
+
 const alwaysBreaksList = (phrase: Phrase | null) =>
   phrase !== null && phrase.names[0] === "Declare"
 
@@ -214,6 +218,17 @@ class StatementBuilder {
       piece !== undefined &&
       this.previous !== null &&
       isGluedWords(this.previous, piece)
+    ) {
+      return null
+    }
+    // `timestamp[_ns] WITH TIME ZONE` is a type name, not a WITH clause
+    if (
+      piece !== undefined &&
+      piece.token.tokenName === "With" &&
+      this.previous !== null &&
+      (this.previous.token.tokenName === "Timestamp" ||
+        this.previous.token.tokenName === "TimestampNs") &&
+      matchPhrase(this.tokens, this.index, timestampWithTimeZone) !== null
     ) {
       return null
     }

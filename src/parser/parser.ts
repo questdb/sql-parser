@@ -245,6 +245,8 @@ import {
   DataPageSize,
   ParquetVersion,
   Zone,
+  At,
+  Precision,
   Period,
   Length,
   Delay,
@@ -1818,10 +1820,10 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME1(LParen)
-          this.SUBRULE(this.columnDefinition)
+          this.SUBRULE(this.columnDefinition, { ARGS: [true] })
           this.MANY(() => {
             this.CONSUME2(Comma)
-            this.SUBRULE1(this.columnDefinition)
+            this.SUBRULE1(this.columnDefinition, { ARGS: [true] })
           })
           this.CONSUME1(RParen)
           // Optional INDEX clause(s) after column list
@@ -2376,27 +2378,42 @@ class QuestDBParser extends CstParser {
     },
   )
 
-  private columnDefinition = this.RULE("columnDefinition", () => {
-    this.SUBRULE(this.identifier)
-    this.SUBRULE(this.dataType)
-    // SYMBOL column options: CAPACITY n, CACHE|NOCACHE, INDEX [CAPACITY n]
-    this.OPTION(() => {
-      this.CONSUME(Capacity)
-      this.CONSUME(NumberLiteral)
-    })
-    this.OPTION1(() => {
-      this.OR([
-        { ALT: () => this.CONSUME(Cache) },
-        { ALT: () => this.CONSUME(Nocache) },
-      ])
-    })
-    this.OPTION2(() => {
-      this.CONSUME(Index)
-      this.SUBRULE(this.indexTypeOptions)
-    })
-    // Optional PARQUET config
-    this.OPTION4(() => this.SUBRULE(this.parquetConfig))
-  })
+  // allowDoublePrecision: CREATE TABLE columns (SqlParser.toColumnType skips
+  // PRECISION after DOUBLE). ALTER TABLE ADD COLUMN does not
+  // (SqlCompilerImpl.addColumnWithType); autocomplete drops PRECISION there.
+  private columnDefinition = this.RULE(
+    "columnDefinition",
+    (allowDoublePrecision?: boolean) => {
+      this.SUBRULE(this.identifier)
+      this.OR5({
+        IGNORE_AMBIGUITIES: true,
+        DEF: [
+          {
+            GATE: () => !!allowDoublePrecision && this.isDoublePrecision(),
+            ALT: () => this.SUBRULE(this.doublePrecisionType),
+          },
+          { ALT: () => this.SUBRULE(this.dataType) },
+        ],
+      })
+      // SYMBOL column options: CAPACITY n, CACHE|NOCACHE, INDEX [CAPACITY n]
+      this.OPTION(() => {
+        this.CONSUME(Capacity)
+        this.CONSUME(NumberLiteral)
+      })
+      this.OPTION1(() => {
+        this.OR([
+          { ALT: () => this.CONSUME(Cache) },
+          { ALT: () => this.CONSUME(Nocache) },
+        ])
+      })
+      this.OPTION2(() => {
+        this.CONSUME(Index)
+        this.SUBRULE(this.indexTypeOptions)
+      })
+      // Optional PARQUET config
+      this.OPTION4(() => this.SUBRULE(this.parquetConfig))
+    },
+  )
 
   // PARQUET( BLOOM_FILTER | encoding [, compression[(level)]] [, BLOOM_FILTER] )
   private parquetConfig = this.RULE("parquetConfig", () => {
@@ -2548,7 +2565,17 @@ class QuestDBParser extends CstParser {
     this.CONSUME(LParen)
     this.SUBRULE(this.columnRef)
     this.CONSUME(As)
-    this.SUBRULE(this.dataType)
+    // SqlParser.toColumnType: DOUBLE PRECISION is DOUBLE
+    this.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        {
+          GATE: () => this.isDoublePrecision(),
+          ALT: () => this.SUBRULE(this.doublePrecisionType),
+        },
+        { ALT: () => this.SUBRULE(this.dataType) },
+      ],
+    })
     this.CONSUME(RParen)
   })
 
@@ -4884,7 +4911,23 @@ class QuestDBParser extends CstParser {
     })
     this.MANY2(() => {
       this.CONSUME(DoubleColon)
-      this.SUBRULE(this.dataType)
+      this.SUBRULE(this.castDataType)
+    })
+    // <expr> AT TIME ZONE '<tz>' (ExpressionParser: AT after a completed
+    // operand, rewritten to to_timezone(expr, tz); the zone must be a
+    // string constant). Not repeated: the server does not chain it. The
+    // gate keeps `at` usable as an alias (`SELECT ts at FROM t`).
+    this.OPTION({
+      GATE: () => this.LA(2).tokenType === Time,
+      DEF: () => {
+        this.CONSUME(At)
+        this.CONSUME(Time)
+        this.CONSUME(Zone)
+        this.OR([
+          { ALT: () => this.CONSUME(StringLiteral) },
+          { ALT: () => this.CONSUME(EscapeStringLiteral) },
+        ])
+      },
     })
   })
 
@@ -5033,8 +5076,64 @@ class QuestDBParser extends CstParser {
     this.CONSUME(LParen)
     this.SUBRULE(this.expression)
     this.CONSUME(As)
-    this.SUBRULE(this.dataType)
+    this.SUBRULE(this.castDataType)
     this.CONSUME(RParen)
+  })
+
+  // Cast target (`::` and CAST(x AS ...)): ExpressionParser also reads the
+  // multi-word spellings `timestamp[_ns] with time zone` and
+  // `double precision`. They are separate alternatives (not options inside
+  // dataType) so autocomplete only offers WITH after TIMESTAMP and PRECISION
+  // after DOUBLE, and only where the server accepts them.
+  private castDataType = this.RULE("castDataType", () => {
+    this.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        {
+          GATE: () => {
+            const t1 = this.LA(1).tokenType
+            return (
+              (t1 === Timestamp || t1 === TimestampNs) &&
+              this.LA(2).tokenType === With &&
+              this.LA(3).tokenType === Time
+            )
+          },
+          ALT: () => this.SUBRULE(this.timestampWithTimeZoneType),
+        },
+        {
+          GATE: () => this.isDoublePrecision(),
+          ALT: () => this.SUBRULE(this.doublePrecisionType),
+        },
+        { ALT: () => this.SUBRULE(this.dataType) },
+      ],
+    })
+  })
+
+  private isDoublePrecision(): boolean {
+    return this.LA(1).tokenType === Double && this.LA(2).tokenType === Precision
+  }
+
+  private timestampWithTimeZoneType = this.RULE(
+    "timestampWithTimeZoneType",
+    () => {
+      this.OR([
+        { ALT: () => this.CONSUME(Timestamp) },
+        { ALT: () => this.CONSUME(TimestampNs) },
+      ])
+      this.CONSUME(With)
+      this.CONSUME(Time)
+      this.CONSUME(Zone)
+    },
+  )
+
+  private doublePrecisionType = this.RULE("doublePrecisionType", () => {
+    this.CONSUME(Double)
+    this.CONSUME(Precision)
+    // Array dimensions: DOUBLE PRECISION[], DOUBLE PRECISION[][]
+    this.MANY(() => {
+      this.CONSUME(LBracket)
+      this.CONSUME(RBracket)
+    })
   })
 
   private dataType = this.RULE("dataType", () => {

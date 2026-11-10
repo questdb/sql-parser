@@ -190,6 +190,9 @@ import type {
   TimeZoneValueCstChildren,
   TruncateTableStatementCstChildren,
   TypeCastExpressionCstChildren,
+  CastDataTypeCstChildren,
+  TimestampWithTimeZoneTypeCstChildren,
+  DoublePrecisionTypeCstChildren,
   UnaryExpressionCstChildren,
   UnnestArgCstChildren,
   UnnestClauseCstChildren,
@@ -1542,7 +1545,7 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.ColumnDefinition = {
       type: "columnDefinition",
       name: this.extractIdentifierName(ctx.identifier[0].children),
-      dataType: this.visit(ctx.dataType) as string,
+      dataType: this.visit(ctx.doublePrecisionType ?? ctx.dataType!) as string,
     }
 
     // Distinguish symbol CAPACITY (CONSUME) from index CAPACITY (CONSUME1) by position
@@ -1703,7 +1706,7 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "castDefinition",
       column: colRef.name ?? colRef,
-      dataType: this.visit(ctx.dataType) as string,
+      dataType: this.visit(ctx.doublePrecisionType ?? ctx.dataType!) as string,
     }
   }
 
@@ -4227,13 +4230,24 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
-    if (ctx.DoubleColon && ctx.dataType) {
+    if (ctx.DoubleColon && ctx.castDataType) {
       for (let i = 0; i < ctx.DoubleColon.length; i++) {
         inner = {
           type: "typeCast",
           expression: inner,
-          dataType: this.visit(ctx.dataType[i]) as string,
+          dataType: this.visit(ctx.castDataType[i]) as string,
         }
+      }
+    }
+
+    if (ctx.At) {
+      inner = {
+        type: "atTimeZone",
+        expression: inner,
+        timeZone: this.typedLiteralString(
+          ctx.StringLiteral,
+          ctx.EscapeStringLiteral,
+        ),
       }
     }
 
@@ -4398,8 +4412,26 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "cast",
       expression: this.visit(ctx.expression) as AST.Expression,
-      dataType: this.visit(ctx.dataType) as string,
+      dataType: this.visit(ctx.castDataType) as string,
     }
+  }
+
+  castDataType(ctx: CastDataTypeCstChildren): string {
+    if (ctx.timestampWithTimeZoneType) {
+      return this.visit(ctx.timestampWithTimeZoneType) as string
+    }
+    if (ctx.doublePrecisionType) {
+      return this.visit(ctx.doublePrecisionType) as string
+    }
+    return this.visit(ctx.dataType!) as string
+  }
+
+  timestampWithTimeZoneType(ctx: TimestampWithTimeZoneTypeCstChildren): string {
+    return `${ctx.TimestampNs ? "TIMESTAMP_NS" : "TIMESTAMP"} WITH TIME ZONE`
+  }
+
+  doublePrecisionType(ctx: DoublePrecisionTypeCstChildren): string {
+    return "DOUBLE PRECISION" + "[]".repeat(ctx.LBracket?.length ?? 0)
   }
 
   dataType(ctx: DataTypeCstChildren): string {

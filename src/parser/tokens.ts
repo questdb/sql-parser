@@ -426,6 +426,10 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Grouping",
   "Rollup",
   "Sets",
+  // <expr> AT TIME ZONE '<tz>' and DOUBLE PRECISION (ExpressionParser); not
+  // reserved on the server.
+  "At",
+  "Precision",
 ])
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
@@ -731,6 +735,10 @@ export const Cube = getToken("Cube")
 export const Grouping = getToken("Grouping")
 export const Rollup = getToken("Rollup")
 export const Sets = getToken("Sets")
+
+// AT TIME ZONE, DOUBLE PRECISION
+export const At = getToken("At")
+export const Precision = getToken("Precision")
 
 // Data types (from grammar/dataTypes.ts)
 export const Binary = getToken("Binary")

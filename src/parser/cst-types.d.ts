@@ -1143,7 +1143,8 @@ export interface ColumnDefinitionCstNode extends CstNode {
 
 export type ColumnDefinitionCstChildren = {
   identifier: IdentifierCstNode[];
-  dataType: DataTypeCstNode[];
+  doublePrecisionType?: DoublePrecisionTypeCstNode[];
+  dataType?: DataTypeCstNode[];
   Capacity?: IToken[];
   NumberLiteral?: IToken[];
   Cache?: IToken[];
@@ -1272,7 +1273,8 @@ export type CastDefinitionCstChildren = {
   LParen: IToken[];
   columnRef: ColumnRefCstNode[];
   As: IToken[];
-  dataType: DataTypeCstNode[];
+  doublePrecisionType?: DoublePrecisionTypeCstNode[];
+  dataType?: DataTypeCstNode[];
   RParen: IToken[];
 };
 
@@ -2648,7 +2650,12 @@ export type TypeCastExpressionCstChildren = {
   Comma?: IToken[];
   RBracket?: IToken[];
   DoubleColon?: IToken[];
-  dataType?: DataTypeCstNode[];
+  castDataType?: CastDataTypeCstNode[];
+  At?: IToken[];
+  Time?: IToken[];
+  Zone?: IToken[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
 };
 
 export interface ArraySubscriptCstNode extends CstNode {
@@ -2725,8 +2732,44 @@ export type CastExpressionCstChildren = {
   LParen: IToken[];
   expression: ExpressionCstNode[];
   As: IToken[];
-  dataType: DataTypeCstNode[];
+  castDataType: CastDataTypeCstNode[];
   RParen: IToken[];
+};
+
+export interface CastDataTypeCstNode extends CstNode {
+  name: "castDataType";
+  children: CastDataTypeCstChildren;
+}
+
+export type CastDataTypeCstChildren = {
+  timestampWithTimeZoneType?: TimestampWithTimeZoneTypeCstNode[];
+  doublePrecisionType?: DoublePrecisionTypeCstNode[];
+  dataType?: DataTypeCstNode[];
+};
+
+export interface TimestampWithTimeZoneTypeCstNode extends CstNode {
+  name: "timestampWithTimeZoneType";
+  children: TimestampWithTimeZoneTypeCstChildren;
+}
+
+export type TimestampWithTimeZoneTypeCstChildren = {
+  Timestamp?: IToken[];
+  TimestampNs?: IToken[];
+  With: IToken[];
+  Time: IToken[];
+  Zone: IToken[];
+};
+
+export interface DoublePrecisionTypeCstNode extends CstNode {
+  name: "doublePrecisionType";
+  children: DoublePrecisionTypeCstChildren;
+}
+
+export type DoublePrecisionTypeCstChildren = {
+  Double: IToken[];
+  Precision: IToken[];
+  LBracket?: IToken[];
+  RBracket?: IToken[];
 };
 
 export interface DataTypeCstNode extends CstNode {
@@ -3250,6 +3293,9 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   arrayBracketBody(children: ArrayBracketBodyCstChildren, param?: IN): OUT;
   arrayElement(children: ArrayElementCstChildren, param?: IN): OUT;
   castExpression(children: CastExpressionCstChildren, param?: IN): OUT;
+  castDataType(children: CastDataTypeCstChildren, param?: IN): OUT;
+  timestampWithTimeZoneType(children: TimestampWithTimeZoneTypeCstChildren, param?: IN): OUT;
+  doublePrecisionType(children: DoublePrecisionTypeCstChildren, param?: IN): OUT;
   dataType(children: DataTypeCstChildren, param?: IN): OUT;
   caseExpression(children: CaseExpressionCstChildren, param?: IN): OUT;
   functionName(children: FunctionNameCstChildren, param?: IN): OUT;

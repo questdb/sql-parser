@@ -1228,5 +1228,120 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cairo/DdlListenerTest.java:388",
     "feature": "numeric-literal-typing",
     "toSql": "CREATE MATERIALIZED VIEW mv3 AS (SELECT ts, avg(x) AS avg_x FROM tab SAMPLE BY 10m) PARTITION BY DAY"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555Z'::timestamp at time zone 'UTC'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:180",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555Z'::TIMESTAMP AT TIME ZONE 'UTC'"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555555Z'::timestamp_ns at time zone 'UTC'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:188",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555555Z'::TIMESTAMP_NS AT TIME ZONE 'UTC'"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555Z'::timestamp at time zone 'UTC' + 5",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:34",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555Z'::TIMESTAMP AT TIME ZONE 'UTC' + 5"
+  },
+  {
+    "query": "select cast('2022-03-11T22:00:30.555555555Z'::timestamp_ns at time zone 'EST' as string)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:61",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST('2022-03-11T22:00:30.555555555Z'::TIMESTAMP_NS AT TIME ZONE 'EST' AS STRING)"
+  },
+  {
+    "query": "select date_trunc('day', '2022-03-11T22:00:30.555555Z'::timestamp at time zone 'UTC')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:96",
+    "feature": "type-syntax",
+    "toSql": "SELECT date_trunc('day', '2022-03-11T22:00:30.555555Z'::TIMESTAMP AT TIME ZONE 'UTC')"
+  },
+  {
+    "query": "select case    when to_timestamp('2022-03-11T22:00:30.555555Z') at time zone 'EST' > 0   then 'abc'   else 'cde'end",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:115",
+    "feature": "type-syntax",
+    "toSql": "SELECT CASE WHEN to_timestamp('2022-03-11T22:00:30.555555Z') AT TIME ZONE 'EST' > 0 THEN 'abc' ELSE 'cde' END"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555Z'::timestamp time",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:142",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555Z'::TIMESTAMP AS time"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555555Z'::timestamp_ns zone",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:169",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555555Z'::TIMESTAMP_NS AS zone"
+  },
+  {
+    "query": "insert into t values (cast('2021-12-31 15:15:51.663+00:00' as timestamp with time zone))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1798",
+    "feature": "type-syntax",
+    "toSql": "INSERT INTO t VALUES (CAST('2021-12-31 15:15:51.663+00:00' AS TIMESTAMP WITH TIME ZONE))"
+  },
+  {
+    "query": "insert into t values (cast('2021-12-31 15:15:51.663+00:00'::varchar as timestamp with time zone))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1822",
+    "feature": "type-syntax",
+    "toSql": "INSERT INTO t VALUES (CAST('2021-12-31 15:15:51.663+00:00'::VARCHAR AS TIMESTAMP WITH TIME ZONE))"
+  },
+  {
+    "query": "select cast('2020-12-31 15:15:51.663+00:00' as timestamp with time zone) time, timestamp from t;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SimpleTableTest.java:83",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST('2020-12-31 15:15:51.663+00:00' AS TIMESTAMP WITH TIME ZONE) AS time, timestamp FROM t"
+  },
+  {
+    "query": "select cast(t as timestamp with time zone) from x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13672",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST(t AS TIMESTAMP WITH TIME ZONE) FROM x"
+  },
+  {
+    "query": "select cast('2005-04-02 12:00:00-07' as timestamp with time zone) col from x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13681",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST('2005-04-02 12:00:00-07' AS TIMESTAMP WITH TIME ZONE) AS col FROM x"
+  },
+  {
+    "query": "select '2020-01-01T00:00:00.000000001Z'::timestamp_ns with time zone ts",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:1428",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2020-01-01T00:00:00.000000001Z'::TIMESTAMP_NS WITH TIME ZONE AS ts"
+  },
+  {
+    "query": "select concat('2020-01-01T','01:02:03.123456Z')::timestamp with time zone ts",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:2138",
+    "feature": "type-syntax",
+    "toSql": "SELECT concat('2020-01-01T', '01:02:03.123456Z')::TIMESTAMP WITH TIME ZONE AS ts"
+  },
+  {
+    "query": "insert into tt values ('2020-01-01T00:00:00.000000123Z', '2020-01-01T00:00:00.000000123Z'::timestamp_ns with time zone)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:1448",
+    "feature": "type-syntax",
+    "toSql": "INSERT INTO tt VALUES ('2020-01-01T00:00:00.000000123Z', '2020-01-01T00:00:00.000000123Z'::TIMESTAMP_NS WITH TIME ZONE)"
+  },
+  {
+    "query": "select vch::timestamp with time zone ts from tt",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:2151",
+    "feature": "type-syntax",
+    "toSql": "SELECT vch::TIMESTAMP WITH TIME ZONE AS ts FROM tt",
+    "format": "select vch::timestamp with time zone ts\nfrom tt"
+  },
+  {
+    "query": "select '{1}'::double precision[] as arr from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGArraysTest.java:1000",
+    "feature": "type-syntax",
+    "toSql": "SELECT '{1}'::DOUBLE PRECISION[] AS arr FROM long_sequence(1)"
+  },
+  {
+    "query": "select '{{1},{2}}'::douBLE pREciSioN[][] as arr from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGArraysTest.java:1014",
+    "feature": "type-syntax",
+    "toSql": "SELECT '{{1},{2}}'::DOUBLE PRECISION[][] AS arr FROM long_sequence(1)"
   }
 ]

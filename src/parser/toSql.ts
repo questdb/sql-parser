@@ -1860,6 +1860,8 @@ function expressionToSql(expr: AST.Expression): string {
       return castExprToSql(expr)
     case "typeCast":
       return typeCastExprToSql(expr)
+    case "atTimeZone":
+      return `${expressionToSql(expr.expression)} AT TIME ZONE ${expressionToSql(expr.timeZone)}`
     case "in":
       return inExprToSql(expr)
     case "between":

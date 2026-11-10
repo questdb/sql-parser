@@ -1259,6 +1259,7 @@ export type Expression =
   | CaseExpression
   | CastExpression
   | TypeCastExpression
+  | AtTimeZoneExpression
   | InExpression
   | BetweenExpression
   | WithinExpression
@@ -1370,6 +1371,13 @@ export interface TypeCastExpression extends AstNode {
   type: "typeCast"
   expression: Expression
   dataType: string
+}
+
+/** `<expr> AT TIME ZONE '<tz>'` (the server rewrites it to to_timezone(expr, tz)) */
+export interface AtTimeZoneExpression extends AstNode {
+  type: "atTimeZone"
+  expression: Expression
+  timeZone: Expression
 }
 
 export interface InExpression extends AstNode {
