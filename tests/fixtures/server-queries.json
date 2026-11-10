@@ -1626,5 +1626,47 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:415",
     "feature": "pivot",
     "toSql": "SELECT * FROM cities PIVOT (SUM(population) FOR (SELECT 'NL')::VARCHAR IN ('NL') GROUP BY year)"
+  },
+  {
+    "query": "SELECT * FROM t1 ASOF JOIN t2 TOLERANCE 2s;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/AsOfJoinTest.java:1987",
+    "feature": "join-aliases",
+    "toSql": "SELECT * FROM t1 ASOF JOIN t2 TOLERANCE 2s"
+  },
+  {
+    "query": "SELECT * FROM t1 LT JOIN t2 TOLERANCE 2s;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/AsOfJoinTest.java:5251",
+    "feature": "join-aliases",
+    "toSql": "SELECT * FROM t1 LT JOIN t2 TOLERANCE 2s"
+  },
+  {
+    "query": "select t.* from trades t WINDOW JOIN quotes range between 2 second preceding and 1 second preceding order by t.timestamp",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:14994",
+    "feature": "join-aliases",
+    "toSql": "SELECT t.* FROM trades AS t WINDOW JOIN quotes RANGE BETWEEN 2 SECOND PRECEDING AND 1 SECOND PRECEDING ORDER BY t.timestamp"
+  },
+  {
+    "query": "DECLARE @q := (SELECT 3_600_000_000L) SELECT k.ts, sum(p.v) FROM k WINDOW JOIN p RANGE BETWEEN @q PRECEDING AND CURRENT ROW",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:3753",
+    "feature": "join-aliases",
+    "toSql": "DECLARE @q := (SELECT 3_600_000_000L) SELECT k.ts, sum(p.v) FROM k WINDOW JOIN p RANGE BETWEEN @q PRECEDING AND CURRENT ROW"
+  },
+  {
+    "query": "explain select h.offset, avg(ws.v) from (select * from wm where now() < '2100-01-01') wm horizon join ws on (wm.k = ws.k) range from 0s to 2s step 1s as h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/BooleanSubQueryRuntimeGateTest.java:321",
+    "feature": "join-aliases",
+    "toSql": "EXPLAIN SELECT h.offset, avg(ws.v) FROM (SELECT * FROM wm WHERE now() < '2100-01-01') AS wm HORIZON JOIN ws ON (wm.k = ws.k) RANGE FROM 0s TO 2s STEP 1s AS h"
+  },
+  {
+    "query": "SELECT t.sym, q.id FROM trades t HORIZON JOIN (quotes WHERE bid > 50) q ON (sym) LIST (0s) AS h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/HorizonJoinProjectionTest.java:1615",
+    "feature": "join-aliases",
+    "toSql": "SELECT t.sym, q.id FROM trades AS t HORIZON JOIN (quotes WHERE bid > 50) AS q ON (sym) LIST (0s) AS h"
+  },
+  {
+    "query": "SELECT val FROM t, UNNEST(t.arr)(val) WHERE val > 1.0",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:14224",
+    "feature": "join-aliases",
+    "toSql": "SELECT val FROM t, UNNEST(t.arr)(val) WHERE val > 1.0"
   }
 ]

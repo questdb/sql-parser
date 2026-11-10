@@ -258,6 +258,7 @@ export type UnnestClauseCstChildren = {
   With?: IToken[];
   Ordinality?: IToken[];
   As?: IToken[];
+  unnestAlias?: (IdentifierCstNode)[];
   identifier?: (IdentifierCstNode)[];
 };
 
@@ -419,10 +420,7 @@ export interface HorizonJoinCstNode extends CstNode {
 export type HorizonJoinCstChildren = {
   Horizon: IToken[];
   Join: IToken[];
-  tableName: TableNameCstNode[];
-  As?: (IToken)[];
-  identifier?: (IdentifierCstNode)[];
-  Identifier?: IToken[];
+  tableRef: TableRefCstNode[];
   On?: IToken[];
   expression?: ExpressionCstNode[];
   Range?: IToken[];
@@ -430,6 +428,8 @@ export type HorizonJoinCstChildren = {
   horizonOffset?: (HorizonOffsetCstNode)[];
   To?: IToken[];
   Step?: IToken[];
+  As?: (IToken)[];
+  identifier?: (IdentifierCstNode)[];
   List?: IToken[];
   LParen?: IToken[];
   Comma?: IToken[];
@@ -443,6 +443,7 @@ export interface HorizonOffsetCstNode extends CstNode {
 
 export type HorizonOffsetCstChildren = {
   Minus?: IToken[];
+  Plus?: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
 };

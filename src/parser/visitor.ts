@@ -727,14 +727,13 @@ class QuestDBVisitor extends BaseVisitor {
       type: "tableRef",
       table: unnest,
     }
-    const identifiers = ctx.identifier || []
-    if (identifiers.length > 0) {
-      result.alias = this.extractIdentifierName(identifiers[0].children)
+    if (ctx.unnestAlias) {
+      result.alias = this.extractIdentifierName(ctx.unnestAlias[0].children)
     }
-    if (identifiers.length > 1) {
-      result.columnAliases = identifiers
-        .slice(1)
-        .map((id: CstNode) => this.extractIdentifierName(id.children))
+    if (ctx.identifier && ctx.identifier.length > 0) {
+      result.columnAliases = ctx.identifier.map((id: CstNode) =>
+        this.extractIdentifierName(id.children),
+      )
     }
     return result
   }
@@ -947,21 +946,7 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   horizonJoin(ctx: HorizonJoinCstChildren): AST.JoinClause {
-    // Build TableRef from tableName + alias
-    const tableRef: AST.TableRef = {
-      type: "tableRef",
-      table: this.visit(ctx.tableName) as AST.QualifiedName,
-    }
-    if (ctx.Identifier) {
-      // Implicit alias (bare identifier, not a keyword)
-      tableRef.alias = ctx.Identifier[0].image
-    } else if (ctx.identifier && ctx.identifier.length > 0) {
-      // Explicit alias (AS <id>): the FIRST identifier is the table alias.
-      // (The horizon alias, when present, is the last identifier.)
-      tableRef.alias = (
-        this.visit(ctx.identifier[0]) as AST.QualifiedName
-      ).parts[0]
-    }
+    const tableRef = this.visit(ctx.tableRef) as AST.TableRef
 
     const result: AST.JoinClause = {
       type: "join",
@@ -985,17 +970,18 @@ class QuestDBVisitor extends BaseVisitor {
         (o) => this.visit(o) as string,
       )
     }
-    // Horizon alias (the trailing `AS <x>`) exists only with a RANGE/LIST clause,
-    // and is the LAST identifier. Non-last joins in a chain have none (#6881).
+    // Horizon alias (the trailing `AS <x>`) exists only with a RANGE/LIST
+    // clause. Non-last joins in a chain have none (#6881).
     if ((ctx.Range || ctx.List) && ctx.identifier) {
-      const lastId = ctx.identifier[ctx.identifier.length - 1]
-      result.horizonAlias = (this.visit(lastId) as AST.QualifiedName).parts[0]
+      result.horizonAlias = (
+        this.visit(ctx.identifier[0]) as AST.QualifiedName
+      ).parts[0]
     }
     return result
   }
 
   horizonOffset(ctx: HorizonOffsetCstChildren): string {
-    const sign = ctx.Minus ? "-" : ""
+    const sign = ctx.Minus ? "-" : ctx.Plus ? "+" : ""
     if (ctx.DurationLiteral) {
       return sign + ctx.DurationLiteral[0].image
     }

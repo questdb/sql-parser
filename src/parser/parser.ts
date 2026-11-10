@@ -467,6 +467,14 @@ class QuestDBParser extends CstParser {
     if (la1 === Owned) return this.LA(2).tokenType !== By
     // If next token is AS, always allow (explicit alias)
     if (la1 === As) return true
+    // Join clause words (server tableAliasStop): `ASOF JOIN t TOLERANCE 2s`,
+    // `WINDOW JOIN t RANGE BETWEEN ...`, `... EXCLUDE PREVAILING`
+    if (la1 === Tolerance || la1 === Range) return false
+    if (
+      (la1 === Exclude || la1 === Include) &&
+      this.LA(2).tokenType === Prevailing
+    )
+      return false
     // Don't consume identifier as alias if followed by LParen —
     // it's a function call starting a new statement, not an alias
     return this.LA(2).tokenType !== LParen
@@ -1057,27 +1065,28 @@ class QuestDBParser extends CstParser {
       this.CONSUME(With)
       this.CONSUME(Ordinality)
     })
-    // Optional alias + column aliases
+    // Optional alias + column aliases; the column alias list may also come
+    // without a table alias: UNNEST(...) (v) (server parseUnnest0)
     this.OPTION1(() => {
       this.OR([
         {
           ALT: () => {
             this.CONSUME(As)
-            this.SUBRULE(this.identifier)
+            this.SUBRULE(this.identifier, { LABEL: "unnestAlias" })
           },
         },
-        { ALT: () => this.SUBRULE1(this.identifier) },
+        { ALT: () => this.SUBRULE1(this.identifier, { LABEL: "unnestAlias" }) },
       ])
-      // Optional column alias list: (col1, col2, ...)
-      this.OPTION2(() => {
-        this.CONSUME1(LParen)
-        this.SUBRULE2(this.identifier)
-        this.MANY1(() => {
-          this.CONSUME1(Comma)
-          this.SUBRULE3(this.identifier)
-        })
-        this.CONSUME1(RParen)
+    })
+    // Optional column alias list: (col1, col2, ...)
+    this.OPTION2(() => {
+      this.CONSUME1(LParen)
+      this.SUBRULE2(this.identifier)
+      this.MANY1(() => {
+        this.CONSUME1(Comma)
+        this.SUBRULE3(this.identifier)
       })
+      this.CONSUME1(RParen)
     })
   })
 
@@ -1269,26 +1278,15 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // HORIZON JOIN: tableName alias [ON expr] (RANGE FROM/TO/STEP | LIST (...)) AS alias
-  // Uses tableName + custom alias instead of tableRef to avoid ambiguity
-  // between implicit keyword aliases and RANGE/LIST/ON keywords.
+  // HORIZON JOIN: tableRef [ON expr] (RANGE FROM/TO/STEP | LIST (...)) AS alias
+  // The target is a table or a parenthesised sub-query with an optional alias
+  // (server parseJoin: expectTableNameOrSubQuery + setModelAliasAndGetOptTok).
+  // tableRef's alias gate refuses RANGE; `LIST (` is refused by its LParen
+  // check.
   private horizonJoin = this.RULE("horizonJoin", () => {
     this.CONSUME(Horizon)
     this.CONSUME(Join)
-    this.SUBRULE(this.tableName)
-    // Table alias (mandatory): explicit (AS <id>) or implicit (bare Identifier only, not keywords)
-    this.OR1([
-      {
-        ALT: () => {
-          this.CONSUME(As)
-          this.SUBRULE(this.identifier)
-        },
-      },
-      {
-        // Implicit alias: only base Identifier, never keywords like RANGE/LIST
-        ALT: () => this.CONSUME(Identifier),
-      },
-    ])
+    this.SUBRULE(this.tableRef)
     this.OPTION(() => {
       this.CONSUME(On)
       this.SUBRULE(this.expression)
@@ -1330,9 +1328,15 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // Horizon offset value: optional minus sign + DurationLiteral | NumberLiteral
+  // Horizon offset value: optional sign + DurationLiteral | NumberLiteral
+  // (server expectIntervalLiteral accepts `-` and `+`)
   private horizonOffset = this.RULE("horizonOffset", () => {
-    this.OPTION(() => this.CONSUME(Minus))
+    this.OPTION(() => {
+      this.OR1([
+        { ALT: () => this.CONSUME(Minus) },
+        { ALT: () => this.CONSUME(Plus) },
+      ])
+    })
     this.OR([
       { ALT: () => this.CONSUME(DurationLiteral) },
       { ALT: () => this.CONSUME(NumberLiteral) },
