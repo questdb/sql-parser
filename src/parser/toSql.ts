@@ -715,7 +715,14 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     let asSql = `AS (${selectToSql(stmt.asSelect)})`
     if (stmt.casts && stmt.casts.length > 0) {
       for (const cast of stmt.casts) {
-        asSql += `, CAST(${qualifiedNameToSql(cast.column)} AS ${cast.dataType})`
+        let castSql = `${qualifiedNameToSql(cast.column)} AS ${cast.dataType}`
+        if (cast.symbolCapacity !== undefined) {
+          castSql += ` CAPACITY ${cast.symbolCapacity}`
+        }
+        if (cast.cache !== undefined) {
+          castSql += cast.cache ? " CACHE" : " NOCACHE"
+        }
+        asSql += `, CAST(${castSql})`
       }
     }
     if (stmt.indexes && stmt.indexes.length > 0) {

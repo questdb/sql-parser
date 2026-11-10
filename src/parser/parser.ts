@@ -2031,13 +2031,14 @@ class QuestDBParser extends CstParser {
             { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
           ])
           this.CONSUME(RParen)
+          // `, CAST(...)` and `, INDEX(...)` in any order (server
+          // SqlParser.parseCreateTable loops over both)
           this.MANY2(() => {
             this.CONSUME(Comma)
-            this.SUBRULE(this.castDefinition)
-          })
-          this.MANY3(() => {
-            this.CONSUME1(Comma)
-            this.SUBRULE(this.indexDefinition)
+            this.OR8([
+              { ALT: () => this.SUBRULE(this.castDefinition) },
+              { ALT: () => this.SUBRULE(this.indexDefinition) },
+            ])
           })
         },
       },
@@ -2637,6 +2638,25 @@ class QuestDBParser extends CstParser {
       })
       // Optional PARQUET config
       this.OPTION4(() => this.SUBRULE(this.parquetConfig))
+      this.SUBRULE(this.columnNullModifier, { ARGS: [allowDoublePrecision] })
+    },
+  )
+
+  // `[PRECISION] [NOT] NULL` after a column type: parsed and ignored by the
+  // server (SqlParser.parseCreateTableColumns, SqlCompilerImpl.addColumnWithType).
+  // May match nothing. PRECISION only in CREATE TABLE (allowPrecision);
+  // autocomplete drops PRECISION here (only offered after DOUBLE).
+  private columnNullModifier = this.RULE(
+    "columnNullModifier",
+    (allowPrecision?: boolean) => {
+      this.OPTION({
+        GATE: () => !!allowPrecision,
+        DEF: () => this.CONSUME(Precision),
+      })
+      this.OPTION1(() => {
+        this.OPTION2(() => this.CONSUME(Not))
+        this.CONSUME(Null)
+      })
     },
   )
 
@@ -2800,6 +2820,17 @@ class QuestDBParser extends CstParser {
         },
         { ALT: () => this.SUBRULE(this.dataType) },
       ],
+    })
+    // SYMBOL options (SqlParser.parseCreateTableCastDef)
+    this.OPTION(() => {
+      this.CONSUME(Capacity)
+      this.CONSUME(NumberLiteral)
+    })
+    this.OPTION1(() => {
+      this.OR1([
+        { ALT: () => this.CONSUME(Cache) },
+        { ALT: () => this.CONSUME(Nocache) },
+      ])
     })
     this.CONSUME(RParen)
   })
@@ -3346,6 +3377,7 @@ class QuestDBParser extends CstParser {
                 // Optional CACHE/NOCACHE
                 this.OPTION5(() => this.CONSUME1(Cache))
                 this.OPTION6(() => this.CONSUME1(Nocache))
+                this.SUBRULE(this.columnNullModifier)
               },
             },
             {

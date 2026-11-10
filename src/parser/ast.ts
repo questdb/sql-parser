@@ -206,6 +206,10 @@ export interface CastDefinition extends AstNode {
   type: "castDefinition"
   column: QualifiedName
   dataType: string
+  /** SYMBOL CAPACITY n */
+  symbolCapacity?: number
+  /** SYMBOL CACHE (true) / NOCACHE (false) */
+  cache?: boolean
 }
 
 export interface IndexDefinition extends AstNode {

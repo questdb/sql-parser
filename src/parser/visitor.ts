@@ -1780,11 +1780,22 @@ class QuestDBVisitor extends BaseVisitor {
 
   castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
     const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
-    return {
+    const result: AST.CastDefinition = {
       type: "castDefinition",
       column: colRef.name ?? colRef,
       dataType: this.visit(ctx.doublePrecisionType ?? ctx.dataType!) as string,
     }
+    if (ctx.NumberLiteral) {
+      result.symbolCapacity = tokenInt(ctx.NumberLiteral[0].image)
+    }
+    if (ctx.Cache) result.cache = true
+    else if (ctx.Nocache) result.cache = false
+    return result
+  }
+
+  // `[PRECISION] [NOT] NULL` is ignored (as on the server)
+  columnNullModifier(): undefined {
+    return undefined
   }
 
   indexDefinition(ctx: IndexDefinitionCstChildren): AST.IndexDefinition {

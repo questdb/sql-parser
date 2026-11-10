@@ -1041,7 +1041,8 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
         (s.nextTokenType.name === "Timestamp" ||
           s.nextTokenType.name === "TimestampNs")) ||
       (s.nextTokenType.name === "Precision" &&
-        s.ruleStack.includes("alterTableAction"))
+        (s.ruleStack.includes("alterTableAction") ||
+          s.ruleStack[s.ruleStack.length - 1] === "columnNullModifier"))
     )
   })
   const result = suggestions.map((s) => s.nextTokenType)

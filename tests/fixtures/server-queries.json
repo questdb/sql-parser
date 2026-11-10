@@ -1692,5 +1692,41 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13928",
     "feature": "from-sources",
     "toSql": "SELECT * FROM a UNION SELECT * FROM b UNION SELECT * FROM c"
+  },
+  {
+    "query": "create table weather_data_historical ( sensor_time timestamp not null, sensor_day symbol, min_temperature_out float, max_temperature_out float, avg_temperature_out float, snow_height float, rain_acc_24h float, max_wind_gust_speed float ) TIMESTAMP(sensor_time)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/HashJoinTest.java:136",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE weather_data_historical (sensor_time TIMESTAMP, sensor_day SYMBOL, min_temperature_out FLOAT, max_temperature_out FLOAT, avg_temperature_out FLOAT, snow_height FLOAT, rain_acc_24h FLOAT, max_wind_gust_speed FLOAT) TIMESTAMP(sensor_time)"
+  },
+  {
+    "query": "CREATE TABLE \"quickstart-events4\" ( \"flag\" BOOLEAN NOT NULL, \"id8\" SMALLINT NOT NULL, \"id16\" SMALLINT NOT NULL, \"id32\" INT NOT NULL, \"id64\" BIGINT NOT NULL, \"idFloat\" REAL NOT NULL, \"idDouble\" DOUBLE PRECISION NOT NULL, \"idBytes\" BYTEA NOT NULL, \"msg\" TEXT NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:3045",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE \"quickstart-events4\" (flag BOOLEAN, id8 SMALLINT, id16 SMALLINT, id32 INT, id64 BIGINT, idFloat REAL, idDouble DOUBLE PRECISION, idBytes BYTEA, msg TEXT)"
+  },
+  {
+    "query": "alter table x add column \"mycol\" int not null",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAddColumnTest.java:295",
+    "feature": "create-table-options",
+    "toSql": "ALTER TABLE x ADD COLUMN mycol INT"
+  },
+  {
+    "query": "create table x as (tab), cast(a as double), cast(c as symbol capacity 20 nocache), index(c capacity 100000000)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:2889",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE x AS (tab), CAST(a AS DOUBLE), CAST(c AS SYMBOL CAPACITY 20 NOCACHE), INDEX(c CAPACITY 100000000)"
+  },
+  {
+    "query": "create table x as (tab), cast(a as double), cast(c as symbol capacity 16)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:2839",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE x AS (tab), CAST(a AS DOUBLE), CAST(c AS SYMBOL CAPACITY 16)"
+  },
+  {
+    "query": "create table new as (select * from old), index(s), cast(s as symbol), cast(ts as date)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/CreateTableTest.java:468",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE new AS (SELECT * FROM old), CAST(s AS SYMBOL), CAST(ts AS DATE), INDEX(s)"
   }
 ]

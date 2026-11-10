@@ -1178,6 +1178,18 @@ export type ColumnDefinitionCstChildren = {
   Index?: IToken[];
   indexTypeOptions?: IndexTypeOptionsCstNode[];
   parquetConfig?: ParquetConfigCstNode[];
+  columnNullModifier: ColumnNullModifierCstNode[];
+};
+
+export interface ColumnNullModifierCstNode extends CstNode {
+  name: "columnNullModifier";
+  children: ColumnNullModifierCstChildren;
+}
+
+export type ColumnNullModifierCstChildren = {
+  Precision?: IToken[];
+  Not?: IToken[];
+  Null?: IToken[];
 };
 
 export interface ParquetConfigCstNode extends CstNode {
@@ -1301,6 +1313,10 @@ export type CastDefinitionCstChildren = {
   As: IToken[];
   doublePrecisionType?: DoublePrecisionTypeCstNode[];
   dataType?: DataTypeCstNode[];
+  Capacity?: IToken[];
+  NumberLiteral?: IToken[];
+  Cache?: IToken[];
+  Nocache?: IToken[];
   RParen: IToken[];
 };
 
@@ -1639,6 +1655,7 @@ export type AlterTableActionCstChildren = {
   NumberLiteral?: (IToken)[];
   Cache?: (IToken)[];
   Nocache?: (IToken)[];
+  columnNullModifier?: ColumnNullModifierCstNode[];
   Index?: (IToken)[];
   indexTypeOptions?: IndexTypeOptionsCstNode[];
   Symbol?: IToken[];
@@ -3231,6 +3248,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   materializedViewPeriod(children: MaterializedViewPeriodCstChildren, param?: IN): OUT;
   materializedViewPartition(children: MaterializedViewPartitionCstChildren, param?: IN): OUT;
   columnDefinition(children: ColumnDefinitionCstChildren, param?: IN): OUT;
+  columnNullModifier(children: ColumnNullModifierCstChildren, param?: IN): OUT;
   parquetConfig(children: ParquetConfigCstChildren, param?: IN): OUT;
   parquetEncoding(children: ParquetEncodingCstChildren, param?: IN): OUT;
   parquetCompression(children: ParquetCompressionCstChildren, param?: IN): OUT;
