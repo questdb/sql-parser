@@ -1736,7 +1736,7 @@ export interface ConvertPartitionTargetCstNode extends CstNode {
 }
 
 export type ConvertPartitionTargetCstChildren = {
-  List?: IToken[];
+  List?: (IToken)[];
   StringLiteral?: (IToken)[];
   Comma?: (IToken)[];
   To: IToken[];

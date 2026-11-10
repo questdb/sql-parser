@@ -1789,5 +1789,35 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/integration/acl/HttpCallbackTest.java:33",
     "feature": "alter-table-columns",
     "toSql": "ALTER TABLE test RENAME COLUMN col1 TO colA, col2 TO colB"
+  },
+  {
+    "query": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2024-01-01'",
+    "source": "questdb:core/src/test/java/io/questdb/test/AdaptiveParquetColumnConversionRestartTest.java:75",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2024-01-01'"
+  },
+  {
+    "query": "ALTER TABLE tango CONVERT PARTITION TO PARQUET LIST '2025-01-01'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:2399",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE tango CONVERT PARTITION TO PARQUET LIST '2025-01-01'"
+  },
+  {
+    "query": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2020-01-01' WITH (bloom_filter_columns = 'x')",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/parquet/ParquetWriteTest.java:2774",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2020-01-01' WITH (bloom_filter_columns = 'x')"
+  },
+  {
+    "query": "ALTER TABLE t CONVERT PARTITION TO NATIVE LIST '2024-01-01'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/DataSyncFailureCleanupTest.java:62",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE t CONVERT PARTITION TO NATIVE LIST '2024-01-01'"
+  },
+  {
+    "query": "ALTER TABLE t_cov CONVERT PARTITION TO PARQUET LIST '2024-01-01', '2024-01-02'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexParquetNativeRoundTripTest.java:273",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE t_cov CONVERT PARTITION TO PARQUET LIST '2024-01-01', '2024-01-02'"
   }
 ]

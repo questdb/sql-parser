@@ -738,6 +738,8 @@ export interface RebaseWalAction {
 export interface ConvertPartitionAction {
   actionType: "convertPartition"
   partitions?: string[]
+  /** LIST written after `TO <target>` (server form) */
+  listAfterTarget?: boolean
   target: string
   where?: Expression
   /** WITH (bloom_filter_columns = '...', bloom_filter_fpp = 0.01) */

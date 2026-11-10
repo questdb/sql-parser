@@ -228,6 +228,7 @@ type ConvertPartitionTargetResult = {
   target: string
   where?: AST.Expression
   withParams?: AST.TableParam[]
+  listAfterTarget?: boolean
 }
 type GroupByClauseResult = {
   groupBy?: AST.Expression[]
@@ -3669,6 +3670,13 @@ class QuestDBVisitor extends BaseVisitor {
       result.partitions = ctx.StringLiteral.map((s: IToken) =>
         unquoteSingle(s.image),
       )
+      if (
+        ctx.List &&
+        ctx.To &&
+        ctx.List[0].startOffset > ctx.To[0].startOffset
+      ) {
+        result.listAfterTarget = true
+      }
     }
 
     // Target: TABLE or identifier (e.g., Parquet, NATIVE)

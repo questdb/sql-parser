@@ -3654,6 +3654,16 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Table) },
       { ALT: () => this.SUBRULE(this.identifier) }, // Parquet, NATIVE, etc.
     ])
+    // Server form: TO PARQUET|NATIVE LIST '<p>' [, ...]
+    // (SqlCompilerImpl.alterTableDropConvertDetachOrAttachPartition)
+    this.OPTION3(() => {
+      this.CONSUME1(List)
+      this.CONSUME2(StringLiteral)
+      this.MANY2(() => {
+        this.CONSUME1(Comma)
+        this.CONSUME3(StringLiteral)
+      })
+    })
     // Optional WHERE clause after target
     this.OPTION1(() => {
       this.CONSUME(Where)

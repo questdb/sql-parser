@@ -1095,14 +1095,15 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
     }
     case "convertPartition": {
       parts.push("CONVERT PARTITION")
-      if (action.partitions && action.partitions.length > 0) {
-        parts.push("LIST")
-        parts.push(
-          action.partitions.map((p: string) => escapeString(p)).join(", "),
-        )
-      }
+      const list =
+        action.partitions && action.partitions.length > 0
+          ? "LIST " +
+            action.partitions.map((p: string) => escapeString(p)).join(", ")
+          : undefined
+      if (list && !action.listAfterTarget) parts.push(list)
       parts.push("TO")
       parts.push(action.target)
+      if (list && action.listAfterTarget) parts.push(list)
       if (action.where) {
         parts.push("WHERE")
         parts.push(expressionToSql(action.where))
