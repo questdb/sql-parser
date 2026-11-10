@@ -207,6 +207,7 @@ export const keywords: string[] = [
   "table",
   "tables",
   "then",
+  "ties",
   "time",
   "timeout",
   "to",

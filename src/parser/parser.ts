@@ -356,6 +356,7 @@ import {
   Exclude,
   Cumulative,
   Others,
+  Ties,
   Database,
   Backup,
   Prevailing,
@@ -5468,6 +5469,7 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(Rows) },
       { ALT: () => this.CONSUME(Range) },
+      { ALT: () => this.CONSUME(Groups) },
       { ALT: () => this.CONSUME(Cumulative) },
     ])
     this.OPTION(() => {
@@ -5485,7 +5487,8 @@ class QuestDBParser extends CstParser {
         },
       ])
     })
-    // Optional EXCLUDE clause (QuestDB supports EXCLUDE CURRENT ROW and EXCLUDE NO OTHERS)
+    // Optional EXCLUDE clause: CURRENT ROW | GROUP | TIES | NO OTHERS
+    // (ExpressionParser.parseWindowFrameClause)
     this.OPTION1(() => {
       this.CONSUME(Exclude)
       this.OR2([
@@ -5495,6 +5498,8 @@ class QuestDBParser extends CstParser {
             this.CONSUME(Row)
           },
         },
+        { ALT: () => this.CONSUME(Group) },
+        { ALT: () => this.CONSUME(Ties) },
         {
           ALT: () => {
             this.CONSUME(No)

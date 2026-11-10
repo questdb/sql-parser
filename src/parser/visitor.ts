@@ -4735,6 +4735,7 @@ class QuestDBVisitor extends BaseVisitor {
     let mode: string
     if (ctx.Rows) mode = "rows"
     else if (ctx.Range) mode = "range"
+    else if (ctx.Groups) mode = "groups"
     else mode = "cumulative"
 
     const result: AST.WindowFrame = {
@@ -4752,6 +4753,10 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Exclude) {
       if (ctx.Current && ctx.Row) {
         result.exclude = "currentRow"
+      } else if (ctx.Group) {
+        result.exclude = "group"
+      } else if (ctx.Ties) {
+        result.exclude = "ties"
       } else if (ctx.No && ctx.Others) {
         result.exclude = "noOthers"
       }

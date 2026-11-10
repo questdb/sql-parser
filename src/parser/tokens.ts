@@ -366,6 +366,7 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Unbounded",
   "Exclude",
   "Others",
+  "Ties",
   "Nulls",
   // SAMPLE BY keywords
   "Fill",
@@ -679,6 +680,7 @@ export const System = getToken("System")
 export const Table = getToken("Table")
 export const Tables = getToken("Tables")
 export const Then = getToken("Then")
+export const Ties = getToken("Ties")
 export const Time = getToken("Time")
 export const To = getToken("To")
 export const Token = getToken("Token")

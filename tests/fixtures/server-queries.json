@@ -1380,5 +1380,77 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:100",
     "feature": "predicates",
     "toSql": "SELECT * FROM long_sequence(1) WHERE NULL <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts GROUPS unbounded preceding) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:710",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts GROUPS UNBOUNDED PRECEDING) FROM xyz"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts GROUPS between unbounded preceding and current row) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:755",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts GROUPS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM xyz"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts groups between 1+0 preceding and unbounded following exclude group) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:425",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts GROUPS BETWEEN 1 + 0 PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE GROUP) FROM xyz"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts rows between 1/1 preceding and unbounded following exclude ties) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:480",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts ROWS BETWEEN 1 / 1 PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE TIES) FROM xyz"
+  },
+  {
+    "query": "select corr(y, x) over (order by ts groups between 1 preceding and current row) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:1043",
+    "feature": "window-frames",
+    "toSql": "SELECT corr(y, x) OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM tab"
+  },
+  {
+    "query": "select cume_dist() over (order by ts groups between 1 preceding and current row) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:2458",
+    "feature": "window-frames",
+    "toSql": "SELECT cume_dist() OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM tab"
+  },
+  {
+    "query": "select ntile(4) over (order by ts groups between 1 preceding and current row) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:17002",
+    "feature": "window-frames",
+    "toSql": "SELECT ntile(4) OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM tab"
+  },
+  {
+    "query": "select cume_dist() over (order by ts range between unbounded preceding and current row exclude group) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:2432",
+    "feature": "window-frames",
+    "toSql": "SELECT cume_dist() OVER (ORDER BY ts RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE GROUP) FROM tab"
+  },
+  {
+    "query": "select cume_dist() over (order by ts range between unbounded preceding and current row exclude ties) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:2436",
+    "feature": "window-frames",
+    "toSql": "SELECT cume_dist() OVER (ORDER BY ts RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE TIES) FROM tab"
+  },
+  {
+    "query": "select nth_value(val, 1) over (order by ts rows between 3 preceding and current row exclude group) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:13936",
+    "feature": "window-frames",
+    "toSql": "SELECT nth_value(val, 1) OVER (ORDER BY ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW EXCLUDE GROUP) FROM tab"
+  },
+  {
+    "query": "select ts, sym, avg(x) over (partition by sym order by ts range between 2 preceding and current row exclude group) a from base",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewCheckpointFunctionCompilerTest.java:706",
+    "feature": "window-frames",
+    "toSql": "SELECT ts, sym, avg(x) OVER (PARTITION BY sym ORDER BY ts RANGE BETWEEN 2 PRECEDING AND CURRENT ROW EXCLUDE GROUP) AS a FROM base"
+  },
+  {
+    "query": "select ts, sym, sum(x) over (partition by sym order by ts rows between 3 preceding and current row exclude ties) s from base",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewCheckpointFunctionCompilerTest.java:712",
+    "feature": "window-frames",
+    "toSql": "SELECT ts, sym, sum(x) OVER (PARTITION BY sym ORDER BY ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW EXCLUDE TIES) AS s FROM base"
   }
 ]

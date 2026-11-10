@@ -2085,6 +2085,12 @@ function windowFrameToSql(frame: AST.WindowFrame): string {
       case "currentRow":
         sql += " EXCLUDE CURRENT ROW"
         break
+      case "group":
+        sql += " EXCLUDE GROUP"
+        break
+      case "ties":
+        sql += " EXCLUDE TIES"
+        break
       case "noOthers":
         sql += " EXCLUDE NO OTHERS"
         break

@@ -2970,6 +2970,7 @@ export interface WindowFrameClauseCstNode extends CstNode {
 export type WindowFrameClauseCstChildren = {
   Rows?: IToken[];
   Range?: IToken[];
+  Groups?: IToken[];
   Cumulative?: IToken[];
   Between?: IToken[];
   windowFrameBound?: (WindowFrameBoundCstNode)[];
@@ -2977,6 +2978,8 @@ export type WindowFrameClauseCstChildren = {
   Exclude?: IToken[];
   Current?: IToken[];
   Row?: IToken[];
+  Group?: IToken[];
+  Ties?: IToken[];
   No?: IToken[];
   Others?: IToken[];
 };

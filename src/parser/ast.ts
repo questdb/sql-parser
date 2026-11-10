@@ -1335,10 +1335,10 @@ export interface WindowSpecification extends AstNode {
 
 export interface WindowFrame extends AstNode {
   type: "windowFrame"
-  mode: "rows" | "range" | "cumulative"
+  mode: "rows" | "range" | "groups" | "cumulative"
   start?: WindowFrameBound
   end?: WindowFrameBound
-  exclude?: "currentRow" | "noOthers"
+  exclude?: "currentRow" | "group" | "ties" | "noOthers"
 }
 
 export interface WindowFrameBound extends AstNode {
