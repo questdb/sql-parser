@@ -242,6 +242,18 @@ function tokenFloat(image: string): number {
   return parseFloat(image.replace(/_/g, ""))
 }
 
+// Value of a single-quoted SQL string token: strip the outer quotes and turn
+// the '' escape into '. toSql re-escapes with escapeString, so the SQL text
+// round-trips unchanged. Single-quoted NAMES printed back as "..." identifiers
+// (FROM 'x', stringOrQualifiedName, tableNameOrString, OWNED BY) deliberately
+// do not use this: the server's GenericLexer.unquote only strips the outer
+// quotes, so FROM 'it''s' names table it''s (questdb-ent
+// EntShowCreateSupportTest: CREATE USER 'o''brien' stores o''brien), which is
+// what "it''s" means too.
+function unquoteSingle(image: string): string {
+  return image.slice(1, -1).replace(/''/g, "'")
+}
+
 type StoragePolicyKind = "toParquet" | "toRemote" | "dropLocal" | "dropRemote"
 
 type DedupModeKeys = { mode: AST.DedupMode; keys: string[] }
@@ -774,7 +786,8 @@ class QuestDBVisitor extends BaseVisitor {
       const varImage = ctx.VariableReference[0].image // e.g. "@subquery"
       table = { type: "qualifiedName", parts: [varImage] } as AST.QualifiedName
     } else if (ctx.StringLiteral) {
-      // Single-quoted table name: FROM 'sys.copy_export_log'
+      // Single-quoted table name: FROM 'sys.copy_export_log'. Kept verbatim
+      // (no '' unescape), like the server's GenericLexer.unquote.
       table = {
         type: "qualifiedName",
         parts: [ctx.StringLiteral[0].image.slice(1, -1)],
@@ -1260,7 +1273,7 @@ class QuestDBVisitor extends BaseVisitor {
     const o3MaxLag =
       ctx.DurationLiteral?.[0]?.image ??
       (ctx.StringLiteral?.[0]?.image
-        ? ctx.StringLiteral[0].image.slice(1, -1)
+        ? unquoteSingle(ctx.StringLiteral[0].image)
         : undefined)
     return {
       size: tokenInt(ctx.NumberLiteral[0].image),
@@ -1468,7 +1481,7 @@ class QuestDBVisitor extends BaseVisitor {
         (t: IToken) => t.startOffset > volumeOffset,
       )
       result.volume = volumeStr
-        ? volumeStr.image.slice(1, -1)
+        ? unquoteSingle(volumeStr.image)
         : ctx.identifier?.length
           ? this.extractIdentifierName(
               ctx.identifier[ctx.identifier.length - 1].children,
@@ -1792,7 +1805,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Password) {
       if (ctx.StringLiteral) {
-        result.password = ctx.StringLiteral[0].image.slice(1, -1)
+        result.password = unquoteSingle(ctx.StringLiteral[0].image)
       } else if (ctx.identifier) {
         result.password = this.extractIdentifierName(ctx.identifier[0].children)
       }
@@ -1809,7 +1822,7 @@ class QuestDBVisitor extends BaseVisitor {
       ifNotExists: !!ctx.If,
     }
     if (ctx.StringLiteral) {
-      result.externalAlias = ctx.StringLiteral[0].image.slice(1, -1)
+      result.externalAlias = unquoteSingle(ctx.StringLiteral[0].image)
     }
     return result
   }
@@ -1829,7 +1842,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Password && !ctx.No) {
       if (ctx.StringLiteral) {
-        result.password = ctx.StringLiteral[0].image.slice(1, -1)
+        result.password = unquoteSingle(ctx.StringLiteral[0].image)
       } else if (ctx.identifier) {
         result.password = this.extractIdentifierName(ctx.identifier[0].children)
       }
@@ -1907,7 +1920,7 @@ class QuestDBVisitor extends BaseVisitor {
         (t: IToken) => t.startOffset > volumeOffset,
       )
       result.volume = volumeStr
-        ? volumeStr.image.slice(1, -1)
+        ? unquoteSingle(volumeStr.image)
         : ctx.identifier?.length
           ? this.extractIdentifierName(
               ctx.identifier[ctx.identifier.length - 1].children,
@@ -2054,7 +2067,7 @@ class QuestDBVisitor extends BaseVisitor {
       } else if (ctx.StringLiteral) {
         result.startFrom = {
           kind: "timestamp",
-          value: ctx.StringLiteral[0].image.slice(1, -1),
+          value: unquoteSingle(ctx.StringLiteral[0].image),
         }
       } else {
         result.startFrom = { kind: "now" }
@@ -2094,11 +2107,11 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.NumberLiteral) {
         result.code = tokenInt(ctx.NumberLiteral[0].image)
       } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-        result.code = ctx.StringLiteral[0].image.slice(1, -1)
+        result.code = unquoteSingle(ctx.StringLiteral[0].image)
       }
       const strings = ctx.StringLiteral || []
       if (strings.length > 0) {
-        result.message = strings[strings.length - 1].image.slice(1, -1)
+        result.message = unquoteSingle(strings[strings.length - 1].image)
       }
     }
     return result
@@ -2113,10 +2126,10 @@ class QuestDBVisitor extends BaseVisitor {
     }
     const result: AST.AnchorClause = {
       kind: "daily",
-      time: ctx.StringLiteral![0].image.slice(1, -1),
+      time: unquoteSingle(ctx.StringLiteral![0].image),
     }
     if (ctx.StringLiteral && ctx.StringLiteral.length > 1) {
-      result.timezone = ctx.StringLiteral[1].image.slice(1, -1)
+      result.timezone = unquoteSingle(ctx.StringLiteral[1].image)
     }
     return result
   }
@@ -2244,7 +2257,7 @@ class QuestDBVisitor extends BaseVisitor {
         memoryLimit: this.visit(ctx.memoryLimit) as string,
       }
     }
-    const alias = ctx.StringLiteral![0].image.slice(1, -1)
+    const alias = unquoteSingle(ctx.StringLiteral![0].image)
     return {
       type: "alterGroup",
       group,
@@ -2381,7 +2394,7 @@ class QuestDBVisitor extends BaseVisitor {
         actionType: "rebaseWal",
       }
       if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+        result.targetDir = unquoteSingle(ctx.StringLiteral[0].image)
       }
       return result
     }
@@ -2436,7 +2449,9 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         actionType: "password",
         noPassword: !!ctx.No,
-        password: ctx.StringLiteral?.[0]?.image?.slice(1, -1),
+        password: ctx.StringLiteral
+          ? unquoteSingle(ctx.StringLiteral[0].image)
+          : undefined,
       }
     }
     if (ctx.Create && ctx.Token) {
@@ -2444,7 +2459,7 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.DurationLiteral) {
         ttl = ctx.DurationLiteral[0].image
       } else if (ctx.Ttl && ctx.StringLiteral) {
-        ttl = ctx.StringLiteral[0].image.slice(1, -1)
+        ttl = unquoteSingle(ctx.StringLiteral[0].image)
       }
       const result: AST.AlterUserCreateTokenAction = {
         actionType: "createToken",
@@ -2458,8 +2473,8 @@ class QuestDBVisitor extends BaseVisitor {
       // JWK public key: WITH PUBLIC KEY X '...' Y '...'
       if (ctx.Public && ctx.Key && ctx.Identifier) {
         // In JWK path, StringLiteral[0] and [1] are the public key values
-        result.publicKeyX = ctx.StringLiteral![0].image.slice(1, -1)
-        result.publicKeyY = ctx.StringLiteral![1].image.slice(1, -1)
+        result.publicKeyX = unquoteSingle(ctx.StringLiteral![0].image)
+        result.publicKeyY = unquoteSingle(ctx.StringLiteral![1].image)
       }
       return result
     }
@@ -2468,7 +2483,9 @@ class QuestDBVisitor extends BaseVisitor {
       tokenType: ctx.Jwk ? "JWK" : "REST",
       token:
         ctx.Identifier?.[0]?.image ??
-        ctx.StringLiteral?.[0]?.image?.slice(1, -1),
+        (ctx.StringLiteral
+          ? unquoteSingle(ctx.StringLiteral[0].image)
+          : undefined),
     }
   }
 
@@ -2482,7 +2499,7 @@ class QuestDBVisitor extends BaseVisitor {
     ctx: AlterTableForceActionCstChildren,
   ): AST.ForceDropPartitionAction | AST.ForceReindexParquetAction {
     const partitions = (ctx.StringLiteral ?? []).map((s: IToken) =>
-      s.image.slice(1, -1),
+      unquoteSingle(s.image),
     )
     if (ctx.Drop) {
       return { actionType: "forceDropPartition", partitions }
@@ -2643,7 +2660,7 @@ class QuestDBVisitor extends BaseVisitor {
       }
       if (ctx.StringLiteral) {
         result.partitions = ctx.StringLiteral.map((s: IToken) =>
-          s.image.slice(1, -1),
+          unquoteSingle(s.image),
         )
       }
       if (ctx.Where && ctx.expression) {
@@ -2656,7 +2673,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Attach) {
       return {
         actionType: "attachPartition",
-        partitions: ctx.StringLiteral!.map((s: IToken) => s.image.slice(1, -1)),
+        partitions: ctx.StringLiteral!.map((s: IToken) =>
+          unquoteSingle(s.image),
+        ),
       }
     }
 
@@ -2667,7 +2686,7 @@ class QuestDBVisitor extends BaseVisitor {
       }
       if (ctx.StringLiteral) {
         result.partitions = ctx.StringLiteral.map((s: IToken) =>
-          s.image.slice(1, -1),
+          unquoteSingle(s.image),
         )
       }
       if (ctx.Where && ctx.expression) {
@@ -2729,12 +2748,12 @@ class QuestDBVisitor extends BaseVisitor {
         if (ctx.NumberLiteral) {
           result.code = tokenInt(ctx.NumberLiteral[0].image)
         } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-          result.code = ctx.StringLiteral[0].image.slice(1, -1)
+          result.code = unquoteSingle(ctx.StringLiteral[0].image)
         }
         // Message is the last StringLiteral
         const strings = ctx.StringLiteral || []
         if (strings.length > 0) {
-          result.message = strings[strings.length - 1].image.slice(1, -1)
+          result.message = unquoteSingle(strings[strings.length - 1].image)
         }
       }
       return result
@@ -2758,7 +2777,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Rebase) {
       const result: AST.RebaseWalAction = { actionType: "rebaseWal" }
       if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+        result.targetDir = unquoteSingle(ctx.StringLiteral[0].image)
       }
       return result
     }
@@ -2978,7 +2997,9 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0] ?? ctx.StringLiteral?.[0]
     return {
       type: "cancelQuery",
-      queryId: token?.image?.replace(/^'|'$/g, "") ?? "",
+      queryId: ctx.StringLiteral
+        ? unquoteSingle(ctx.StringLiteral[0].image)
+        : (token?.image ?? ""),
     }
   }
 
@@ -3204,7 +3225,7 @@ class QuestDBVisitor extends BaseVisitor {
   copyCancel(ctx: CopyCancelCstChildren): AST.CopyCancelStatement {
     let id = ""
     if (ctx.StringLiteral) {
-      id = ctx.StringLiteral[0].image.slice(1, -1)
+      id = unquoteSingle(ctx.StringLiteral[0].image)
     } else if (ctx.NumberLiteral) {
       id = ctx.NumberLiteral[0].image
     } else if (ctx.Identifier) {
@@ -3299,7 +3320,7 @@ class QuestDBVisitor extends BaseVisitor {
         result.quoted = true
       }
     } else if (ctx.StringLiteral) {
-      result.value = ctx.StringLiteral[0].image.slice(1, -1)
+      result.value = unquoteSingle(ctx.StringLiteral[0].image)
       result.quoted = true
     } else if (ctx.expression) {
       const expr = this.visit(ctx.expression) as AST.Expression
@@ -3435,7 +3456,7 @@ class QuestDBVisitor extends BaseVisitor {
     // Optional LIST of partition names
     if (ctx.StringLiteral) {
       result.partitions = ctx.StringLiteral.map((s: IToken) =>
-        s.image.slice(1, -1),
+        unquoteSingle(s.image),
       )
     }
 
@@ -3636,8 +3657,12 @@ class QuestDBVisitor extends BaseVisitor {
       )
     }
     if (ctx.Partition && ctx.stringOrIdentifier) {
-      result.partitions = ctx.stringOrIdentifier.map(
-        (s: CstNode) => this.visit(s) as string,
+      // Partition names are values (printed back single-quoted), unlike the
+      // OWNED BY name that stringOrIdentifier() returns verbatim.
+      result.partitions = ctx.stringOrIdentifier.map((s: CstNode) =>
+        s.children.StringLiteral
+          ? unquoteSingle((s.children.StringLiteral[0] as IToken).image)
+          : (this.visit(s) as string),
       )
     }
     if (ctx.Exclusive) {
@@ -4682,7 +4707,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.StringLiteral) {
       const raw = this.tokenImage(ctx.StringLiteral[0])
       // Remove outer quotes and unescape '' to '
-      const value = raw.slice(1, -1).replace(/''/g, "'")
+      const value = unquoteSingle(raw)
       return {
         type: "literal",
         value,
@@ -4788,7 +4813,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (escapeToken) return this.escapeStringLiteral(escapeToken[0])
     return {
       type: "literal",
-      value: this.tokenImage(stringToken![0]).slice(1, -1).replace(/''/g, "'"),
+      value: unquoteSingle(this.tokenImage(stringToken![0])),
       literalType: "string",
     }
   }
@@ -4808,6 +4833,8 @@ class QuestDBVisitor extends BaseVisitor {
     return !!ctx.True
   }
 
+  // Names (OWNED BY): a single-quoted name keeps its inner text verbatim, as
+  // the server's GenericLexer.unquote does (see unquoteSingle).
   stringOrIdentifier(ctx: StringOrIdentifierCstChildren): string {
     if (ctx.StringLiteral) {
       return ctx.StringLiteral[0].image.slice(1, -1)
@@ -4821,6 +4848,7 @@ class QuestDBVisitor extends BaseVisitor {
   stringOrQualifiedName(
     ctx: StringOrQualifiedNameCstChildren,
   ): AST.QualifiedName {
+    // Name kept verbatim (no '' unescape), see unquoteSingle.
     if (ctx.StringLiteral) {
       return {
         type: "qualifiedName",
@@ -4852,6 +4880,7 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   tableNameOrString(ctx: TableNameOrStringCstChildren): AST.QualifiedName {
+    // Name kept verbatim (no '' unescape), see unquoteSingle.
     if (ctx.StringLiteral) {
       return {
         type: "qualifiedName",
@@ -4878,8 +4907,7 @@ class QuestDBVisitor extends BaseVisitor {
     const ctx: CstChildrenRecord =
       "name" in node && "children" in node ? (node as CstNode).children : node
     if (ctx.StringLiteral) {
-      const raw = this.tokenImage(ctx.StringLiteral[0] as IToken)
-      return raw.slice(1, -1)
+      return unquoteSingle(this.tokenImage(ctx.StringLiteral[0] as IToken))
     }
     if (ctx.NumberLiteral) {
       return this.tokenImage(ctx.NumberLiteral[0] as IToken)
@@ -4981,8 +5009,7 @@ class QuestDBVisitor extends BaseVisitor {
     }
     // QuestDB accepts single-quoted strings in identifier positions
     if (ctx.StringLiteral) {
-      const raw = this.tokenImage(ctx.StringLiteral[0] as IToken)
-      return raw.slice(1, -1).replace(/''/g, "'")
+      return unquoteSingle(this.tokenImage(ctx.StringLiteral[0] as IToken))
     }
     // Handle keyword tokens used as identifiers
     // Find the first token in the context

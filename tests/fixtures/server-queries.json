@@ -664,5 +664,23 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:4251",
     "feature": "implicit-select-bodies",
     "toSql": "COPY (test_table ORDER BY x DESC) TO 'output1' WITH format parquet"
+  },
+  {
+    "query": "insert into t values ( '1st ''', '2nd ''''', '3rd ''''''' );",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/EscapeTest.java:52",
+    "feature": "single-quote-unescape",
+    "toSql": "INSERT INTO t VALUES ('1st ''', '2nd ''''', '3rd ''''''')"
+  },
+  {
+    "query": "select strpos('abc''def', '''' ) ",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/EscapeTest.java:62",
+    "feature": "single-quote-unescape",
+    "toSql": "SELECT strpos('abc''def', '''')"
+  },
+  {
+    "query": "SELECT s, v FROM escaped_symbols_0 WHERE (s IN ('O''Brien', 'O''''Brien', 'x') AND s NOT IN ('O''Brien', 'x')) LATEST ON ts PARTITION BY s ORDER BY v",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:3797",
+    "feature": "single-quote-unescape",
+    "toSql": "SELECT s, v FROM escaped_symbols_0 WHERE (s IN ('O''Brien', 'O''''Brien', 'x') AND s NOT IN ('O''Brien', 'x')) LATEST ON ts PARTITION BY s ORDER BY v"
   }
 ]
