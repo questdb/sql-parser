@@ -1192,11 +1192,19 @@ class QuestDBVisitor extends BaseVisitor {
     return (this.visit(ctx.columnRef!) as AST.ColumnRef).name
   }
 
-  /** Records a PIVOT written before SAMPLE BY / GROUP BY (server order). */
+  /**
+   * Records the PIVOT alias and a PIVOT written before SAMPLE BY / GROUP BY
+   * (server order).
+   */
   private markPivotPosition(
     result: AST.SelectStatement,
     ctx: SimpleSelectCstChildren | ImplicitSelectBodyCstChildren,
   ): void {
+    if (ctx.pivotAlias && result.pivot) {
+      result.pivot.alias = this.extractIdentifierName(
+        ctx.pivotAlias[0].children,
+      )
+    }
     const pivotOffset = ctx.Pivot?.[0]?.startOffset
     if (pivotOffset === undefined) return
     const later = [ctx.sampleByClause?.[0], ctx.groupByClause?.[0]].some(
@@ -3906,7 +3914,7 @@ class QuestDBVisitor extends BaseVisitor {
   pivotForClause(ctx: PivotForClauseCstChildren): AST.PivotForClause {
     const result: AST.PivotForClause = {
       type: "pivotFor",
-      expression: this.visit(ctx.columnRef) as AST.ColumnRef,
+      expression: this.visit(ctx.bitOrExpression) as AST.Expression,
       in: {
         type: "pivotIn",
       },
@@ -3926,7 +3934,7 @@ class QuestDBVisitor extends BaseVisitor {
       type: "pivotInValue",
       expression: this.visit(ctx.expression) as AST.Expression,
     }
-    if (ctx.As && ctx.identifier) {
+    if (ctx.identifier) {
       result.alias = this.extractIdentifierName(ctx.identifier[0].children)
     }
     return result

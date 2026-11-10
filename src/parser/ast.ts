@@ -1043,6 +1043,8 @@ export interface PivotClause extends AstNode {
   aggregations: PivotAggregation[]
   pivots: PivotForClause[]
   groupBy?: Expression[]
+  /** Table alias after the closing parenthesis: `PIVOT (...) [AS] p` */
+  alias?: string
 }
 
 export interface PivotAggregation extends AstNode {

@@ -446,6 +446,32 @@ class QuestDBParser extends CstParser {
   // True while parsing an EXPIRE ROWS WHEN predicate (see expireRowsClause).
   private inExpireRowsPredicate = false
 
+  // Implicit PIVOT alias: as for tables, but a word followed by PIVOT /
+  // WHERE is the next (implicit) statement, `t PIVOT (...)\nu PIVOT (...)`.
+  private pivotAliasAllowed(): boolean {
+    if (this.LA(1).tokenType === As) return true
+    const la2 = this.LA(2).tokenType
+    return la2 !== Pivot && la2 !== Where && this.implicitTableAliasAllowed()
+  }
+
+  // Implicit (no AS) table alias allowed at LA(1)? Mirrors the server's
+  // tableAliasStop for the words that are identifiers here.
+  private implicitTableAliasAllowed(): boolean {
+    const la1 = this.LA(1).tokenType
+    // Don't consume LATEST as alias when followed by ON or BY (latestOnClause)
+    if (la1 === Latest) {
+      const la2 = this.LA(2).tokenType
+      return la2 !== On && la2 !== By
+    }
+    // Don't consume OWNED as alias when followed by BY (OWNED BY clause)
+    if (la1 === Owned) return this.LA(2).tokenType !== By
+    // If next token is AS, always allow (explicit alias)
+    if (la1 === As) return true
+    // Don't consume identifier as alias if followed by LParen —
+    // it's a function call starting a new statement, not an alias
+    return this.LA(2).tokenType !== LParen
+  }
+
   findReSyncTokenType(): TokenType {
     if (this._semicolonBoundedRecovery) {
       const currIdx = (this as unknown as CstParserInternals).currIdx
@@ -775,11 +801,19 @@ class QuestDBParser extends CstParser {
     const where = (i: number) => this.subrule(i, this.whereClause)
     const sample = (i: number) => this.subrule(i, this.sampleByClause)
     const group = (i: number) => this.subrule(i, this.groupByClause)
+    // PIVOT (...) [[AS] alias] (parsePivot -> setModelAliasAndGetOptTok)
     const pivot = (i: number) => {
       this.consume(i, Pivot)
       this.consume(i, LParen)
       this.subrule(i, this.pivotBody)
       this.consume(i, RParen)
+      this.option(i + 5, {
+        GATE: () => this.pivotAliasAllowed(),
+        DEF: () => {
+          this.option(i + 6, () => this.consume(i, As))
+          this.subrule(i, this.identifier, { LABEL: "pivotAlias" })
+        },
+      })
     }
     // Each helper call gets its own base `b` (spaced by 10) and uses each
     // subrule at most once with index b, and option indexes b..b+2.
@@ -1120,21 +1154,7 @@ class QuestDBParser extends CstParser {
     // Optional alias — but NOT if the next token starts a clause
     // (e.g., LATEST ON/BY should not be consumed as alias)
     this.OPTION({
-      GATE: () => {
-        const la1 = this.LA(1).tokenType
-        // Don't consume LATEST as alias when followed by ON or BY (latestOnClause)
-        if (la1 === Latest) {
-          const la2 = this.LA(2).tokenType
-          return la2 !== On && la2 !== By
-        }
-        // Don't consume OWNED as alias when followed by BY (OWNED BY clause)
-        if (la1 === Owned) return this.LA(2).tokenType !== By
-        // If next token is AS, always allow (explicit alias)
-        if (la1 === As) return true
-        // Don't consume identifier as alias if followed by LParen —
-        // it's a function call starting a new statement, not an alias
-        return this.LA(2).tokenType !== LParen
-      },
+      GATE: () => this.implicitTableAliasAllowed(),
       DEF: () => {
         this.OR1([
           {
@@ -4732,9 +4752,12 @@ class QuestDBParser extends CstParser {
     this.CONSUME(LParen)
     this.SUBRULE(this.pivotBody)
     this.CONSUME2(RParen)
-    this.OPTION2(() => {
-      this.CONSUME(As)
-      this.SUBRULE6(this.identifier)
+    this.OPTION2({
+      GATE: () => this.pivotAliasAllowed(),
+      DEF: () => {
+        this.OPTION3(() => this.CONSUME(As))
+        this.SUBRULE6(this.identifier)
+      },
     })
     this.OPTION4(() => this.SUBRULE(this.orderByClause))
     this.OPTION5(() => this.SUBRULE(this.limitClause))
@@ -4777,7 +4800,12 @@ class QuestDBParser extends CstParser {
 
   private pivotForClause = this.RULE("pivotForClause", () => {
     // FOR keyword is consumed by pivotBody (required on first, optional on subsequent)
-    this.SUBRULE(this.columnRef)
+    // FOR <expr>: the server stops the expression at its top-level IN
+    // (setStopOnTopINOperator). bitOrExpression is the expression level just
+    // below IN/BETWEEN/comparisons, so `FOR year(ts) IN`, `FOR year - 2000 IN`
+    // and `FOR (SELECT 'NL')::VARCHAR IN` parse without a GATE (content
+    // assist ignores GATEs and would explore `year IN (...)` as an operator).
+    this.SUBRULE(this.bitOrExpression)
     this.CONSUME(In)
     this.CONSUME(LParen)
     this.OR([
@@ -4799,8 +4827,9 @@ class QuestDBParser extends CstParser {
   //   'BTC-USD' AS bitcoin
   private pivotInValue = this.RULE("pivotInValue", () => {
     this.SUBRULE(this.expression)
+    // alias with or without AS: `2000 AS y2000`, `2000 y2000`
     this.OPTION(() => {
-      this.CONSUME(As)
+      this.OPTION1(() => this.CONSUME(As))
       this.SUBRULE(this.identifier)
     })
   })

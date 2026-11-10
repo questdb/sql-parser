@@ -1753,7 +1753,8 @@ function pivotClauseToSql(pivot: AST.PivotClause): string {
   if (pivot.groupBy && pivot.groupBy.length > 0) {
     pivotParts.push(`GROUP BY ${pivot.groupBy.map(expressionToSql).join(", ")}`)
   }
-  return `PIVOT (${pivotParts.join(" ")})`
+  const alias = pivot.alias ? ` AS ${escapeIdentifier(pivot.alias)}` : ""
+  return `PIVOT (${pivotParts.join(" ")})${alias}`
 }
 
 // =============================================================================

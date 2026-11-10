@@ -138,6 +138,8 @@ export type SimpleSelectCstChildren = {
   LParen?: (IToken)[];
   pivotBody?: (PivotBodyCstNode)[];
   RParen?: (IToken)[];
+  As?: (IToken)[];
+  pivotAlias?: (IdentifierCstNode)[];
   sampleByClause?: (SampleByClauseCstNode)[];
   groupByClause?: (GroupByClauseCstNode)[];
   windowClause?: WindowClauseCstNode[];
@@ -272,6 +274,8 @@ export type ImplicitSelectBodyCstChildren = {
   LParen?: (IToken)[];
   pivotBody?: (PivotBodyCstNode)[];
   RParen?: (IToken)[];
+  As?: (IToken)[];
+  pivotAlias?: (IdentifierCstNode)[];
   sampleByClause?: (SampleByClauseCstNode)[];
   groupByClause?: (GroupByClauseCstNode)[];
   subsampleClause?: SubsampleClauseCstNode[];
@@ -2455,7 +2459,7 @@ export interface PivotForClauseCstNode extends CstNode {
 }
 
 export type PivotForClauseCstChildren = {
-  columnRef: ColumnRefCstNode[];
+  bitOrExpression: BitOrExpressionCstNode[];
   In: IToken[];
   LParen: IToken[];
   pivotInValue?: (PivotInValueCstNode)[];

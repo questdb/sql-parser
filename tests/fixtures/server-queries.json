@@ -1608,5 +1608,23 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:192",
     "feature": "clause-order",
     "toSql": "SELECT * FROM y LIMIT 0, 5"
+  },
+  {
+    "query": "SELECT * FROM cities\nPIVOT (\n    SUM(population)\n    FOR year - 2000 IN (0, 10)\n    GROUP BY country\n) ORDER BY country\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:2914",
+    "feature": "pivot",
+    "toSql": "SELECT * FROM cities PIVOT (SUM(population) FOR year - 2000 IN (0, 10) GROUP BY country) ORDER BY country"
+  },
+  {
+    "query": "cities\nPIVOT (\n    SUM(population)\n    FOR\n        year IN (2000 as D1, 2010 D2, 2020 as D3)\n    GROUP BY country\n);\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:2934",
+    "feature": "pivot",
+    "toSql": "cities PIVOT (SUM(population) FOR year IN (2000 AS D1, 2010 AS D2, 2020 AS D3) GROUP BY country)"
+  },
+  {
+    "query": "SELECT * FROM cities PIVOT (SUM(population) FOR (SELECT 'NL')::VARCHAR IN ('NL') GROUP BY year)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:415",
+    "feature": "pivot",
+    "toSql": "SELECT * FROM cities PIVOT (SUM(population) FOR (SELECT 'NL')::VARCHAR IN ('NL') GROUP BY year)"
   }
 ]
