@@ -23,6 +23,12 @@ import type {
   AlterTableForceActionCstChildren,
   AlterTableStatementCstChildren,
   AlterUserActionCstChildren,
+  PrincipalResourceGroupActionCstChildren,
+  CreateResourceGroupStatementCstChildren,
+  AlterResourceGroupStatementCstChildren,
+  DropResourceGroupStatementCstChildren,
+  ResourceGroupPolicyCstChildren,
+  ResourceGroupOptionCstChildren,
   AlterUserStatementCstChildren,
   AlterLiveViewStatementCstChildren,
   AlterViewStatementCstChildren,
@@ -1491,6 +1497,11 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.createServiceAccountStatement,
       ) as AST.CreateServiceAccountStatement
     }
+    if (ctx.createResourceGroupStatement) {
+      return this.visit(
+        ctx.createResourceGroupStatement,
+      ) as AST.CreateResourceGroupStatement
+    }
     throw new Error("Unknown create statement type")
   }
 
@@ -2454,6 +2465,11 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.alterGroupStatement) {
       return this.visit(ctx.alterGroupStatement) as AST.AlterGroupStatement
     }
+    if (ctx.alterResourceGroupStatement) {
+      return this.visit(
+        ctx.alterResourceGroupStatement,
+      ) as AST.AlterResourceGroupStatement
+    }
     throw new Error("Unknown alter statement type")
   }
 
@@ -2473,6 +2489,20 @@ class QuestDBVisitor extends BaseVisitor {
     ctx: AlterGroupStatementCstChildren,
   ): AST.AlterGroupStatement {
     const group = this.visit(ctx.qualifiedName) as AST.QualifiedName
+    if (ctx.principalResourceGroupAction) {
+      const a = this.visit(
+        ctx.principalResourceGroupAction,
+      ) as AST.AlterUserResourceGroupAction
+      return {
+        type: "alterGroup",
+        group,
+        action: a.actionType,
+        ...(a.resourceGroup && { resourceGroup: a.resourceGroup }),
+        ...(a.mappingPriority !== undefined && {
+          mappingPriority: a.mappingPriority,
+        }),
+      }
+    }
     if (ctx.memoryLimit) {
       return {
         type: "alterGroup",
@@ -2668,7 +2698,99 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
+  principalResourceGroupAction(
+    ctx: PrincipalResourceGroupActionCstChildren,
+  ): AST.AlterUserResourceGroupAction {
+    if (ctx.Unset) return { actionType: "unsetResourceGroup" }
+    const result: AST.AlterUserResourceGroupAction = {
+      actionType: "setResourceGroup",
+      resourceGroup: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+    }
+    if (ctx.NumberLiteral) result.mappingPriority = ctx.NumberLiteral[0].image
+    return result
+  }
+
+  createResourceGroupStatement(
+    ctx: CreateResourceGroupStatementCstChildren,
+  ): AST.CreateResourceGroupStatement {
+    const result: AST.CreateResourceGroupStatement = {
+      type: "createResourceGroup",
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
+    if (ctx.If) result.ifNotExists = true
+    if (ctx.resourceGroupPolicy) {
+      result.options = this.visit(
+        ctx.resourceGroupPolicy,
+      ) as AST.ResourceGroupOption[]
+    }
+    return result
+  }
+
+  alterResourceGroupStatement(
+    ctx: AlterResourceGroupStatementCstChildren,
+  ): AST.AlterResourceGroupStatement {
+    const group = this.visit(ctx.qualifiedName[0]) as AST.QualifiedName
+    if (ctx.Rename) {
+      return {
+        type: "alterResourceGroup",
+        group,
+        action: "rename",
+        newName: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
+      }
+    }
+    return {
+      type: "alterResourceGroup",
+      group,
+      action: ctx.Reset ? "reset" : "set",
+      options: this.visit(
+        ctx.resourceGroupPolicy!,
+      ) as AST.ResourceGroupOption[],
+    }
+  }
+
+  dropResourceGroupStatement(
+    ctx: DropResourceGroupStatementCstChildren,
+  ): AST.DropResourceGroupStatement {
+    const result: AST.DropResourceGroupStatement = {
+      type: "dropResourceGroup",
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
+    if (ctx.If) result.ifExists = true
+    return result
+  }
+
+  resourceGroupPolicy(
+    ctx: ResourceGroupPolicyCstChildren,
+  ): AST.ResourceGroupOption[] {
+    return (ctx.resourceGroupOption ?? []).map(
+      (o) => this.visit(o) as AST.ResourceGroupOption,
+    )
+  }
+
+  resourceGroupOption(
+    ctx: ResourceGroupOptionCstChildren,
+  ): AST.ResourceGroupOption {
+    const key = (ctx.MemoryLimit ??
+      ctx.CpuWeight ??
+      ctx.MaxActiveQueries ??
+      ctx.MaxQueuedQueries ??
+      ctx.QueueTimeout)![0]
+    const result: AST.ResourceGroupOption = { name: key.image.toLowerCase() }
+    if (ctx.StringLiteral) {
+      result.value = ctx.StringLiteral[0].image
+    } else if (ctx.memoryLimit) {
+      result.value =
+        (ctx.Minus ? "-" : "") + (this.visit(ctx.memoryLimit) as string)
+    }
+    return result
+  }
+
   alterUserAction(ctx: AlterUserActionCstChildren): AST.AlterUserAction {
+    if (ctx.principalResourceGroupAction) {
+      return this.visit(
+        ctx.principalResourceGroupAction,
+      ) as AST.AlterUserResourceGroupAction
+    }
     if (ctx.memoryLimit) {
       return {
         actionType: "setMemoryLimit",
@@ -3082,6 +3204,11 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.dropGroupStatement) {
       return this.visit(ctx.dropGroupStatement) as AST.DropGroupStatement
+    }
+    if (ctx.dropResourceGroupStatement) {
+      return this.visit(
+        ctx.dropResourceGroupStatement,
+      ) as AST.DropResourceGroupStatement
     }
     if (ctx.dropServiceAccountStatement) {
       return this.visit(

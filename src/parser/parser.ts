@@ -240,6 +240,15 @@ import {
   Beginning,
   Now,
   Memory,
+  Resource,
+  Unset,
+  Mapping,
+  Priority,
+  MemoryLimit,
+  CpuWeight,
+  MaxActiveQueries,
+  MaxQueuedQueries,
+  QueueTimeout,
   Daily,
   Expression,
   Posting,
@@ -2021,6 +2030,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.createUserStatement) },
       { ALT: () => this.SUBRULE(this.createGroupStatement) },
       { ALT: () => this.SUBRULE(this.createServiceAccountStatement) },
+      { ALT: () => this.SUBRULE(this.createResourceGroupStatement) },
     ])
   })
 
@@ -3151,6 +3161,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.alterUserStatement) },
       { ALT: () => this.SUBRULE(this.alterServiceAccountStatement) },
       { ALT: () => this.SUBRULE(this.alterGroupStatement) },
+      { ALT: () => this.SUBRULE(this.alterResourceGroupStatement) },
     ])
   })
 
@@ -3182,6 +3193,7 @@ class QuestDBParser extends CstParser {
           this.SUBRULE(this.memoryLimit)
         },
       },
+      { ALT: () => this.SUBRULE(this.principalResourceGroupAction) },
     ])
   })
 
@@ -3235,6 +3247,7 @@ class QuestDBParser extends CstParser {
 
   private alterUserAction = this.RULE("alterUserAction", () => {
     this.OR([
+      { ALT: () => this.SUBRULE(this.principalResourceGroupAction) },
       { ALT: () => this.CONSUME(Enable) },
       { ALT: () => this.CONSUME(Disable) },
       {
@@ -3972,8 +3985,135 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.dropUserStatement) },
       { ALT: () => this.SUBRULE(this.dropGroupStatement) },
       { ALT: () => this.SUBRULE(this.dropServiceAccountStatement) },
+      { ALT: () => this.SUBRULE(this.dropResourceGroupStatement) },
     ])
   })
+
+  // ==========================================================================
+  // Enterprise resource groups (EntSqlCompilerImpl.createResourceGroup /
+  // compileAlterResourceGroup / dropResourceGroup)
+  // ==========================================================================
+
+  private createResourceGroupStatement = this.RULE(
+    "createResourceGroupStatement",
+    () => {
+      this.CONSUME(Resource)
+      this.CONSUME(Group)
+      this.OPTION(() => {
+        this.CONSUME(If)
+        this.CONSUME(Not)
+        this.CONSUME(Exists)
+      })
+      this.SUBRULE(this.qualifiedName)
+      this.OPTION1(() => {
+        this.CONSUME(With)
+        this.SUBRULE(this.resourceGroupPolicy)
+      })
+    },
+  )
+
+  private alterResourceGroupStatement = this.RULE(
+    "alterResourceGroupStatement",
+    () => {
+      this.CONSUME(Resource)
+      this.CONSUME(Group)
+      this.SUBRULE(this.qualifiedName)
+      this.OR([
+        {
+          ALT: () => {
+            this.OR1([
+              { ALT: () => this.CONSUME(Set) },
+              { ALT: () => this.CONSUME(Reset) },
+            ])
+            this.SUBRULE(this.resourceGroupPolicy)
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME(Rename)
+            this.CONSUME(To)
+            this.SUBRULE1(this.qualifiedName)
+          },
+        },
+      ])
+    },
+  )
+
+  private dropResourceGroupStatement = this.RULE(
+    "dropResourceGroupStatement",
+    () => {
+      this.CONSUME(Resource)
+      this.CONSUME(Group)
+      this.OPTION(() => {
+        this.CONSUME(If)
+        this.CONSUME(Exists)
+      })
+      this.SUBRULE(this.qualifiedName)
+    },
+  )
+
+  // ( [key [= value] {, key [= value]}] ) — values omitted for RESET
+  private resourceGroupPolicy = this.RULE("resourceGroupPolicy", () => {
+    this.CONSUME(LParen)
+    this.MANY_SEP({
+      SEP: Comma,
+      DEF: () => this.SUBRULE(this.resourceGroupOption),
+    })
+    this.CONSUME(RParen)
+  })
+
+  private resourceGroupOption = this.RULE("resourceGroupOption", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(MemoryLimit) },
+      { ALT: () => this.CONSUME(CpuWeight) },
+      { ALT: () => this.CONSUME(MaxActiveQueries) },
+      { ALT: () => this.CONSUME(MaxQueuedQueries) },
+      { ALT: () => this.CONSUME(QueueTimeout) },
+    ])
+    this.OPTION(() => {
+      this.CONSUME(Equals)
+      this.OR1([
+        { ALT: () => this.CONSUME(StringLiteral) },
+        {
+          ALT: () => {
+            this.OPTION1(() => this.CONSUME(Minus))
+            this.SUBRULE(this.memoryLimit)
+          },
+        },
+      ])
+    })
+  })
+
+  // SET RESOURCE GROUP g [MAPPING PRIORITY n] | UNSET RESOURCE GROUP
+  // (EntSqlCompilerImpl.compilePrincipalResourceGroup; MAPPING PRIORITY is
+  // server-valid only for ALTER GROUP, accepted everywhere here)
+  private principalResourceGroupAction = this.RULE(
+    "principalResourceGroupAction",
+    () => {
+      this.OR([
+        {
+          ALT: () => {
+            this.CONSUME(Set)
+            this.CONSUME(Resource)
+            this.CONSUME(Group)
+            this.SUBRULE(this.qualifiedName)
+            this.OPTION(() => {
+              this.CONSUME(Mapping)
+              this.CONSUME(Priority)
+              this.CONSUME(NumberLiteral)
+            })
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME(Unset)
+            this.CONSUME1(Resource)
+            this.CONSUME1(Group)
+          },
+        },
+      ])
+    },
+  )
 
   private dropViewStatement = this.RULE("dropViewStatement", () => {
     this.CONSUME(View)

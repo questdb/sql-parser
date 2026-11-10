@@ -65,6 +65,9 @@ export type Statement =
   | SwitchStatement
   | AlterGroupStatement
   | CompileViewStatement
+  | CreateResourceGroupStatement
+  | AlterResourceGroupStatement
+  | DropResourceGroupStatement
 
 export interface SelectStatement extends AstNode {
   type: "select"
@@ -528,6 +531,14 @@ export type AlterUserAction =
   | AlterUserCreateTokenAction
   | AlterUserDropTokenAction
   | AlterUserMemoryLimitAction
+  | AlterUserResourceGroupAction
+
+/** SET RESOURCE GROUP g [MAPPING PRIORITY n] | UNSET RESOURCE GROUP */
+export interface AlterUserResourceGroupAction {
+  actionType: "setResourceGroup" | "unsetResourceGroup"
+  resourceGroup?: QualifiedName
+  mappingPriority?: string
+}
 
 export interface AlterUserEnableAction {
   actionType: "enable"
@@ -1062,10 +1073,48 @@ export interface SwitchStatement extends AstNode {
 export interface AlterGroupStatement extends AstNode {
   type: "alterGroup"
   group: QualifiedName
-  action: "setAlias" | "dropAlias" | "setMemoryLimit"
+  action:
+    | "setAlias"
+    | "dropAlias"
+    | "setMemoryLimit"
+    | "setResourceGroup"
+    | "unsetResourceGroup"
   externalAlias?: string
   /** SET MEMORY LIMIT value, e.g. "2G", "512M", "0", "UNLIMITED" */
   memoryLimit?: string
+  /** SET RESOURCE GROUP name */
+  resourceGroup?: QualifiedName
+  /** SET RESOURCE GROUP ... MAPPING PRIORITY n */
+  mappingPriority?: string
+}
+
+/** Resource group policy entry: `key = value` (value omitted in RESET) */
+export interface ResourceGroupOption {
+  name: string
+  /** Raw value text, e.g. "'8M'", "200", "UNLIMITED" */
+  value?: string
+}
+
+export interface CreateResourceGroupStatement extends AstNode {
+  type: "createResourceGroup"
+  group: QualifiedName
+  ifNotExists?: boolean
+  /** WITH (...) policy; empty array for WITH () */
+  options?: ResourceGroupOption[]
+}
+
+export interface AlterResourceGroupStatement extends AstNode {
+  type: "alterResourceGroup"
+  group: QualifiedName
+  action: "set" | "reset" | "rename"
+  options?: ResourceGroupOption[]
+  newName?: QualifiedName
+}
+
+export interface DropResourceGroupStatement extends AstNode {
+  type: "dropResourceGroup"
+  group: QualifiedName
+  ifExists?: boolean
 }
 
 export interface CompileViewStatement extends AstNode {

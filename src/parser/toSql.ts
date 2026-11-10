@@ -163,6 +163,10 @@ function statementToSql(stmt: AST.Statement): string {
       return alterGroupToSql(stmt)
     case "compileView":
       return `COMPILE VIEW ${qualifiedNameToSql(stmt.view)}`
+    case "createResourceGroup":
+    case "alterResourceGroup":
+    case "dropResourceGroup":
+      return resourceGroupToSql(stmt)
     default:
       throw new Error(
         `Unknown statement type: ${(stmt as { type: string }).type}`,
@@ -1541,9 +1545,56 @@ function createGroupToSql(stmt: AST.CreateGroupStatement): string {
   return parts.join(" ")
 }
 
+function resourceGroupPolicyToSql(options: AST.ResourceGroupOption[]): string {
+  return `(${options
+    .map((o) => (o.value !== undefined ? `${o.name} = ${o.value}` : o.name))
+    .join(", ")})`
+}
+
+function resourceGroupToSql(
+  stmt:
+    | AST.CreateResourceGroupStatement
+    | AST.AlterResourceGroupStatement
+    | AST.DropResourceGroupStatement,
+): string {
+  const name = qualifiedNameToSql(stmt.group)
+  if (stmt.type === "createResourceGroup") {
+    const parts = ["CREATE RESOURCE GROUP"]
+    if (stmt.ifNotExists) parts.push("IF NOT EXISTS")
+    parts.push(name)
+    if (stmt.options)
+      parts.push(`WITH ${resourceGroupPolicyToSql(stmt.options)}`)
+    return parts.join(" ")
+  }
+  if (stmt.type === "dropResourceGroup") {
+    return `DROP RESOURCE GROUP ${stmt.ifExists ? "IF EXISTS " : ""}${name}`
+  }
+  if (stmt.action === "rename") {
+    return `ALTER RESOURCE GROUP ${name} RENAME TO ${qualifiedNameToSql(stmt.newName!)}`
+  }
+  return `ALTER RESOURCE GROUP ${name} ${stmt.action.toUpperCase()} ${resourceGroupPolicyToSql(stmt.options ?? [])}`
+}
+
+function principalResourceGroupToSql(
+  group: AST.QualifiedName | undefined,
+  mappingPriority: string | undefined,
+): string {
+  if (!group) return "UNSET RESOURCE GROUP"
+  let s = `SET RESOURCE GROUP ${qualifiedNameToSql(group)}`
+  if (mappingPriority !== undefined) s += ` MAPPING PRIORITY ${mappingPriority}`
+  return s
+}
+
 function alterGroupToSql(stmt: AST.AlterGroupStatement): string {
   const parts: string[] = ["ALTER GROUP", qualifiedNameToSql(stmt.group)]
-  if (stmt.action === "setMemoryLimit") {
+  if (
+    stmt.action === "setResourceGroup" ||
+    stmt.action === "unsetResourceGroup"
+  ) {
+    parts.push(
+      principalResourceGroupToSql(stmt.resourceGroup, stmt.mappingPriority),
+    )
+  } else if (stmt.action === "setMemoryLimit") {
     parts.push(`SET MEMORY LIMIT ${stmt.memoryLimit}`)
   } else if (stmt.action === "setAlias") {
     parts.push(`WITH EXTERNAL ALIAS ${escapeString(stmt.externalAlias!)}`)
@@ -1595,6 +1646,12 @@ function alterUserActionToSql(action: AST.AlterUserAction): string {
       return `WITH PASSWORD ${escapeString(action.password!)}`
     case "setMemoryLimit":
       return `SET MEMORY LIMIT ${action.limit}`
+    case "setResourceGroup":
+    case "unsetResourceGroup":
+      return principalResourceGroupToSql(
+        action.resourceGroup,
+        action.mappingPriority,
+      )
     case "createToken": {
       const parts = [`CREATE TOKEN TYPE ${action.tokenType}`]
       if (action.publicKeyX != null && action.publicKeyY != null) {

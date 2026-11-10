@@ -826,6 +826,7 @@ export type CreateStatementCstChildren = {
   createUserStatement?: CreateUserStatementCstNode[];
   createGroupStatement?: CreateGroupStatementCstNode[];
   createServiceAccountStatement?: CreateServiceAccountStatementCstNode[];
+  createResourceGroupStatement?: CreateResourceGroupStatementCstNode[];
 };
 
 export interface CreateViewBodyCstNode extends CstNode {
@@ -1510,6 +1511,7 @@ export type AlterStatementCstChildren = {
   alterUserStatement?: AlterUserStatementCstNode[];
   alterServiceAccountStatement?: AlterServiceAccountStatementCstNode[];
   alterGroupStatement?: AlterGroupStatementCstNode[];
+  alterResourceGroupStatement?: AlterResourceGroupStatementCstNode[];
 };
 
 export interface AlterGroupStatementCstNode extends CstNode {
@@ -1529,6 +1531,7 @@ export type AlterGroupStatementCstChildren = {
   Memory?: IToken[];
   Limit?: IToken[];
   memoryLimit?: MemoryLimitCstNode[];
+  principalResourceGroupAction?: PrincipalResourceGroupActionCstNode[];
 };
 
 export interface AlterViewStatementCstNode extends CstNode {
@@ -1575,6 +1578,7 @@ export interface AlterUserActionCstNode extends CstNode {
 }
 
 export type AlterUserActionCstChildren = {
+  principalResourceGroupAction?: PrincipalResourceGroupActionCstNode[];
   Enable?: IToken[];
   Disable?: IToken[];
   Set?: IToken[];
@@ -1842,6 +1846,97 @@ export type DropStatementCstChildren = {
   dropUserStatement?: DropUserStatementCstNode[];
   dropGroupStatement?: DropGroupStatementCstNode[];
   dropServiceAccountStatement?: DropServiceAccountStatementCstNode[];
+  dropResourceGroupStatement?: DropResourceGroupStatementCstNode[];
+};
+
+export interface CreateResourceGroupStatementCstNode extends CstNode {
+  name: "createResourceGroupStatement";
+  children: CreateResourceGroupStatementCstChildren;
+}
+
+export type CreateResourceGroupStatementCstChildren = {
+  Resource: IToken[];
+  Group: IToken[];
+  If?: IToken[];
+  Not?: IToken[];
+  Exists?: IToken[];
+  qualifiedName: QualifiedNameCstNode[];
+  With?: IToken[];
+  resourceGroupPolicy?: ResourceGroupPolicyCstNode[];
+};
+
+export interface AlterResourceGroupStatementCstNode extends CstNode {
+  name: "alterResourceGroupStatement";
+  children: AlterResourceGroupStatementCstChildren;
+}
+
+export type AlterResourceGroupStatementCstChildren = {
+  Resource: IToken[];
+  Group: IToken[];
+  qualifiedName: (QualifiedNameCstNode)[];
+  Set?: IToken[];
+  Reset?: IToken[];
+  resourceGroupPolicy?: ResourceGroupPolicyCstNode[];
+  Rename?: IToken[];
+  To?: IToken[];
+};
+
+export interface DropResourceGroupStatementCstNode extends CstNode {
+  name: "dropResourceGroupStatement";
+  children: DropResourceGroupStatementCstChildren;
+}
+
+export type DropResourceGroupStatementCstChildren = {
+  Resource: IToken[];
+  Group: IToken[];
+  If?: IToken[];
+  Exists?: IToken[];
+  qualifiedName: QualifiedNameCstNode[];
+};
+
+export interface ResourceGroupPolicyCstNode extends CstNode {
+  name: "resourceGroupPolicy";
+  children: ResourceGroupPolicyCstChildren;
+}
+
+export type ResourceGroupPolicyCstChildren = {
+  LParen: IToken[];
+  resourceGroupOption?: ResourceGroupOptionCstNode[];
+  Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface ResourceGroupOptionCstNode extends CstNode {
+  name: "resourceGroupOption";
+  children: ResourceGroupOptionCstChildren;
+}
+
+export type ResourceGroupOptionCstChildren = {
+  MemoryLimit?: IToken[];
+  CpuWeight?: IToken[];
+  MaxActiveQueries?: IToken[];
+  MaxQueuedQueries?: IToken[];
+  QueueTimeout?: IToken[];
+  Equals?: IToken[];
+  StringLiteral?: IToken[];
+  Minus?: IToken[];
+  memoryLimit?: MemoryLimitCstNode[];
+};
+
+export interface PrincipalResourceGroupActionCstNode extends CstNode {
+  name: "principalResourceGroupAction";
+  children: PrincipalResourceGroupActionCstChildren;
+}
+
+export type PrincipalResourceGroupActionCstChildren = {
+  Set?: IToken[];
+  Resource?: (IToken)[];
+  Group?: (IToken)[];
+  qualifiedName?: QualifiedNameCstNode[];
+  Mapping?: IToken[];
+  Priority?: IToken[];
+  NumberLiteral?: IToken[];
+  Unset?: IToken[];
 };
 
 export interface DropViewStatementCstNode extends CstNode {
@@ -3406,6 +3501,12 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   suspendWalWith(children: SuspendWalWithCstChildren, param?: IN): OUT;
   alterMaterializedViewAction(children: AlterMaterializedViewActionCstChildren, param?: IN): OUT;
   dropStatement(children: DropStatementCstChildren, param?: IN): OUT;
+  createResourceGroupStatement(children: CreateResourceGroupStatementCstChildren, param?: IN): OUT;
+  alterResourceGroupStatement(children: AlterResourceGroupStatementCstChildren, param?: IN): OUT;
+  dropResourceGroupStatement(children: DropResourceGroupStatementCstChildren, param?: IN): OUT;
+  resourceGroupPolicy(children: ResourceGroupPolicyCstChildren, param?: IN): OUT;
+  resourceGroupOption(children: ResourceGroupOptionCstChildren, param?: IN): OUT;
+  principalResourceGroupAction(children: PrincipalResourceGroupActionCstChildren, param?: IN): OUT;
   dropViewStatement(children: DropViewStatementCstChildren, param?: IN): OUT;
   dropTableStatement(children: DropTableStatementCstChildren, param?: IN): OUT;
   dropMaterializedViewStatement(children: DropMaterializedViewStatementCstChildren, param?: IN): OUT;

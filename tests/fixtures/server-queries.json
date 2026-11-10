@@ -1983,5 +1983,59 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:10011",
     "feature": "reserved-words",
     "toSql": "SELECT sum(x) OVER window FROM t WINDOW window AS (ORDER BY ts)"
+  },
+  {
+    "query": "CREATE RESOURCE GROUP analytics WITH (memory_limit = '8M', cpu_weight = 200)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:220",
+    "feature": "ent-resource-groups",
+    "toSql": "CREATE RESOURCE GROUP analytics WITH (memory_limit = '8M', cpu_weight = 200)"
+  },
+  {
+    "query": "CREATE RESOURCE GROUP IF NOT EXISTS analytics WITH (cpu_weight = 100)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:407",
+    "feature": "ent-resource-groups",
+    "toSql": "CREATE RESOURCE GROUP IF NOT EXISTS analytics WITH (cpu_weight = 100)"
+  },
+  {
+    "query": "ALTER RESOURCE GROUP DEFAULT SET (max_active_queries = 1, max_queued_queries = 2, queue_timeout = '30s', memory_limit = '8M')",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupHttpTest.java:931",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER RESOURCE GROUP DEFAULT SET (max_active_queries = 1, max_queued_queries = 2, queue_timeout = '30s', memory_limit = '8M')"
+  },
+  {
+    "query": "ALTER RESOURCE GROUP analytics RESET (memory_limit, cpu_weight)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:251",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER RESOURCE GROUP analytics RESET (memory_limit, cpu_weight)"
+  },
+  {
+    "query": "ALTER RESOURCE GROUP analytics RENAME TO reporting",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:116",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER RESOURCE GROUP analytics RENAME TO reporting"
+  },
+  {
+    "query": "DROP RESOURCE GROUP IF EXISTS batch",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupCatalogRestartTest.java:159",
+    "feature": "ent-resource-groups",
+    "toSql": "DROP RESOURCE GROUP IF EXISTS batch"
+  },
+  {
+    "query": "ALTER GROUP a SET RESOURCE GROUP low MAPPING PRIORITY 20",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/security/ResourceGroupOwnershipTest.java:130",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER GROUP a SET RESOURCE GROUP low MAPPING PRIORITY 20"
+  },
+  {
+    "query": "ALTER SERVICE ACCOUNT svc SET RESOURCE GROUP rg",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1047",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER SERVICE ACCOUNT svc SET RESOURCE GROUP rg"
+  },
+  {
+    "query": "ALTER SERVICE ACCOUNT svc UNSET RESOURCE GROUP",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1048",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER SERVICE ACCOUNT svc UNSET RESOURCE GROUP"
   }
 ]
