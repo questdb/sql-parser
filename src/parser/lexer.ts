@@ -785,6 +785,24 @@ export const GeohashLiteral = createToken({
   pattern: /#[a-z0-9/]+/i,
 })
 
+// Long256 hex literal: 0x1F, 0x7ee65ec7...  (FunctionParser.createConstant ->
+// Numbers.extractLong256). Must be before NumberLiteral, which would otherwise
+// match the leading "0" and leave "x1F" as an identifier.
+export const HexLiteral = createToken({
+  name: "HexLiteral",
+  pattern: /0[xX][0-9a-fA-F]+\b/,
+})
+
+// Float / double suffix: 1.5f, 10f, 1e36f, 1e36d (FunctionParser.createConstant ->
+// Numbers.parseFloat / parseDouble). `f` is not a duration unit, so it never
+// collides with DurationLiteral. `d` is only treated as a double suffix after an
+// exponent, because `1d` / `1.5d` are durations (days) in SAMPLE BY / TTL.
+export const FloatLiteral = createToken({
+  name: "FloatLiteral",
+  pattern:
+    /(\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(([eE][+-]?\d[\d_]*)?[fF]|[eE][+-]?\d[\d_]*[dD])\b/,
+})
+
 // Long literal suffix: 100000L (must be before DurationLiteral and NumberLiteral)
 export const LongLiteral = createToken({
   name: "LongLiteral",
@@ -829,7 +847,7 @@ export const NumberLiteral = createToken({
 export const Dot = createToken({
   name: "Dot",
   pattern: /\./,
-  longer_alt: NumberLiteral,
+  longer_alt: [FloatLiteral, NumberLiteral],
 })
 
 // Strings — QuestDB follows PostgreSQL convention: backslash is literal,
@@ -837,6 +855,15 @@ export const Dot = createToken({
 export const StringLiteral = createToken({
   name: "StringLiteral",
   pattern: /'([^']|'')*'/,
+})
+
+// PostgreSQL escape-string constant: E'abc' (ExpressionParser case 'E',
+// FunctionParser.createConstant strips the E and the quotes). Uppercase E only,
+// glued to the quote, exactly as on the server. Must be before Identifier,
+// which would otherwise match the "E" and leave the string as an alias.
+export const EscapeStringLiteral = createToken({
+  name: "EscapeStringLiteral",
+  pattern: /E'([^']|'')*'/,
 })
 
 // Quoted Identifiers — same convention: "" escapes a double quote,
@@ -937,11 +964,14 @@ export const allTokens: TokenType[] = [
   // Literals (order matters - longer/more specific patterns first)
   GeohashBinaryLiteral,
   GeohashLiteral,
+  HexLiteral,
+  FloatLiteral,
   LongLiteral,
   DecimalLiteral,
   DurationLiteral,
   NumberLiteral,
   StringLiteral,
+  EscapeStringLiteral,
   QuotedIdentifier,
   Identifier,
 ]

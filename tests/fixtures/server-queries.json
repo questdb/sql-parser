@@ -22,5 +22,161 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1357",
     "feature": "baseline",
     "toSql": "GRANT SELECT ON pending_grants TO alice"
+  },
+  {
+    "query": "insert into tab values (false, cast(24814 as short), 24814, 8260188555232587029, 0x7ee65ec7b6e3bc3a422a8855e9d7bfd29199af5c2aa91ba39c022fa261bdede7, 'J', 'ORANGE', '123', '1970-01-01T00:00:01.000000Z')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCodeGeneratorTest.java:10357",
+    "feature": "literal-hex",
+    "toSql": "INSERT INTO tab VALUES (FALSE, CAST(24814 AS SHORT), 24814, 8260188555232587029, 0x7ee65ec7b6e3bc3a422a8855e9d7bfd29199af5c2aa91ba39c022fa261bdede7, 'J', 'ORANGE', '123', '1970-01-01T00:00:01.000000Z')"
+  },
+  {
+    "query": "select cast(0x00 as boolean)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastTest.java:604",
+    "feature": "literal-hex",
+    "toSql": "SELECT CAST(0x00 AS BOOLEAN)"
+  },
+  {
+    "query": "create table tab as (select 0x11111111 as a, 0x11111111 as b from long_sequence(1))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/eq/EqLong256FunctionFactoryTest.java:66",
+    "feature": "literal-hex",
+    "toSql": "CREATE TABLE tab AS (SELECT 0x11111111 AS a, 0x11111111 AS b FROM long_sequence(1))"
+  },
+  {
+    "query": "insert into tab values (0xb00ee5505bd95e51dd18889bae1dee3404d446e61d5293f55ff29ba4a01ab073)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/groupby/SumLong256VecGroupByFunctionFactoryTest.java:55",
+    "feature": "literal-hex",
+    "toSql": "INSERT INTO tab VALUES (0xb00ee5505bd95e51dd18889bae1dee3404d446e61d5293f55ff29ba4a01ab073)"
+  },
+  {
+    "query": "INSERT INTO t VALUES (3.14f, 1::TIMESTAMP), (1.0f, 2::TIMESTAMP)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressBindRoundTripTest.java:266",
+    "feature": "literal-float",
+    "toSql": "INSERT INTO t VALUES (3.14f, 1::TIMESTAMP), (1.0f, 2::TIMESTAMP)"
+  },
+  {
+    "query": "INSERT INTO t VALUES (1.5f), (-1.5f), (0.0f), (NULL), (CAST(0.0/0.0 AS FLOAT))",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressTypesExhaustiveTest.java:919",
+    "feature": "literal-float",
+    "toSql": "INSERT INTO t VALUES (1.5f), (-1.5f), (0.0f), (NULL), (CAST(0.0 / 0.0 AS FLOAT))"
+  },
+  {
+    "query": "select rn from z where i > 16777216.0f and rn <= 3",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:5614",
+    "feature": "literal-float",
+    "toSql": "SELECT rn FROM z WHERE i > 16777216.0f AND rn <= 3"
+  },
+  {
+    "query": "SELECT 1e10f * 1e30f * 1e-30f AS v",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IntArithmeticOverflowFoldingTest.java:111",
+    "feature": "literal-float",
+    "toSql": "SELECT 1e10f * 1e30f * 1e-30f AS v"
+  },
+  {
+    "query": "SELECT CASE WHEN True THEN 1.0f ELSE 1 END",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13852",
+    "feature": "literal-float",
+    "toSql": "SELECT CASE WHEN TRUE THEN 1.0f ELSE 1 END"
+  },
+  {
+    "query": "select * from x where c in (1.0f, null, 1::byte, 1::short, 1::int, 1::long)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8006",
+    "feature": "literal-float",
+    "toSql": "SELECT * FROM x WHERE c IN (1.0f, NULL, 1::BYTE, 1::SHORT, 1::INT, 1::LONG)"
+  },
+  {
+    "query": "update t1 set f = 5.2f",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/TouchTableFunctionTest.java:71",
+    "feature": "literal-float",
+    "toSql": "UPDATE t1 SET f = 5.2f"
+  },
+  {
+    "query": "with data as (select -1e30d v) select cast(v as decimal(24,2)) from data",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDoubleToDecimalFunctionFactoryTest.java:264",
+    "feature": "literal-float",
+    "toSql": "WITH data AS (SELECT -1e30d AS v) SELECT CAST(v AS DECIMAL(24, 2)) FROM data"
+  },
+  {
+    "query": "select 10f * 0f x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/math/MulFloatFunctionFactoryTest.java:49",
+    "feature": "literal-float",
+    "toSql": "SELECT 10f * 0f AS x"
+  },
+  {
+    "query": "insert into x values ((2+3*3600L*1000000)::timestamp,2, 8,8,8f,8d,cast(8 as date),8::timestamp,rnd_long256(),'8','8',rnd_geohash(5) ,rnd_geohash(10),rnd_geohash(20),rnd_geohash(40))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/CountColumnTest.java:74",
+    "feature": "literal-float",
+    "toSql": "INSERT INTO x VALUES ((2 + 3 * 3600L * 1000000)::TIMESTAMP, 2, 8, 8, 8f, 8d, CAST(8 AS DATE), 8::TIMESTAMP, rnd_long256(), '8', '8', rnd_geohash(5), rnd_geohash(10), rnd_geohash(20), rnd_geohash(40))"
+  },
+  {
+    "query": "SELECT x, count() FROM (SELECT dateadd(E'h', 1, ts) x FROM jan) SAMPLE BY 1d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampOffsetPushdownTest.java:1048",
+    "feature": "literal-escape-string",
+    "toSql": "SELECT x, count() FROM (SELECT dateadd(E'h', 1, ts) AS x FROM jan) SAMPLE BY 1d"
+  },
+  {
+    "query": "select ipv4 '2.1.1.1' & '2.2.2.2'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:92",
+    "feature": "literal-typed",
+    "toSql": "SELECT IPV4 '2.1.1.1' & '2.2.2.2'"
+  },
+  {
+    "query": "select null >= ipv4 '34.11.45.3'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:1046",
+    "feature": "literal-typed",
+    "toSql": "SELECT NULL >= IPV4 '34.11.45.3'"
+  },
+  {
+    "query": "select ip & ipv4 '255.255.255.255' from test",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:1255",
+    "feature": "literal-typed",
+    "toSql": "SELECT ip & IPV4 '255.255.255.255' FROM test"
+  },
+  {
+    "query": "select ipv4 '0.0.0.0' - ipv4 '1.1.1.1'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:2705",
+    "feature": "literal-typed",
+    "toSql": "SELECT IPV4 '0.0.0.0' - IPV4 '1.1.1.1'"
+  },
+  {
+    "query": "select (uuid '11111111-1111-1111-1111-111111111111') = cast('11111111-1111-1111-1111-111111111111' as uuid) from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UuidTest.java:1067",
+    "feature": "literal-typed",
+    "toSql": "SELECT (UUID '11111111-1111-1111-1111-111111111111') = CAST('11111111-1111-1111-1111-111111111111' AS UUID) FROM long_sequence(1)"
+  },
+  {
+    "query": "select typeOf(uuid '11111111-1111-1111-1111-111111111111') from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UuidTest.java:1210",
+    "feature": "literal-typed",
+    "toSql": "SELECT typeOf(UUID '11111111-1111-1111-1111-111111111111') FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT DATE_TRUNC('hour',          TIMESTAMP '2017-03-17T02:09:30.111111Z') as truncated",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/DateTruncFunctionFactoryTest.java:63",
+    "feature": "literal-typed",
+    "toSql": "SELECT DATE_TRUNC('hour', TIMESTAMP '2017-03-17T02:09:30.111111Z') AS truncated"
+  },
+  {
+    "query": "SELECT DATE_TRUNC('day',           TIMESTAMP_NS '2017-03-17T02:09:30.111111111Z') as truncated",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/DateTruncFunctionFactoryTest.java:120",
+    "feature": "literal-typed",
+    "toSql": "SELECT DATE_TRUNC('day', TIMESTAMP_NS '2017-03-17T02:09:30.111111111Z') AS truncated"
+  },
+  {
+    "query": "insert into t values (timestamp with time zone '2020-12-31 15:15:51.663+00:00')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1789",
+    "feature": "literal-typed",
+    "toSql": "INSERT INTO t VALUES (TIMESTAMP WITH TIME ZONE '2020-12-31 15:15:51.663+00:00')"
+  },
+  {
+    "query": "insert into test (test_timestamp, test_value) values (timestamp with time zone '2020-12-31 15:15:51.663+00:00', '256')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AbstractSqlParserTest.java:160",
+    "feature": "literal-typed",
+    "toSql": "INSERT INTO test (test_timestamp, test_value) VALUES (TIMESTAMP WITH TIME ZONE '2020-12-31 15:15:51.663+00:00', '256')"
+  },
+  {
+    "query": "SELECT * FROM (\nSELECT \n  n.nspname\n  ,c.relname\n  ,a.attname\n  ,a.atttypid\n  ,a.attnotnull OR (t.typtype = 'd' AND t.typnotnull) AS attnotnull\n  ,a.atttypmod\n  ,a.attlen\n  ,t.typtypmod\n  ,row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS attnum\n  , nullif(a.attidentity, '') as attidentity\n  ,null as attgenerated\n  ,pg_catalog.pg_get_expr(def.adbin, def.adrelid) AS adsrc\n  ,dsc.description\n  ,t.typbasetype\n  ,t.typtype  \nFROM pg_catalog.pg_namespace n\nJOIN pg_catalog.pg_class c ON (c.relnamespace = n.oid)\nJOIN pg_catalog.pg_attribute a ON (a.attrelid=c.oid)\nJOIN pg_catalog.pg_type t ON (a.atttypid = t.oid)\nLEFT JOIN pg_catalog.pg_attrdef def ON (a.attrelid=def.adrelid AND a.attnum = def.adnum)\nLEFT JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)\nLEFT JOIN pg_catalog.pg_class dc ON (dc.oid=dsc.classoid AND dc.relname='pg_class')\nLEFT JOIN pg_catalog.pg_namespace dn ON (dc.relnamespace=dn.oid AND dn.nspname='pg_catalog')\nWHERE \n  c.relkind in ('r','p','v','f','m')\n  and a.attnum > 0 \n  AND NOT a.attisdropped\n  AND c.relname LIKE E'test'\n) c WHERE true\nORDER BY nspname,c.relname,attnum;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGJobContextTest.java:8217",
+    "feature": "literal-escape-string",
+    "toSql": "SELECT * FROM (SELECT n.nspname, c.relname, a.attname, a.atttypid, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull) AS attnotnull, a.atttypmod, a.attlen, t.typtypmod, row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS attnum, nullif(a.attidentity, '') AS attidentity, NULL AS attgenerated, pg_catalog.pg_get_expr(def.adbin, def.adrelid) AS adsrc, dsc.description, t.typbasetype, t.typtype FROM pg_catalog.pg_namespace AS n JOIN pg_catalog.pg_class AS c ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute AS a ON (a.attrelid = c.oid) JOIN pg_catalog.pg_type AS t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef AS def ON (a.attrelid = def.adrelid AND a.attnum = def.adnum) LEFT JOIN pg_catalog.pg_description AS dsc ON (c.oid = dsc.objoid AND a.attnum = dsc.objsubid) LEFT JOIN pg_catalog.pg_class AS dc ON (dc.oid = dsc.classoid AND dc.relname = 'pg_class') LEFT JOIN pg_catalog.pg_namespace AS dn ON (dc.relnamespace = dn.oid AND dn.nspname = 'pg_catalog') WHERE c.relkind IN ('r', 'p', 'v', 'f', 'm') AND a.attnum > 0 AND NOT a.attisdropped AND c.relname LIKE E'test') AS c WHERE TRUE ORDER BY nspname, c.relname, attnum"
   }
 ]

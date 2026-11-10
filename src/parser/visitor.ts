@@ -110,6 +110,7 @@ import type {
   LatestOnClauseCstChildren,
   LimitClauseCstChildren,
   LiteralCstChildren,
+  TimestampWithTimeZoneLiteralCstChildren,
   MaterializedViewPartitionCstChildren,
   MaterializedViewPeriodCstChildren,
   MaterializedViewRefreshCstChildren,
@@ -4142,6 +4143,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.functionCall) {
       return this.visit(ctx.functionCall) as AST.FunctionCall
     }
+    if (ctx.timestampWithTimeZoneLiteral) {
+      return this.visit(ctx.timestampWithTimeZoneLiteral) as AST.Literal
+    }
     if (ctx.literal) {
       return this.visit(ctx.literal) as AST.Literal
     }
@@ -4358,6 +4362,14 @@ class QuestDBVisitor extends BaseVisitor {
     const qualName: AST.QualifiedName = this.visit(
       ctx.qualifiedName,
     ) as AST.QualifiedName
+
+    // Typed literal: timestamp '2020-01-01'
+    if (ctx.StringLiteral || ctx.EscapeStringLiteral) {
+      return {
+        ...this.typedLiteralString(ctx.StringLiteral, ctx.EscapeStringLiteral),
+        typeName: qualName.parts[0].toUpperCase(),
+      }
+    }
 
     if (ctx.LParen) {
       // Function call (possibly schema-qualified)
@@ -4630,7 +4642,62 @@ class QuestDBVisitor extends BaseVisitor {
         literalType: "number",
       }
     }
+    if (ctx.HexLiteral) {
+      // Long256 hex constant; keep the text (it does not fit a JS number)
+      const image = this.tokenImage(ctx.HexLiteral[0])
+      return {
+        type: "literal",
+        value: image,
+        literalType: "number",
+        raw: image,
+      }
+    }
+    if (ctx.FloatLiteral) {
+      const image = this.tokenImage(ctx.FloatLiteral[0])
+      return {
+        type: "literal",
+        value: parseFloat(image.replace(/[_fFdD]/g, "")),
+        literalType: "number",
+        raw: image,
+      }
+    }
+    if (ctx.EscapeStringLiteral) {
+      return this.escapeStringLiteral(ctx.EscapeStringLiteral[0])
+    }
     throw new Error("Unknown literal type")
+  }
+
+  timestampWithTimeZoneLiteral(
+    ctx: TimestampWithTimeZoneLiteralCstChildren,
+  ): AST.Literal {
+    const type = ctx.TimestampNs ? "TIMESTAMP_NS" : "TIMESTAMP"
+    return {
+      ...this.typedLiteralString(ctx.StringLiteral, ctx.EscapeStringLiteral),
+      typeName: `${type} WITH TIME ZONE`,
+    }
+  }
+
+  private typedLiteralString(
+    stringToken: IToken[] | undefined,
+    escapeToken: IToken[] | undefined,
+  ): AST.Literal {
+    if (escapeToken) return this.escapeStringLiteral(escapeToken[0])
+    return {
+      type: "literal",
+      value: this.tokenImage(stringToken![0]).slice(1, -1).replace(/''/g, "'"),
+      literalType: "string",
+    }
+  }
+
+  private escapeStringLiteral(token: IToken): AST.Literal {
+    // E'abc' -> value abc; the server does not process backslashes, so only ''
+    const raw = this.tokenImage(token)
+    return {
+      type: "literal",
+      value: raw.slice(2, -1).replace(/''/g, "'"),
+      literalType: "string",
+      raw,
+    }
   }
 
   booleanLiteral(ctx: BooleanLiteralCstChildren): boolean {

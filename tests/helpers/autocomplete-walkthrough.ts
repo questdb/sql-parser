@@ -206,6 +206,9 @@ export const SKIP_TOKEN_TYPES = new Set([
   "GeohashBinaryLiteral",
   "DecimalLiteral",
   "LongLiteral",
+  "HexLiteral",
+  "FloatLiteral",
+  "EscapeStringLiteral",
   // Punctuation
   "LParen",
   "RParen",

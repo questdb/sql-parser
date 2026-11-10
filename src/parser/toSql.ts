@@ -1946,8 +1946,11 @@ function unaryExprToSql(expr: AST.UnaryExpression): string {
 
 function literalToSql(lit: AST.Literal): string {
   switch (lit.literalType) {
-    case "string":
-      return escapeString(String(lit.value))
+    case "string": {
+      // raw is set for E'...' strings, which must keep their prefix
+      const str = lit.raw ?? escapeString(String(lit.value))
+      return lit.typeName ? `${lit.typeName} ${str}` : str
+    }
     case "number":
       if (lit.raw != null) return lit.raw
       return String(lit.value)

@@ -2589,6 +2589,7 @@ export interface PrimaryExpressionCstNode extends CstNode {
 export type PrimaryExpressionCstChildren = {
   castExpression?: CastExpressionCstNode[];
   caseExpression?: CaseExpressionCstNode[];
+  timestampWithTimeZoneLiteral?: TimestampWithTimeZoneLiteralCstNode[];
   arrayLiteral?: ArrayLiteralCstNode[];
   functionCall?: FunctionCallCstNode[];
   literal?: LiteralCstNode[];
@@ -2731,6 +2732,21 @@ export type FunctionCallCstChildren = {
   overClause?: OverClauseCstNode[];
 };
 
+export interface TimestampWithTimeZoneLiteralCstNode extends CstNode {
+  name: "timestampWithTimeZoneLiteral";
+  children: TimestampWithTimeZoneLiteralCstChildren;
+}
+
+export type TimestampWithTimeZoneLiteralCstChildren = {
+  Timestamp?: IToken[];
+  TimestampNs?: IToken[];
+  With: IToken[];
+  Time: IToken[];
+  Zone: IToken[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
+};
+
 export interface IdentifierExpressionCstNode extends CstNode {
   name: "identifierExpression";
   children: IdentifierExpressionCstChildren;
@@ -2738,6 +2754,8 @@ export interface IdentifierExpressionCstNode extends CstNode {
 
 export type IdentifierExpressionCstChildren = {
   qualifiedName: QualifiedNameCstNode[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];
   Star?: IToken[];
@@ -2868,6 +2886,9 @@ export type LiteralCstChildren = {
   GeohashLiteral?: IToken[];
   GeohashBinaryLiteral?: IToken[];
   Nan?: IToken[];
+  HexLiteral?: IToken[];
+  FloatLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
 };
 
 export interface BooleanLiteralCstNode extends CstNode {
@@ -3146,6 +3167,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   caseExpression(children: CaseExpressionCstChildren, param?: IN): OUT;
   functionName(children: FunctionNameCstChildren, param?: IN): OUT;
   functionCall(children: FunctionCallCstChildren, param?: IN): OUT;
+  timestampWithTimeZoneLiteral(children: TimestampWithTimeZoneLiteralCstChildren, param?: IN): OUT;
   identifierExpression(children: IdentifierExpressionCstChildren, param?: IN): OUT;
   overClause(children: OverClauseCstChildren, param?: IN): OUT;
   windowClause(children: WindowClauseCstChildren, param?: IN): OUT;

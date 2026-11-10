@@ -115,6 +115,9 @@ export const SKIP_TOKENS = new Set([
   "DurationLiteral",
   "GeohashLiteral",
   "GeohashBinaryLiteral",
+  "HexLiteral",
+  "FloatLiteral",
+  "EscapeStringLiteral",
   "Nan",
   // Whitespace
   "WhiteSpace",

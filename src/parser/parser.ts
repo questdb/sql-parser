@@ -1,6 +1,7 @@
 import {
   CstParser,
   type TokenType,
+  type IToken,
   NoViableAltException,
   EarlyExitException,
   tokenMatcher,
@@ -336,6 +337,9 @@ import {
   Include,
   GeohashBinaryLiteral,
   GeohashLiteral,
+  HexLiteral,
+  FloatLiteral,
+  EscapeStringLiteral,
   LongLiteral,
   DecimalLiteral,
   Window,
@@ -376,6 +380,38 @@ import {
   Remote,
   IdentifierKeyword,
 } from "./lexer"
+
+// Types the server accepts in a typed literal `<type> '<string>'`
+// (ExpressionParser.processPgTimestampCast + cannotCastTo): BOOLEAN..LONG256,
+// UUID, IPv4, VARCHAR, DECIMAL, plus nameTypeMap aliases.
+const TYPED_LITERAL_TYPE_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
+  Boolean,
+  Byte,
+  Short,
+  Char,
+  Int,
+  Integer,
+  Long,
+  Date,
+  Timestamp,
+  TimestampNs,
+  Float,
+  Double,
+  String,
+  Symbol,
+  Long256,
+  Uuid,
+  Ipv4,
+  Varchar,
+  Decimal,
+])
+const TYPED_LITERAL_TYPE_ALIASES: ReadonlySet<string> = new globalThis.Set([
+  "text",
+  "smallint",
+  "bigint",
+  "real",
+  "bytea",
+])
 
 class QuestDBParser extends CstParser {
   constructor(config?: { skipValidations?: boolean }) {
@@ -4649,10 +4685,29 @@ class QuestDBParser extends CstParser {
     ])
   })
 
+  private isTimestampWithTimeZoneLiteral(): boolean {
+    const t1 = this.LA(1).tokenType
+    const t5 = this.LA(5).tokenType
+    return (
+      (t1 === Timestamp || t1 === TimestampNs) &&
+      this.LA(2).tokenType === With &&
+      this.LA(3).tokenType === Time &&
+      this.LA(4).tokenType === Zone &&
+      (t5 === StringLiteral || t5 === EscapeStringLiteral)
+    )
+  }
+
   private primaryExpression = this.RULE("primaryExpression", () => {
     this.OR([
       { ALT: () => this.SUBRULE(this.castExpression) },
       { ALT: () => this.SUBRULE(this.caseExpression) },
+      {
+        // timestamp [with time zone] '...' — the WITH TIME ZONE form cannot
+        // live in identifierExpression's typed-literal option, because then
+        // autocomplete would offer WITH after every column reference.
+        GATE: () => this.isTimestampWithTimeZoneLiteral(),
+        ALT: () => this.SUBRULE(this.timestampWithTimeZoneLiteral),
+      },
       {
         // ARRAY[...] literal — must come before functionCall/columnRef
         // since ARRAY is tokenized as Identifier
@@ -4886,8 +4941,58 @@ class QuestDBParser extends CstParser {
   // Parses: qualifiedName [( [args] ) [IGNORE NULLS] [OVER (...)]]
   // This handles both `schema.func(args)` and `schema.column` in one rule,
   // deciding based on whether `(` follows the name.
+  // timestamp with time zone '2020-12-31 15:15:51.663+00:00'
+  // (ExpressionParser: the literal branch accepts WITH TIME ZONE after a
+  // timestamp type name, then processPgTimestampCast casts the string)
+  private timestampWithTimeZoneLiteral = this.RULE(
+    "timestampWithTimeZoneLiteral",
+    () => {
+      this.OR([
+        { ALT: () => this.CONSUME(Timestamp) },
+        { ALT: () => this.CONSUME(TimestampNs) },
+      ])
+      this.CONSUME(With)
+      this.CONSUME(Time)
+      this.CONSUME(Zone)
+      this.OR1([
+        { ALT: () => this.CONSUME(StringLiteral) },
+        { ALT: () => this.CONSUME(EscapeStringLiteral) },
+      ])
+    },
+  )
+
+  // True when `first` is the only token of the qualifiedName just consumed, is
+  // a castable type name, and the next token is a string constant.
+  private isTypedLiteralType(first: IToken): boolean {
+    const internals = this as unknown as CstParserInternals & {
+      input: IToken[]
+    }
+    if (internals.input[internals.currIdx] !== first) return false
+    const isType =
+      TYPED_LITERAL_TYPE_TOKENS.has(first.tokenType) ||
+      (first.tokenType === Identifier &&
+        TYPED_LITERAL_TYPE_ALIASES.has(first.image.toLowerCase()))
+    const next = this.LA(1).tokenType
+    return isType && (next === StringLiteral || next === EscapeStringLiteral)
+  }
+
   private identifierExpression = this.RULE("identifierExpression", () => {
+    const first = this.LA(1)
     this.SUBRULE(this.qualifiedName)
+    // Typed literal: timestamp '2020-01-01', ipv4 '1.2.3.4', long '42' ...
+    // The server reads a type name directly followed by a string constant as a
+    // cast (ExpressionParser.processPgTimestampCast). Every castable type is a
+    // non-reserved keyword, so it already arrives here as a one-part
+    // qualifiedName; the trailing string turns it into a typed literal instead
+    // of a column reference followed by an alias.
+    this.OPTION5({
+      GATE: () => this.isTypedLiteralType(first),
+      DEF: () =>
+        this.OR4([
+          { ALT: () => this.CONSUME(StringLiteral) },
+          { ALT: () => this.CONSUME(EscapeStringLiteral) },
+        ]),
+    })
     this.OPTION(() => {
       this.CONSUME(LParen)
       this.OR({
@@ -5126,6 +5231,9 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(GeohashLiteral) },
       { ALT: () => this.CONSUME(GeohashBinaryLiteral) },
       { ALT: () => this.CONSUME(NaN) },
+      { ALT: () => this.CONSUME(HexLiteral) },
+      { ALT: () => this.CONSUME(FloatLiteral) },
+      { ALT: () => this.CONSUME(EscapeStringLiteral) },
     ])
   })
 

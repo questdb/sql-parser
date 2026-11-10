@@ -1270,6 +1270,8 @@ export interface Literal extends AstNode {
   value: string | number | boolean | null
   literalType: "string" | "number" | "boolean" | "null" | "geohash" | "duration"
   raw?: string
+  /** Typed literal prefix, e.g. "TIMESTAMP" for `timestamp '2020-01-01'` */
+  typeName?: string
 }
 
 export interface FunctionCall extends AstNode {

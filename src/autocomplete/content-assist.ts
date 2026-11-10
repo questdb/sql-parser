@@ -973,7 +973,23 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
     : "statement"
   // Budgeted: aborts after a fixed number of path-exploration steps.
   // The budget keeps autocomplete responsive and falls back to empty suggestions when hit.
-  const { suggestions } = computeContentAssistBudgeted(ruleName, tokens)
+  const { suggestions: rawSuggestions } = computeContentAssistBudgeted(
+    ruleName,
+    tokens,
+  )
+  // timestampWithTimeZoneLiteral opens with explicit TIMESTAMP / TIMESTAMP_NS
+  // tokens. Content assist ignores its GATE, so without this filter those two
+  // keywords would be offered wherever an expression can start. Only the
+  // rule's first token is dropped; WITH TIME ZONE after `timestamp` stays.
+  const suggestions = rawSuggestions.filter(
+    (s) =>
+      !(
+        s.ruleStack[s.ruleStack.length - 1] ===
+          "timestampWithTimeZoneLiteral" &&
+        (s.nextTokenType.name === "Timestamp" ||
+          s.nextTokenType.name === "TimestampNs")
+      ),
+  )
   const result = suggestions.map((s) => s.nextTokenType)
 
   // Walk every IdentifierKeyword path and union the category flags valid at
@@ -1157,7 +1173,11 @@ export function getContentAssist(
   // problems than it solves (prefix filtering breaks, ambiguity with string values).
   const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
   for (const token of fullTokens) {
-    if (token.tokenType.name !== "StringLiteral") continue
+    if (
+      token.tokenType.name !== "StringLiteral" &&
+      token.tokenType.name !== "EscapeStringLiteral"
+    )
+      continue
     const start = token.startOffset
     const end = token.startOffset + token.image.length
     if (cursorOffset > start && cursorOffset < end) {
