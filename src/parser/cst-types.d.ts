@@ -155,9 +155,10 @@ export interface SetOperationCstNode extends CstNode {
 
 export type SetOperationCstChildren = {
   Union?: IToken[];
+  All?: (IToken)[];
+  Distinct?: IToken[];
   Except?: IToken[];
   Intersect?: IToken[];
-  All?: IToken[];
   simpleSelect?: SimpleSelectCstNode[];
   selectStatement?: SelectStatementCstNode[];
   implicitSelectBody?: ImplicitSelectBodyCstNode[];
@@ -305,10 +306,10 @@ export type TableRefCstChildren = {
   RParen?: (IToken)[];
   showStatement?: ShowStatementCstNode[];
   implicitSelectStatement?: ImplicitSelectStatementCstNode[];
-  tableFunctionCall?: TableFunctionCallCstNode[];
   VariableReference?: IToken[];
   StringLiteral?: IToken[];
   tableName?: TableNameCstNode[];
+  tableFunctionCall?: TableFunctionCallCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   As?: IToken[];
@@ -347,7 +348,8 @@ export interface TableFunctionNameCstNode extends CstNode {
 }
 
 export type TableFunctionNameCstChildren = {
-  identifier: IdentifierCstNode[];
+  identifier: (IdentifierCstNode)[];
+  Dot?: IToken[];
 };
 
 export interface JoinClauseCstNode extends CstNode {

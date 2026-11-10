@@ -446,6 +446,25 @@ class QuestDBParser extends CstParser {
   // True while parsing an EXPIRE ROWS WHEN predicate (see expireRowsClause).
   private inExpireRowsPredicate = false
 
+  // `name [. name]* (` ahead: a (schema-qualified) table function call
+  private isTableFunctionCallAhead(): boolean {
+    let i = 1
+    for (;;) {
+      const tok = this.LA(i)
+      const t = tok.tokenType
+      const isName =
+        t === Identifier ||
+        t === QuotedIdentifier ||
+        t === StringLiteral ||
+        tokenMatcher(tok, IdentifierKeyword)
+      if (!isName) return false
+      const next = this.LA(i + 1).tokenType
+      if (next === LParen) return true
+      if (next !== Dot) return false
+      i += 2
+    }
+  }
+
   // Implicit PIVOT alias: as for tables, but a word followed by PIVOT /
   // WHERE is the next (implicit) statement, `t PIVOT (...)\nu PIVOT (...)`.
   private pivotAliasAllowed(): boolean {
@@ -899,11 +918,28 @@ class QuestDBParser extends CstParser {
 
   private setOperation = this.RULE("setOperation", () => {
     this.OR([
-      { ALT: () => this.CONSUME(Union) },
-      { ALT: () => this.CONSUME(Except) },
-      { ALT: () => this.CONSUME(Intersect) },
+      {
+        ALT: () => {
+          this.CONSUME(Union)
+          // UNION DISTINCT is plain UNION on the server (parseDml)
+          this.OPTION1(() => {
+            this.OR2([
+              { ALT: () => this.CONSUME(All) },
+              { ALT: () => this.CONSUME(Distinct) },
+            ])
+          })
+        },
+      },
+      {
+        ALT: () => {
+          this.OR3([
+            { ALT: () => this.CONSUME(Except) },
+            { ALT: () => this.CONSUME(Intersect) },
+          ])
+          this.OPTION(() => this.CONSUME1(All))
+        },
+      },
     ])
-    this.OPTION(() => this.CONSUME(All))
     // Right operand: full SELECT or bare table/implicit form; a branch may
     // start with its own WITH or DECLARE (WithClauseTest, DeclareTest)
     this.OR1([
@@ -1112,6 +1148,7 @@ class QuestDBParser extends CstParser {
   })
 
   private tableRef = this.RULE("tableRef", () => {
+    const isTableFunctionCall = this.BACKTRACK(this.tableFunctionCall)
     this.OR([
       {
         // Standard subquery: (SELECT ...), (WITH ...), (DECLARE ...)
@@ -1143,15 +1180,22 @@ class QuestDBParser extends CstParser {
         },
       },
       {
-        GATE: this.BACKTRACK(this.tableFunctionCall),
-        ALT: () => this.SUBRULE(this.tableFunctionCall),
-      },
-      {
         // @variable reference as table source (DECLARE @subquery := (...); SELECT * FROM @subquery)
         ALT: () => this.CONSUME(VariableReference),
       },
       { ALT: () => this.CONSUME(StringLiteral) },
-      { ALT: () => this.SUBRULE(this.tableName) },
+      // tableName before tableFunctionCall: content assist ignores GATEs and
+      // prunes later alternatives once one path consumes the input, so the
+      // table path must come first or `FROM s.t ` would only offer `(`.
+      {
+        GATE: () =>
+          !this.isTableFunctionCallAhead() || !isTableFunctionCall.call(this),
+        ALT: () => this.SUBRULE(this.tableName),
+      },
+      {
+        GATE: isTableFunctionCall,
+        ALT: () => this.SUBRULE(this.tableFunctionCall),
+      },
     ])
     // Optional TIMESTAMP designation on subquery/table results
     this.OPTION2(() => {
@@ -1205,8 +1249,13 @@ class QuestDBParser extends CstParser {
     this.CONSUME(RParen)
   })
 
+  // Optionally schema-qualified: pg_catalog.pg_class(), information_schema.tables()
   private tableFunctionName = this.RULE("tableFunctionName", () => {
     this.SUBRULE(this.identifier)
+    this.MANY(() => {
+      this.CONSUME(Dot)
+      this.SUBRULE1(this.identifier)
+    })
   })
 
   // ---- Join clause: dispatches to type-specific sub-rules so that each

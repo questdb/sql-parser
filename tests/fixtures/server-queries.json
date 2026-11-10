@@ -1668,5 +1668,29 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:14224",
     "feature": "join-aliases",
     "toSql": "SELECT val FROM t, UNNEST(t.arr)(val) WHERE val > 1.0"
+  },
+  {
+    "query": "select * from information_schema.tables() order by table_name",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/catalogue/InformationSchemaTablesFunctionFactoryTest.java:42",
+    "feature": "from-sources",
+    "toSql": "SELECT * FROM information_schema.tables() ORDER BY table_name"
+  },
+  {
+    "query": "SELECT table_type, is_insertable_into FROM information_schema.tables()",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewTest.java:1193",
+    "feature": "from-sources",
+    "toSql": "SELECT table_type, is_insertable_into FROM information_schema.tables()"
+  },
+  {
+    "query": "SELECT table_name, column_name FROM information_schema.columns() ORDER BY table_name, column_name",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/catalogue/InformationSchemaColumnsFunctionFactoryTest.java:78",
+    "feature": "from-sources",
+    "toSql": "SELECT table_name, column_name FROM information_schema.columns() ORDER BY table_name, column_name"
+  },
+  {
+    "query": "select * from a union distinct select * from b union select * from c",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13928",
+    "feature": "from-sources",
+    "toSql": "SELECT * FROM a UNION SELECT * FROM b UNION SELECT * FROM c"
   }
 ]

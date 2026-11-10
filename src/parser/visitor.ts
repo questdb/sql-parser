@@ -860,8 +860,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.tableFunctionName) {
       const fnName = ctx.tableFunctionName[0]
       if (fnName.children?.identifier) {
-        const id = this.visit(fnName.children.identifier) as AST.QualifiedName
-        name = id.parts.join(".")
+        name = (fnName.children.identifier as CstNode[])
+          .map((i) => (this.visit(i) as AST.QualifiedName).parts.join("."))
+          .join(".")
       } else {
         name = "unknown"
       }
