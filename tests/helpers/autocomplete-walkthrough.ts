@@ -200,6 +200,7 @@ export const SKIP_TOKEN_TYPES = new Set([
   "StringLiteral",
   "NumberLiteral",
   "DurationLiteral",
+  "MalformedDurationLiteral",
   "BooleanLiteral",
   "NullLiteral",
   "GeohashLiteral",

@@ -837,11 +837,27 @@ export const DecimalLiteral = createToken({
 //   disambiguation (e.g. rejecting nanos in storage policy) is enforced by
 //   per-context grammar rules.
 // Supports decimal values like 1.5d, 0.5h.
-// Multi-char units (ms, us) must appear before single-char alternatives to
-// avoid prefix match.
+// Multi-char units (ms, us, ns) must appear before single-char alternatives to
+// avoid prefix match. `ns` is an o3MaxLag unit (SqlUtil.expectMicros).
+// A duration ends at a word boundary: the server reads `1hour`, `1days`, `1sec`
+// as one token and rejects it, so they must not lex as `1h` + `our`.
 export const DurationLiteral = createToken({
   name: "DurationLiteral",
-  pattern: /\d[\d_]*(\.\d[\d_]*)?(ms|us|[smhdwyMDWYNnTUuH])/,
+  pattern:
+    /\d[\d_]*(\.\d[\d_]*)?(ms|us|ns|[smhdwyMDWYNnTUuH])(?![\w\u0080-\uFFFF])/,
+})
+
+// A number glued to a word that starts with a duration unit but is not a valid
+// duration (`1hour`, `1days`, `1sec`, `100nsx`, `1.5hour`). The server lexer
+// reads it as one token and rejects it ("Invalid unit: 1hour", "invalid
+// interval qualifier", "invalid time unit"). No grammar rule accepts this
+// token, so it is a parse error instead of `1` + `hour` (which would read as
+// `TTL 1 HOUR` or `SELECT 1 AS hour`). Numbers glued to other letters keep
+// splitting (`GEOHASH(8c)`, `MEMORY LIMIT 1G`). Must come after
+// DurationLiteral and before NumberLiteral.
+export const MalformedDurationLiteral = createToken({
+  name: "MalformedDurationLiteral",
+  pattern: /\d[\d_]*(\.\d[\d_]*)?[smhdwyMDWYNnTUuH][\w\u0080-\uFFFF]+/,
 })
 
 // Numbers (negation is handled as unary minus in the parser, not in the lexer)
@@ -979,6 +995,7 @@ export const allTokens: TokenType[] = [
   LongLiteral,
   DecimalLiteral,
   DurationLiteral,
+  MalformedDurationLiteral,
   NumberLiteral,
   StringLiteral,
   EscapeStringLiteral,

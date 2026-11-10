@@ -47,6 +47,7 @@ const literalTokenNames = [
   "LongLiteral",
   "DecimalLiteral",
   "DurationLiteral",
+  "MalformedDurationLiteral",
   "NumberLiteral",
   "StringLiteral",
   "HexLiteral",

@@ -682,5 +682,71 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:3797",
     "feature": "single-quote-unescape",
     "toSql": "SELECT s, v FROM escaped_symbols_0 WHERE (s IN ('O''Brien', 'O''''Brien', 'x') AND s NOT IN ('O''Brien', 'x')) LATEST ON ts PARTITION BY s ORDER BY v"
+  },
+  {
+    "query": "select sym, last(price) as price, ts from base_price sample by 1000000000n",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:9487",
+    "feature": "duration-boundary",
+    "toSql": "SELECT sym, last(price) AS price, ts FROM base_price SAMPLE BY 1000000000n"
+  },
+  {
+    "query": "select x,sum(y) from tab sample by 2U align to first observation",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:11184",
+    "feature": "duration-boundary",
+    "toSql": "SELECT x, sum(y) FROM tab SAMPLE BY 2U ALIGN TO FIRST OBSERVATION"
+  },
+  {
+    "query": "select sum(a), k from x sample by 100T fill(none) align to first observation",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByNanoTimestampTest.java:5436",
+    "feature": "duration-boundary",
+    "toSql": "SELECT sum(a), k FROM x SAMPLE BY 100T FILL(NONE) ALIGN TO FIRST OBSERVATION"
+  },
+  {
+    "query": "SELECT ts, s, first(arr) a FROM tango SAMPLE BY 1m FILL(PREV) ORDER BY s, ts",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:852",
+    "feature": "duration-boundary",
+    "toSql": "SELECT ts, s, first(arr) AS a FROM tango SAMPLE BY 1m FILL(PREV) ORDER BY s, ts"
+  },
+  {
+    "query": "alter table x1 set param o3MaxLag = 100ms",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableO3MaxLagTest.java:429",
+    "feature": "duration-boundary",
+    "toSql": "ALTER TABLE x1 SET PARAM o3MaxLag = 100ms"
+  },
+  {
+    "query": "alter table x1 set param o3MaxLag = 10us",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableO3MaxLagTest.java:434",
+    "feature": "duration-boundary",
+    "toSql": "ALTER TABLE x1 SET PARAM o3MaxLag = 10us"
+  },
+  {
+    "query": "create table x (gh GEOHASH(8c), t TIMESTAMP) timestamp(t) partition by DAY WITH maxUncommittedRows=10000, o3MaxLag=250ms;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:4572",
+    "feature": "duration-boundary",
+    "toSql": "CREATE TABLE x (gh GEOHASH(8c), t TIMESTAMP) TIMESTAMP(t) PARTITION BY DAY WITH maxUncommittedRows = 10000, o3MaxLag = 250ms"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1D",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/TtlTest.java:264",
+    "feature": "duration-boundary",
+    "toSql": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1 DAY"
+  },
+  {
+    "query": "insert batch 20000 o3MaxLag 3d into x select * from top",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:5151",
+    "feature": "duration-boundary",
+    "toSql": "INSERT BATCH 20000 o3MaxLag 3d INTO x SELECT * FROM top"
+  },
+  {
+    "query": "select * from tab t1 asof join tab t2 tolerance 15250285w",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:1269",
+    "feature": "duration-boundary",
+    "toSql": "SELECT * FROM tab AS t1 ASOF JOIN tab AS t2 TOLERANCE 15250285w"
+  },
+  {
+    "query": "ALTER GROUP test_group SET MEMORY LIMIT 1G",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/wal/transfer/ReplicationAclTest.java:2310",
+    "feature": "duration-boundary",
+    "toSql": "ALTER GROUP test_group SET MEMORY LIMIT 1G"
   }
 ]

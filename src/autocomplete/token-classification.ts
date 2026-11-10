@@ -113,6 +113,7 @@ export const SKIP_TOKENS = new Set([
   "LongLiteral",
   "DecimalLiteral",
   "DurationLiteral",
+  "MalformedDurationLiteral",
   "GeohashLiteral",
   "GeohashBinaryLiteral",
   "HexLiteral",
