@@ -2510,6 +2510,8 @@ export type EqualityExpressionCstChildren = {
   RegexMatch?: IToken[];
   RegexNotMatch?: IToken[];
   RegexNotEquals?: IToken[];
+  Not?: IToken[];
+  notOperand?: NotExpressionCstNode[];
 };
 
 export interface RelationalExpressionCstNode extends CstNode {
@@ -2648,6 +2650,8 @@ export interface TypeCastExpressionCstNode extends CstNode {
 
 export type TypeCastExpressionCstChildren = {
   primaryExpression: PrimaryExpressionCstNode[];
+  Dot?: IToken[];
+  member?: IdentifierCstNode[];
   LBracket?: IToken[];
   arraySubscript?: (ArraySubscriptCstNode)[];
   Comma?: IToken[];

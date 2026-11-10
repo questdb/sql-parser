@@ -1862,6 +1862,8 @@ function expressionToSql(expr: AST.Expression): string {
       return typeCastExprToSql(expr)
     case "atTimeZone":
       return `${expressionToSql(expr.expression)} AT TIME ZONE ${expressionToSql(expr.timeZone)}`
+    case "memberAccess":
+      return `${expressionToSql(expr.expression)}.${escapeIdentifier(expr.member)}`
     case "in":
       return inExprToSql(expr)
     case "between":
@@ -1957,6 +1959,10 @@ function unaryExprToSql(expr: AST.UnaryExpression): string {
   const operand = expressionToSql(expr.operand)
   if (expr.operator === "NOT") {
     return `NOT ${operand}`
+  }
+  // `- -a`: keep a space so the two minuses do not lex as a `--` comment
+  if (expr.operator === "-" && operand.startsWith("-")) {
+    return `- ${operand}`
   }
   return `${expr.operator}${operand}`
 }

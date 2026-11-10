@@ -1452,5 +1452,23 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewCheckpointFunctionCompilerTest.java:712",
     "feature": "window-frames",
     "toSql": "SELECT ts, sym, sum(x) OVER (PARTITION BY sym ORDER BY ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW EXCLUDE TIES) AS s FROM base"
+  },
+  {
+    "query": "DECLARE @x := CASE WHEN (v > 1) THEN (v).x ELSE 2 END SELECT @x FROM t",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:4542",
+    "feature": "expression-gaps",
+    "toSql": "DECLARE @x := CASE WHEN (v > 1) THEN (v).x ELSE 2 END SELECT @x FROM t"
+  },
+  {
+    "query": "DECLARE @x := (pg_catalog.pg_class()).relnamespace SELECT @x x FROM long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:4545",
+    "feature": "expression-gaps",
+    "toSql": "DECLARE @x := (pg_catalog.pg_class()).relnamespace SELECT @x AS x FROM long_sequence(1)"
+  },
+  {
+    "query": "select * from t where not not (select b from x_true limit 1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/BooleanSubQueryPredicateTest.java:252",
+    "feature": "expression-gaps",
+    "toSql": "SELECT * FROM t WHERE NOT NOT (SELECT b FROM x_true LIMIT 1)"
   }
 ]

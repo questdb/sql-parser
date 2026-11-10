@@ -4682,14 +4682,17 @@ class QuestDBParser extends CstParser {
 
   // Precedence 14: NOT (prefix)
   private notExpression = this.RULE("notExpression", () => {
-    this.OPTION(() => this.CONSUME(Not))
+    // NOT may be stacked: `NOT NOT x`
+    this.MANY(() => this.CONSUME(Not))
     this.SUBRULE(this.equalityExpression)
   })
 
   // Precedence 13: =, !=, <>, ~, !~, LIKE, ILIKE
+  // Comparisons chain left-associatively (`a = 1 = true`), and the right
+  // operand may be a NOT expression (`x = NOT y`), as in ExpressionParser.
   private equalityExpression = this.RULE("equalityExpression", () => {
     this.SUBRULE(this.relationalExpression)
-    this.OPTION(() => {
+    this.MANY(() => {
       this.OR([
         { ALT: () => this.CONSUME(Equals) },
         {
@@ -4706,14 +4709,22 @@ class QuestDBParser extends CstParser {
         { ALT: () => this.CONSUME(RegexNotMatch) },
         { ALT: () => this.CONSUME(RegexNotEquals) },
       ])
-      this.SUBRULE1(this.relationalExpression)
+      this.OR1([
+        {
+          ALT: () => {
+            this.CONSUME(Not)
+            this.SUBRULE(this.notExpression, { LABEL: "notOperand" })
+          },
+        },
+        { ALT: () => this.SUBRULE1(this.relationalExpression) },
+      ])
     })
   })
 
   // Precedence 12: <, <=, >, >=, IS [NOT] NULL|TRUE|FALSE
   private relationalExpression = this.RULE("relationalExpression", () => {
     this.SUBRULE(this.setExpression)
-    this.OPTION(() => {
+    this.MANY(() => {
       this.OR([
         {
           ALT: () => {
@@ -4900,7 +4911,8 @@ class QuestDBParser extends CstParser {
 
   // Precedence 3: unary -, unary ~ (bitwise complement)
   private unaryExpression = this.RULE("unaryExpression", () => {
-    this.OPTION(() => {
+    // Prefix operators may be stacked: `- -a`, `~-a`
+    this.MANY(() => {
       this.OR([
         { ALT: () => this.CONSUME(Minus) },
         { ALT: () => this.CONSUME(RegexMatch) }, // ~ used as unary bitwise complement
@@ -4912,6 +4924,15 @@ class QuestDBParser extends CstParser {
   // Precedence 2: :: (inline type cast), [] (array subscript)
   private typeCastExpression = this.RULE("typeCastExpression", () => {
     this.SUBRULE(this.primaryExpression)
+    // Member access on a parenthesised value: `(x).a`, `(f()).col`
+    // (ExpressionParser DOT dereference after `)`).
+    this.MANY3({
+      GATE: () => this.LA(0).tokenType === RParen,
+      DEF: () => {
+        this.CONSUME(Dot)
+        this.SUBRULE(this.identifier, { LABEL: "member" })
+      },
+    })
     // Postfix array subscript: expr[i], expr[i:j], expr[i, j]
     this.MANY(() => {
       this.CONSUME(LBracket)

@@ -3893,10 +3893,11 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   notExpression(ctx: NotExpressionCstChildren): AST.Expression {
-    const inner = this.visit(ctx.equalityExpression) as AST.Expression
+    let inner = this.visit(ctx.equalityExpression) as AST.Expression
 
-    if (ctx.Not) {
-      return {
+    // `NOT NOT x`: one unary node per NOT
+    for (let i = 0; i < (ctx.Not?.length ?? 0); i++) {
+      inner = {
         type: "unary",
         operator: "NOT",
         operand: inner,
@@ -3907,70 +3908,105 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   equalityExpression(ctx: EqualityExpressionCstChildren): AST.Expression {
-    const left = this.visit(ctx.relationalExpression[0]) as AST.Expression
+    let result = this.visit(ctx.relationalExpression[0]) as AST.Expression
 
-    if (ctx.relationalExpression && ctx.relationalExpression.length > 1) {
-      let operator = ""
-      if (ctx.Equals) operator = "="
-      else if (ctx.NotEquals) {
+    // Operators and right operands, both in source order (left-associative
+    // chain: `a = 1 = true`). A right operand is either a relational
+    // expression or `NOT <notExpression>`.
+    const ops = [
+      ...(ctx.Equals ?? []).map((t) => ({ t, op: "=" })),
+      ...(ctx.NotEquals ?? []).map((t) => ({ t, op: "!=" })),
+      ...(ctx.Like ?? []).map((t) => ({ t, op: "LIKE" })),
+      ...(ctx.Ilike ?? []).map((t) => ({ t, op: "ILIKE" })),
+      ...(ctx.RegexMatch ?? []).map((t) => ({ t, op: "~" })),
+      ...(ctx.RegexNotMatch ?? []).map((t) => ({ t, op: "!~" })),
+      ...(ctx.RegexNotEquals ?? []).map((t) => ({ t, op: "~=" })),
+    ].sort((a, b) => a.t.startOffset - b.t.startOffset)
+    const operands = [
+      ...ctx.relationalExpression.slice(1).map((node) => ({
+        offset: this.getFirstTokenOffset(node),
+        build: () => this.visit(node) as AST.Expression,
+      })),
+      ...(ctx.notOperand ?? []).map((node, i) => ({
+        offset: ctx.Not![i].startOffset,
+        build: (): AST.Expression => ({
+          type: "unary",
+          operator: "NOT",
+          operand: this.visit(node) as AST.Expression,
+        }),
+      })),
+    ].sort((a, b) => a.offset - b.offset)
+
+    ops.forEach(({ t, op }, i) => {
+      const operand = operands[i]
+      let operator = op
+      if (op === "!=") {
         // `<> ALL` / `!= ALL` keeps the operator as written
-        operator = ctx.All ? `${ctx.NotEquals[0].image} ALL` : "!="
-      } else if (ctx.Like) operator = "LIKE"
-      else if (ctx.Ilike) operator = "ILIKE"
-      else if (ctx.RegexMatch) operator = "~"
-      else if (ctx.RegexNotMatch) operator = "!~"
-      else if (ctx.RegexNotEquals) operator = "~="
-
-      return {
+        const all = ctx.All?.some(
+          (a) =>
+            a.startOffset > t.startOffset && a.startOffset < operand.offset,
+        )
+        if (all) operator = `${t.image} ALL`
+      }
+      result = {
         type: "binary",
         operator,
-        left,
-        right: this.visit(ctx.relationalExpression[1]) as AST.Expression,
+        left: result,
+        right: operand.build(),
       }
-    }
+    })
 
-    return left
+    return result
   }
 
   relationalExpression(ctx: RelationalExpressionCstChildren): AST.Expression {
-    const left = this.visit(ctx.setExpression[0]) as AST.Expression
+    let result = this.visit(ctx.setExpression[0]) as AST.Expression
 
-    // Check for IS [NOT] TRUE / FALSE
-    if (ctx.Is && (ctx.True || ctx.False)) {
-      return {
-        type: "isBoolean",
-        expression: left,
-        value: !!ctx.True,
-        not: !!ctx.Not,
+    // Left-associative chain of `< <= > >=` and IS [NOT] NULL|TRUE|FALSE,
+    // in source order.
+    const ops = [
+      ...(ctx.LessThan ?? []).map((t) => ({ t, op: "<" })),
+      ...(ctx.LessThanOrEqual ?? []).map((t) => ({ t, op: "<=" })),
+      ...(ctx.GreaterThan ?? []).map((t) => ({ t, op: ">" })),
+      ...(ctx.GreaterThanOrEqual ?? []).map((t) => ({ t, op: ">=" })),
+      ...(ctx.Is ?? []).map((t) => ({ t, op: "IS" })),
+    ].sort((a, b) => a.t.startOffset - b.t.startOffset)
+    const isValues = [
+      ...(ctx.Null ?? []).map((t) => ({ t, v: "NULL" })),
+      ...(ctx.True ?? []).map((t) => ({ t, v: "TRUE" })),
+      ...(ctx.False ?? []).map((t) => ({ t, v: "FALSE" })),
+    ].sort((a, b) => a.t.startOffset - b.t.startOffset)
+    let operandIdx = 1
+    let isIdx = 0
+
+    for (const { t, op } of ops) {
+      if (op === "IS") {
+        const value = isValues[isIdx++]
+        const not = !!ctx.Not?.some(
+          (n) =>
+            n.startOffset > t.startOffset &&
+            n.startOffset < value.t.startOffset,
+        )
+        result =
+          value.v === "NULL"
+            ? { type: "isNull", expression: result, not }
+            : {
+                type: "isBoolean",
+                expression: result,
+                value: value.v === "TRUE",
+                not,
+              }
+      } else {
+        result = {
+          type: "binary",
+          operator: op,
+          left: result,
+          right: this.visit(ctx.setExpression[operandIdx++]) as AST.Expression,
+        }
       }
     }
 
-    // Check for IS [NOT] NULL
-    if (ctx.Is) {
-      return {
-        type: "isNull",
-        expression: left,
-        not: !!ctx.Not,
-      }
-    }
-
-    // Check for relational operators (<, <=, >, >=)
-    if (ctx.setExpression && ctx.setExpression.length > 1) {
-      let operator = ""
-      if (ctx.LessThan) operator = "<"
-      else if (ctx.LessThanOrEqual) operator = "<="
-      else if (ctx.GreaterThan) operator = ">"
-      else if (ctx.GreaterThanOrEqual) operator = ">="
-
-      return {
-        type: "binary",
-        operator,
-        left,
-        right: this.visit(ctx.setExpression[1]) as AST.Expression,
-      }
-    }
-
-    return left
+    return result
   }
 
   setExpression(ctx: SetExpressionCstChildren): AST.Expression {
@@ -4193,20 +4229,17 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   unaryExpression(ctx: UnaryExpressionCstChildren): AST.Expression {
-    const inner = this.visit(ctx.typeCastExpression) as AST.Expression
+    let inner = this.visit(ctx.typeCastExpression) as AST.Expression
 
-    if (ctx.Minus) {
-      return {
+    // Stacked prefix operators (`- -a`, `~-a`): innermost is the last one
+    const ops = [
+      ...(ctx.Minus ?? []).map((t) => ({ t, op: "-" })),
+      ...(ctx.RegexMatch ?? []).map((t) => ({ t, op: "~" })), // bitwise complement
+    ].sort((a, b) => b.t.startOffset - a.t.startOffset)
+    for (const { op } of ops) {
+      inner = {
         type: "unary",
-        operator: "-",
-        operand: inner,
-      }
-    }
-
-    if (ctx.RegexMatch) {
-      return {
-        type: "unary",
-        operator: "~",
+        operator: op,
         operand: inner,
       }
     }
@@ -4216,6 +4249,15 @@ class QuestDBVisitor extends BaseVisitor {
 
   typeCastExpression(ctx: TypeCastExpressionCstChildren): AST.Expression {
     let inner = this.visit(ctx.primaryExpression) as AST.Expression
+
+    // Member access on a parenthesised value: `(x).a`
+    for (const member of ctx.member ?? []) {
+      inner = {
+        type: "memberAccess",
+        expression: inner,
+        member: this.extractIdentifierName(member.children),
+      }
+    }
 
     // Handle array subscripts: expr[i], expr[i:j], expr[i, j]
     // Group subscripts by their enclosing bracket pair so that

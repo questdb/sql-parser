@@ -1260,6 +1260,7 @@ export type Expression =
   | CastExpression
   | TypeCastExpression
   | AtTimeZoneExpression
+  | MemberAccessExpression
   | InExpression
   | BetweenExpression
   | WithinExpression
@@ -1375,6 +1376,13 @@ export interface TypeCastExpression extends AstNode {
 }
 
 /** `<expr> AT TIME ZONE '<tz>'` (the server rewrites it to to_timezone(expr, tz)) */
+/** Member access on a parenthesised value: `(x).a` */
+export interface MemberAccessExpression extends AstNode {
+  type: "memberAccess"
+  expression: Expression
+  member: string
+}
+
 export interface AtTimeZoneExpression extends AstNode {
   type: "atTimeZone"
   expression: Expression
