@@ -476,6 +476,8 @@ export interface AlterMaterializedViewResumeWal {
 
 export interface AlterMaterializedViewSuspendWal {
   actionType: "suspendWal"
+  code?: number | string
+  message?: string
 }
 
 export interface AlterMaterializedViewRebaseWal {

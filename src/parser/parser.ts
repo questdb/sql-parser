@@ -3696,6 +3696,17 @@ class QuestDBParser extends CstParser {
     },
   )
 
+  // WITH <code|'tag'>, '<message>' after SUSPEND WAL (materialized views)
+  private suspendWalWith = this.RULE("suspendWalWith", () => {
+    this.CONSUME(With)
+    this.OR([
+      { ALT: () => this.CONSUME(NumberLiteral) },
+      { ALT: () => this.CONSUME(StringLiteral) },
+    ])
+    this.CONSUME(Comma)
+    this.CONSUME1(StringLiteral)
+  })
+
   private alterMaterializedViewAction = this.RULE(
     "alterMaterializedViewAction",
     () => {
@@ -3805,11 +3816,12 @@ class QuestDBParser extends CstParser {
             })
           },
         },
-        // SUSPEND WAL
+        // SUSPEND WAL [WITH <code|'tag'>, '<message>'] (parseSuspendWal)
         {
           ALT: () => {
             this.CONSUME(Suspend)
             this.CONSUME1(Wal)
+            this.OPTION6(() => this.SUBRULE(this.suspendWalWith))
           },
         },
         // REBASE WAL [INTO '<targetDir>']

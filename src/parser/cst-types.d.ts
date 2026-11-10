@@ -1762,6 +1762,18 @@ export type AlterMaterializedViewStatementCstChildren = {
   alterMaterializedViewAction: AlterMaterializedViewActionCstNode[];
 };
 
+export interface SuspendWalWithCstNode extends CstNode {
+  name: "suspendWalWith";
+  children: SuspendWalWithCstChildren;
+}
+
+export type SuspendWalWithCstChildren = {
+  With: IToken[];
+  NumberLiteral?: IToken[];
+  StringLiteral: (IToken)[];
+  Comma: IToken[];
+};
+
 export interface AlterMaterializedViewActionCstNode extends CstNode {
   name: "alterMaterializedViewAction";
   children: AlterMaterializedViewActionCstChildren;
@@ -1794,6 +1806,7 @@ export type AlterMaterializedViewActionCstChildren = {
   Transaction?: IToken[];
   Txn?: IToken[];
   Suspend?: IToken[];
+  suspendWalWith?: SuspendWalWithCstNode[];
   Rebase?: IToken[];
   Into?: IToken[];
   StringLiteral?: IToken[];
@@ -3305,6 +3318,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   alterTableForceAction(children: AlterTableForceActionCstChildren, param?: IN): OUT;
   convertPartitionTarget(children: ConvertPartitionTargetCstChildren, param?: IN): OUT;
   alterMaterializedViewStatement(children: AlterMaterializedViewStatementCstChildren, param?: IN): OUT;
+  suspendWalWith(children: SuspendWalWithCstChildren, param?: IN): OUT;
   alterMaterializedViewAction(children: AlterMaterializedViewActionCstChildren, param?: IN): OUT;
   dropStatement(children: DropStatementCstChildren, param?: IN): OUT;
   dropViewStatement(children: DropViewStatementCstChildren, param?: IN): OUT;

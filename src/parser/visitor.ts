@@ -174,6 +174,7 @@ import type {
   StoragePolicyTimeUnitCstChildren,
   StoragePolicyTtlCstChildren,
   TtlClauseCstChildren,
+  SuspendWalWithCstChildren,
   AlterTableAddColumnsCstChildren,
   AddColumnItemCstChildren,
   AlterColumnTypeIndexCstChildren,
@@ -1836,6 +1837,20 @@ class QuestDBVisitor extends BaseVisitor {
       : {}
   }
 
+  suspendWalWith(ctx: SuspendWalWithCstChildren): {
+    code: number | string
+    message: string
+  } {
+    return {
+      code: ctx.NumberLiteral
+        ? tokenInt(ctx.NumberLiteral[0].image)
+        : unquoteSingle(ctx.StringLiteral[0].image),
+      message: unquoteSingle(
+        ctx.StringLiteral[ctx.StringLiteral.length - 1].image,
+      ),
+    }
+  }
+
   // `[PRECISION] [NOT] NULL` is ignored (as on the server)
   columnNullModifier(): undefined {
     return undefined
@@ -2570,9 +2585,21 @@ class QuestDBVisitor extends BaseVisitor {
       return result
     }
 
-    // SUSPEND WAL
+    // SUSPEND WAL [WITH code, 'message']
     if (ctx.Suspend) {
-      return { actionType: "suspendWal" }
+      const result: AST.AlterMaterializedViewSuspendWal = {
+        actionType: "suspendWal",
+      }
+      if (ctx.suspendWalWith) {
+        Object.assign(
+          result,
+          this.visit(ctx.suspendWalWith) as {
+            code: number | string
+            message: string
+          },
+        )
+      }
+      return result
     }
 
     // REBASE WAL [INTO '<targetDir>']

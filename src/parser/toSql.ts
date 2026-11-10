@@ -1426,6 +1426,13 @@ function alterMaterializedViewToSql(
     }
     case "suspendWal":
       parts.push("SUSPEND WAL")
+      if (action.code != null && action.message != null) {
+        const code =
+          typeof action.code === "number"
+            ? String(action.code)
+            : escapeString(action.code)
+        parts.push(`WITH ${code}, ${escapeString(action.message)}`)
+      }
       break
     case "rebaseWal": {
       parts.push("REBASE WAL")
