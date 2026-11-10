@@ -999,7 +999,7 @@ export type CreateGroupStatementCstChildren = {
   With?: IToken[];
   External?: IToken[];
   Alias?: IToken[];
-  StringLiteral?: IToken[];
+  stringOrIdentifier?: StringOrIdentifierCstNode[];
 };
 
 export interface CreateServiceAccountStatementCstNode extends CstNode {
@@ -1527,7 +1527,7 @@ export type AlterGroupStatementCstChildren = {
   With?: IToken[];
   External?: (IToken)[];
   Alias?: (IToken)[];
-  StringLiteral?: (IToken)[];
+  stringOrIdentifier?: (StringOrIdentifierCstNode)[];
   Drop?: IToken[];
   Set?: IToken[];
   Memory?: IToken[];
@@ -1591,6 +1591,9 @@ export type AlterUserActionCstChildren = {
   No?: IToken[];
   Password?: (IToken)[];
   StringLiteral?: (IToken)[];
+  Null?: IToken[];
+  NumberLiteral?: IToken[];
+  identifier?: IdentifierCstNode[];
   Create?: IToken[];
   Token?: (IToken)[];
   Type?: (IToken)[];
@@ -1612,6 +1615,7 @@ export interface MemoryLimitCstNode extends CstNode {
 }
 
 export type MemoryLimitCstChildren = {
+  StringLiteral?: IToken[];
   Unlimited?: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
@@ -1704,6 +1708,9 @@ export type AlterTableAddColumnsCstChildren = {
   Column?: IToken[];
   addColumnItem: (AddColumnItemCstNode)[];
   Comma?: IToken[];
+  Owned?: IToken[];
+  By?: IToken[];
+  stringOrIdentifier?: StringOrIdentifierCstNode[];
 };
 
 export interface AddColumnItemCstNode extends CstNode {
@@ -1920,7 +1927,6 @@ export type ResourceGroupOptionCstChildren = {
   MaxQueuedQueries?: IToken[];
   QueueTimeout?: IToken[];
   Equals?: IToken[];
-  StringLiteral?: IToken[];
   Minus?: IToken[];
   memoryLimit?: MemoryLimitCstNode[];
 };

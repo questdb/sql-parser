@@ -933,6 +933,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
           )
           .join(", "),
       )
+      if (action.ownedBy) {
+        parts.push(`OWNED BY ${escapeIdentifier(action.ownedBy)}`)
+      }
       break
     }
     case "dropColumn":

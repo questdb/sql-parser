@@ -612,6 +612,8 @@ export interface AddColumnAction {
   actionType: "addColumn"
   ifNotExists?: boolean
   columns: ColumnDefinition[]
+  /** Enterprise: OWNED BY user|group */
+  ownedBy?: string
 }
 
 export interface DropColumnAction {

@@ -194,6 +194,7 @@ import type {
   StatementCstChildren,
   StatementsCstChildren,
   StringOrIdentifierCstChildren,
+  StringOrIdentifierCstNode,
   StringOrQualifiedNameCstChildren,
   TableFunctionCallCstChildren,
   TableFunctionNameCstChildren,
@@ -1835,6 +1836,9 @@ class QuestDBVisitor extends BaseVisitor {
       (c) => this.visit(c) as AST.ColumnDefinition,
     )
     const result: AST.AddColumnAction = { actionType: "addColumn", columns }
+    if (ctx.stringOrIdentifier) {
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
+    }
     // IF NOT EXISTS on the first column is the action-level flag
     if (columns[0].ifNotExists) {
       delete columns[0].ifNotExists
@@ -2050,8 +2054,8 @@ class QuestDBVisitor extends BaseVisitor {
       group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       ifNotExists: !!ctx.If,
     }
-    if (ctx.StringLiteral) {
-      result.externalAlias = unquoteSingle(ctx.StringLiteral[0].image)
+    if (ctx.stringOrIdentifier) {
+      result.externalAlias = this.externalAliasValue(ctx.stringOrIdentifier[0])
     }
     return result
   }
@@ -2514,7 +2518,7 @@ class QuestDBVisitor extends BaseVisitor {
         memoryLimit: this.visit(ctx.memoryLimit) as string,
       }
     }
-    const alias = unquoteSingle(ctx.StringLiteral![0].image)
+    const alias = this.externalAliasValue(ctx.stringOrIdentifier![0])
     return {
       type: "alterGroup",
       group,
@@ -2779,9 +2783,7 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.MaxQueuedQueries ??
       ctx.QueueTimeout)![0]
     const result: AST.ResourceGroupOption = { name: key.image.toLowerCase() }
-    if (ctx.StringLiteral) {
-      result.value = ctx.StringLiteral[0].image
-    } else if (ctx.memoryLimit) {
+    if (ctx.memoryLimit) {
       result.value =
         (ctx.Minus ? "-" : "") + (this.visit(ctx.memoryLimit) as string)
     }
@@ -2807,12 +2809,17 @@ class QuestDBVisitor extends BaseVisitor {
       return { actionType: "disable" }
     }
     if (ctx.Password || ctx.No) {
+      let password: string | undefined
+      if (ctx.StringLiteral)
+        password = unquoteSingle(ctx.StringLiteral[0].image)
+      else if (ctx.Null) password = ctx.Null[0].image
+      else if (ctx.NumberLiteral) password = ctx.NumberLiteral[0].image
+      else if (ctx.identifier)
+        password = this.extractIdentifierName(ctx.identifier[0].children)
       return {
         actionType: "password",
         noPassword: !!ctx.No,
-        password: ctx.StringLiteral
-          ? unquoteSingle(ctx.StringLiteral[0].image)
-          : undefined,
+        password,
       }
     }
     if (ctx.Create && ctx.Token) {
@@ -2851,6 +2858,7 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   memoryLimit(ctx: MemoryLimitCstChildren): string {
+    if (ctx.StringLiteral) return ctx.StringLiteral[0].image
     if (ctx.Unlimited) return "UNLIMITED"
     if (ctx.DurationLiteral) return ctx.DurationLiteral[0].image
     return ctx.NumberLiteral![0].image + (ctx.Identifier?.[0]?.image ?? "")
@@ -5422,6 +5430,13 @@ class QuestDBVisitor extends BaseVisitor {
 
   // Names (OWNED BY): a single-quoted name keeps its inner text verbatim, as
   // the server's GenericLexer.unquote does (see unquoteSingle).
+  // EXTERNAL ALIAS 'cn=o''brien' | ext_g — unescapes '' (unlike stringOrIdentifier)
+  private externalAliasValue(node: StringOrIdentifierCstNode): string {
+    const str = node.children.StringLiteral
+    if (str) return unquoteSingle(str[0].image)
+    return this.visit(node) as string
+  }
+
   stringOrIdentifier(ctx: StringOrIdentifierCstChildren): string {
     if (ctx.StringLiteral) {
       return ctx.StringLiteral[0].image.slice(1, -1)

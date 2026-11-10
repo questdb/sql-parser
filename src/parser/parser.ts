@@ -2377,7 +2377,7 @@ class QuestDBParser extends CstParser {
       this.CONSUME(With)
       this.CONSUME(External)
       this.CONSUME(Alias)
-      this.CONSUME(StringLiteral)
+      this.SUBRULE(this.stringOrIdentifier)
     })
   })
 
@@ -3194,7 +3194,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME(With)
           this.CONSUME(External)
           this.CONSUME(Alias)
-          this.CONSUME(StringLiteral)
+          this.SUBRULE(this.stringOrIdentifier)
         },
       },
       {
@@ -3202,7 +3202,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Drop)
           this.CONSUME1(External)
           this.CONSUME1(Alias)
-          this.CONSUME1(StringLiteral)
+          this.SUBRULE1(this.stringOrIdentifier)
         },
       },
       {
@@ -3291,7 +3291,13 @@ class QuestDBParser extends CstParser {
             {
               ALT: () => {
                 this.CONSUME1(Password)
-                this.CONSUME(StringLiteral)
+                // parsePassword: any token, unquoted (`null`, pw, 'pw')
+                this.OR6([
+                  { ALT: () => this.CONSUME(StringLiteral) },
+                  { ALT: () => this.CONSUME(Null) },
+                  { ALT: () => this.CONSUME(NumberLiteral) },
+                  { ALT: () => this.SUBRULE(this.identifier) },
+                ])
               },
             },
           ])
@@ -3327,9 +3333,15 @@ class QuestDBParser extends CstParser {
                     { ALT: () => this.CONSUME(DurationLiteral) },
                     { ALT: () => this.CONSUME2(StringLiteral) },
                   ])
-                  this.OPTION1(() => this.CONSUME(Refresh))
                 })
-                this.OPTION4(() => this.CONSUME(Transient))
+                // REFRESH / TRANSIENT in any order (EntSqlCompilerImpl
+                // CREATE TOKEN TYPE REST loop)
+                this.MANY(() => {
+                  this.OR7([
+                    { ALT: () => this.CONSUME(Refresh) },
+                    { ALT: () => this.CONSUME(Transient) },
+                  ])
+                })
               },
             },
           ])
@@ -3361,6 +3373,8 @@ class QuestDBParser extends CstParser {
 
   private memoryLimit = this.RULE("memoryLimit", () => {
     this.OR([
+      // quoted form: '64M', 'UNLIMITED' (parseMemoryLimit unquotes)
+      { ALT: () => this.CONSUME(StringLiteral) },
       { ALT: () => this.CONSUME(Unlimited) },
       { ALT: () => this.CONSUME(DurationLiteral) },
       {
@@ -3699,6 +3713,12 @@ class QuestDBParser extends CstParser {
     this.MANY(() => {
       this.CONSUME(Comma)
       this.SUBRULE1(this.addColumnItem)
+    })
+    // Enterprise addColumnSuffix: OWNED BY user|group
+    this.OPTION1(() => {
+      this.CONSUME(Owned)
+      this.CONSUME(By)
+      this.SUBRULE(this.stringOrIdentifier)
     })
   })
 
@@ -4092,15 +4112,8 @@ class QuestDBParser extends CstParser {
     ])
     this.OPTION(() => {
       this.CONSUME(Equals)
-      this.OR1([
-        { ALT: () => this.CONSUME(StringLiteral) },
-        {
-          ALT: () => {
-            this.OPTION1(() => this.CONSUME(Minus))
-            this.SUBRULE(this.memoryLimit)
-          },
-        },
-      ])
+      this.OPTION1(() => this.CONSUME(Minus))
+      this.SUBRULE(this.memoryLimit)
     })
   })
 

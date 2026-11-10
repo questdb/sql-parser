@@ -2091,5 +2091,41 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntSqlParserTest.java:1269",
     "feature": "ent-grant-revoke",
     "toSql": "GRANT CANCEL ANY COPY ON my_table TO admin"
+  },
+  {
+    "query": "alter table trades add column value double owned by group11",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/HttpExternalGroupTest.java:396",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER TABLE trades ADD COLUMN value DOUBLE OWNED BY group11"
+  },
+  {
+    "query": "ALTER USER memory_user SET MEMORY LIMIT '64M'",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupHttpTest.java:1002",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER USER memory_user SET MEMORY LIMIT '64M'"
+  },
+  {
+    "query": "ALTER GROUP memory_low SET MEMORY LIMIT '1M'",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupHttpTest.java:1012",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER GROUP memory_low SET MEMORY LIMIT '1M'"
+  },
+  {
+    "query": "CREATE GROUP g1 WITH EXTERNAL ALIAS ext_g",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:717",
+    "feature": "ent-users-groups",
+    "toSql": "CREATE GROUP g1 WITH EXTERNAL ALIAS 'ext_g'"
+  },
+  {
+    "query": "ALTER GROUP g DROP EXTERNAL ALIAS ext_g",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1039",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER GROUP g DROP EXTERNAL ALIAS 'ext_g'"
+  },
+  {
+    "query": "alter user minion with password null",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/HttpBasicDynamicAuthenticationTest.java:221",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER USER minion WITH PASSWORD 'null'"
   }
 ]
