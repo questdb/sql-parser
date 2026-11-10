@@ -438,6 +438,9 @@ class QuestDBParser extends CstParser {
   private _semicolonBoundedRecovery = false
   private _statementStartIdx = -1
 
+  // True while parsing an EXPIRE ROWS WHEN predicate (see expireRowsClause).
+  private inExpireRowsPredicate = false
+
   findReSyncTokenType(): TokenType {
     if (this._semicolonBoundedRecovery) {
       const currIdx = (this as unknown as CstParserInternals).currIdx
@@ -2134,8 +2137,9 @@ class QuestDBParser extends CstParser {
   // EXPIRE ROWS row-retention clause (materialized views):
   //   EXPIRE ROWS WHEN <predicate>
   //   EXPIRE ROWS KEEP LATEST [ON <ts>] PARTITION BY <cols>
-  //   EXPIRE ROWS KEEP [<N>] (HIGHEST|LOWEST) <col> [PARTITION BY <cols>]
+  //   EXPIRE ROWS KEEP [<N>] (HIGHEST|LOWEST) ON <col> [PARTITION BY <cols>]
   //   [ CLEANUP EVERY <duration> ]
+  // (server: SqlParser.parseExpireRowsClause; ON is required after HIGHEST|LOWEST)
   private expireRowsClause = this.RULE("expireRowsClause", () => {
     this.CONSUME(Expire)
     this.CONSUME(Rows)
@@ -2144,7 +2148,15 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(When)
-          this.SUBRULE(this.expression)
+          // The predicate ends before `IN VOLUME` (server
+          // expireRowsClauseBoundary); setExpression reads this flag.
+          const outer = this.inExpireRowsPredicate
+          this.inExpireRowsPredicate = true
+          try {
+            this.SUBRULE(this.expression)
+          } finally {
+            this.inExpireRowsPredicate = outer
+          }
         },
       },
       // KEEP ...
@@ -2169,7 +2181,7 @@ class QuestDBParser extends CstParser {
                 })
               },
             },
-            // KEEP [<N>] HIGHEST|LOWEST <col> [PARTITION BY <cols>]
+            // KEEP [<N>] HIGHEST|LOWEST ON <col> [PARTITION BY <cols>]
             {
               ALT: () => {
                 this.OPTION1(() => this.CONSUME(NumberLiteral))
@@ -2177,6 +2189,7 @@ class QuestDBParser extends CstParser {
                   { ALT: () => this.CONSUME(Highest) },
                   { ALT: () => this.CONSUME(Lowest) },
                 ])
+                this.CONSUME1(On)
                 this.SUBRULE3(this.identifier)
                 this.OPTION2(() => {
                   this.CONSUME1(Partition)
@@ -4601,65 +4614,75 @@ class QuestDBParser extends CstParser {
   // Precedence 11: [NOT] IN, [NOT] BETWEEN, [NOT] LIKE, [NOT] ILIKE, WITHIN
   private setExpression = this.RULE("setExpression", () => {
     this.SUBRULE(this.bitOrExpression)
-    this.OPTION(() => {
-      this.OR([
-        {
-          ALT: () => {
-            this.OPTION1(() => this.CONSUME(Not))
-            this.CONSUME(In)
-            this.OR1([
-              {
-                GATE: () => this.LA(1).tokenType === LParen,
-                ALT: () => {
-                  this.CONSUME(LParen)
-                  this.SUBRULE2(this.expression)
-                  this.MANY(() => {
-                    this.CONSUME(Comma)
-                    this.SUBRULE3(this.expression)
-                  })
-                  this.CONSUME(RParen)
+    this.OPTION({
+      // An EXPIRE ROWS WHEN predicate ends before `IN VOLUME` (the mat view
+      // volume clause), so `IN` there is not the IN operator.
+      GATE: () =>
+        !(
+          this.inExpireRowsPredicate &&
+          this.LA(1).tokenType === In &&
+          this.LA(2).tokenType === Volume
+        ),
+      DEF: () => {
+        this.OR([
+          {
+            ALT: () => {
+              this.OPTION1(() => this.CONSUME(Not))
+              this.CONSUME(In)
+              this.OR1([
+                {
+                  GATE: () => this.LA(1).tokenType === LParen,
+                  ALT: () => {
+                    this.CONSUME(LParen)
+                    this.SUBRULE2(this.expression)
+                    this.MANY(() => {
+                      this.CONSUME(Comma)
+                      this.SUBRULE3(this.expression)
+                    })
+                    this.CONSUME(RParen)
+                  },
                 },
-              },
-              {
-                ALT: () => {
-                  this.SUBRULE3(this.bitOrExpression, { LABEL: "inValue" })
+                {
+                  ALT: () => {
+                    this.SUBRULE3(this.bitOrExpression, { LABEL: "inValue" })
+                  },
                 },
-              },
-            ])
+              ])
+            },
           },
-        },
-        {
-          ALT: () => {
-            this.OPTION2(() => this.CONSUME1(Not))
-            this.CONSUME(Between)
-            this.SUBRULE1(this.bitOrExpression, { LABEL: "betweenLow" })
-            this.CONSUME(And)
-            this.SUBRULE2(this.bitOrExpression, { LABEL: "betweenHigh" })
+          {
+            ALT: () => {
+              this.OPTION2(() => this.CONSUME1(Not))
+              this.CONSUME(Between)
+              this.SUBRULE1(this.bitOrExpression, { LABEL: "betweenLow" })
+              this.CONSUME(And)
+              this.SUBRULE2(this.bitOrExpression, { LABEL: "betweenHigh" })
+            },
           },
-        },
-        {
-          ALT: () => {
-            this.CONSUME(Within)
-            this.CONSUME1(LParen)
-            this.SUBRULE5(this.expression)
-            this.MANY1(() => {
-              this.CONSUME1(Comma)
-              this.SUBRULE6(this.expression)
-            })
-            this.CONSUME1(RParen)
+          {
+            ALT: () => {
+              this.CONSUME(Within)
+              this.CONSUME1(LParen)
+              this.SUBRULE5(this.expression)
+              this.MANY1(() => {
+                this.CONSUME1(Comma)
+                this.SUBRULE6(this.expression)
+              })
+              this.CONSUME1(RParen)
+            },
           },
-        },
-        {
-          ALT: () => {
-            this.CONSUME2(Not)
-            this.OR2([
-              { ALT: () => this.CONSUME(Like) },
-              { ALT: () => this.CONSUME(Ilike) },
-            ])
-            this.SUBRULE4(this.bitOrExpression, { LABEL: "notLikeRight" })
+          {
+            ALT: () => {
+              this.CONSUME2(Not)
+              this.OR2([
+                { ALT: () => this.CONSUME(Like) },
+                { ALT: () => this.CONSUME(Ilike) },
+              ])
+              this.SUBRULE4(this.bitOrExpression, { LABEL: "notLikeRight" })
+            },
           },
-        },
-      ])
+        ])
+      },
     })
   })
 

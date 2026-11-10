@@ -116,6 +116,18 @@ export const fixtures: Fixture[] = [
     ].join("\n"),
   },
   {
+    name: "EXPIRE ROWS KEEP HIGHEST ON stays on one line",
+    input:
+      "CREATE MATERIALIZED VIEW price_1h AS (SELECT ts, px, sym FROM trades) EXPIRE ROWS KEEP 2 HIGHEST ON px PARTITION BY sym CLEANUP EVERY 1h",
+    expected: [
+      "CREATE MATERIALIZED VIEW price_1h AS (",
+      "  SELECT ts, px, sym",
+      "  FROM trades",
+      ")",
+      "EXPIRE ROWS KEEP 2 HIGHEST ON px PARTITION BY sym CLEANUP EVERY 1h",
+    ].join("\n"),
+  },
+  {
     name: "UPDATE joins break like SELECT joins",
     input: "UPDATE t SET a = 1 FROM u JOIN v ON u.x = v.x WHERE t.id = u.id",
     expected: [

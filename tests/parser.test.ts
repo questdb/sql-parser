@@ -8197,6 +8197,25 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       ).ast[0] as AST.CreateMaterializedViewStatement
       expect(s.expireRows?.mode).toBe("keepLatest")
     })
+    it("KEEP N HIGHEST ON col PARTITION BY", () => {
+      const s = parseToAst(
+        "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP 2 HIGHEST ON v PARTITION BY k",
+      ).ast[0] as AST.CreateMaterializedViewStatement
+      expect(s.expireRows).toEqual({
+        mode: "keepExtremum",
+        extremum: "highest",
+        column: "v",
+        keepCount: 2,
+        partitionBy: ["k"],
+      })
+    })
+    it("KEEP HIGHEST without ON is rejected", () => {
+      expect(
+        parseToAst(
+          "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST v PARTITION BY k",
+        ).errors.length,
+      ).toBeGreaterThan(0)
+    })
     it("ALTER ... DROP EXPIRE", () => {
       expect(
         parseToAst("ALTER MATERIALIZED VIEW mv DROP EXPIRE").errors,
@@ -8529,6 +8548,11 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       "create materialized view mv as (select * from base) expire rows when ts < now()",
       "create materialized view mv as (select * from base) expire rows when ts > now()",
       "create materialized view mv as (select * from base) expire rows when ts < cast(null as timestamp)",
+      "create materialized view mv as (select * from base) expire rows keep highest on v partition by k",
+      "create materialized view mv as (select * from base) expire rows keep 2 lowest on v partition by k, j cleanup every 1h",
+      "create materialized view mv as (select * from base) expire rows keep lowest on v",
+      "create materialized view mv as (select * from base) expire rows when v < 2.0 in volume 'v1'",
+      "alter materialized view mv set expire rows keep 1 highest on v partition by k",
     ]
     for (const query of queries) {
       it(`round-trips: ${query.slice(0, 64)}`, () => {

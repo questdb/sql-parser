@@ -241,7 +241,7 @@ export interface ExpireRowsClause {
   predicate?: Expression
   // keepLatest: KEEP LATEST [ON <ts>] PARTITION BY <cols>
   on?: string
-  // keepExtremum: KEEP [<N>] HIGHEST|LOWEST <col> [PARTITION BY <cols>]
+  // keepExtremum: KEEP [<N>] HIGHEST|LOWEST ON <col> [PARTITION BY <cols>]
   keepCount?: number
   extremum?: "highest" | "lowest"
   column?: string

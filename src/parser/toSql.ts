@@ -1281,7 +1281,7 @@ function expireRowsClauseToSql(clause: AST.ExpireRowsClause): string {
     parts.push("KEEP")
     if (clause.keepCount !== undefined) parts.push(String(clause.keepCount))
     parts.push(clause.extremum === "lowest" ? "LOWEST" : "HIGHEST")
-    parts.push(escapeIdentifier(clause.column!))
+    parts.push("ON", escapeIdentifier(clause.column!))
     if (clause.partitionBy && clause.partitionBy.length > 0) {
       parts.push(
         `PARTITION BY ${clause.partitionBy.map(escapeIdentifier).join(", ")}`,

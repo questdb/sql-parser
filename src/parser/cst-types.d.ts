@@ -1044,7 +1044,7 @@ export type ExpireRowsClauseCstChildren = {
   expression?: ExpressionCstNode[];
   Keep?: IToken[];
   Latest?: IToken[];
-  On?: IToken[];
+  On?: (IToken)[];
   identifier?: (IdentifierCstNode)[];
   Partition?: (IToken)[];
   By?: (IToken)[];

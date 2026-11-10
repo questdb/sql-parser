@@ -442,5 +442,107 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:149",
     "feature": "dedup-skip",
     "toSql": "ALTER TABLE x DEDUP ENABLE SKIP KEYS (ts)"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows keep highest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:1407",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "alter materialized view mv set expire rows keep highest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:1423",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) partition by day ttl 3 days expire rows keep 1 highest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2766",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) PARTITION BY DAY TTL 3 DAYS EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) partition by day expire rows keep 1 highest on v partition by k cleanup every 30m",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2976",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) PARTITION BY DAY EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k CLEANUP EVERY 30m"
+  },
+  {
+    "query": "create materialized view mv2 as (select * from base2) EXPIRE ROWS KEEP HIGHEST ON v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:3725",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv2 AS (SELECT * FROM base2) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY \"k limit 1\", k CLEANUP EVERY 1h;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryKeepLatestTest.java:229",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY \"k limit 1\", k CLEANUP EVERY 1h"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows keep highest on \"my val\" partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:668",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON \"my val\" PARTITION BY k"
+  },
+  {
+    "query": "create materialized view mvbad as (select * from base) expire rows keep 2 lowest on v partition by k, nope",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:762",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mvbad AS (SELECT * FROM base) EXPIRE ROWS KEEP 2 LOWEST ON v PARTITION BY k, nope"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows keep lowest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:1093",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP LOWEST ON v PARTITION BY k"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mvalt SET EXPIRE ROWS KEEP 2 LOWEST ON nope PARTITION BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:1028",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mvalt SET EXPIRE ROWS KEEP 2 LOWEST ON nope PARTITION BY k"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base)\nEXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k CLEANUP EVERY 1s",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsHardeningTest.java:764",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k CLEANUP EVERY 1s"
+  },
+  {
+    "query": "create materialized view no_keys as (select * from erb_base) expire rows KEEP HIGHEST ON v OWNED BY 'group'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8590",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW no_keys AS (SELECT * FROM erb_base) EXPIRE ROWS KEEP HIGHEST ON v OWNED BY \"group\""
+  },
+  {
+    "query": "create materialized view top_n as (select * from erb_base) expire rows KEEP 2 HIGHEST ON v PARTITION BY k OWNED BY 'group'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8589",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW top_n AS (SELECT * FROM erb_base) EXPIRE ROWS KEEP 2 HIGHEST ON v PARTITION BY k OWNED BY \"group\""
+  },
+  {
+    "query": "create materialized view in_volume as (select * from erb_base) expire rows when v < 2 in volume vol1 owned by 'group'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8620",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW in_volume AS (SELECT * FROM erb_base) EXPIRE ROWS WHEN v < 2 IN VOLUME vol1 OWNED BY \"group\""
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS WHEN v < 2.0 IN VOLUME 'vol1'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2426",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS WHEN v < 2.0 IN VOLUME vol1"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k IN VOLUME 'vol1'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2426",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k IN VOLUME vol1"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/EntRowExpiryAclTest.java:586",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k"
   }
 ]
