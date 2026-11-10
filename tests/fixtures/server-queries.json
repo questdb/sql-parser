@@ -1470,5 +1470,47 @@
     "source": "questdb:core/src/test/java/io/questdb/test/griffin/BooleanSubQueryPredicateTest.java:252",
     "feature": "expression-gaps",
     "toSql": "SELECT * FROM t WHERE NOT NOT (SELECT b FROM x_true LIMIT 1)"
+  },
+  {
+    "query": "CREATE VIEW v_cte AS (WITH c AS (DECLARE OVERRIDABLE AUDITED @x := 1 SELECT @x a) SELECT * FROM c)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/view/ViewAuditTest.java:193",
+    "feature": "declare",
+    "toSql": "CREATE VIEW v_cte AS (WITH c AS (DECLARE OVERRIDABLE AUDITED @x := 1 SELECT @x AS a) SELECT * FROM c)"
+  },
+  {
+    "query": "CREATE VIEW v_bare AS SELECT * FROM (DECLARE AUDITED @x := 1 SELECT @x a)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/view/ViewAuditTest.java:192",
+    "feature": "declare",
+    "toSql": "CREATE VIEW v_bare AS SELECT * FROM (DECLARE AUDITED @x := 1 SELECT @x AS a)"
+  },
+  {
+    "query": "SELECT 1 a UNION ALL DECLARE OVERRIDABLE AUDITED @x := 2 SELECT @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5616",
+    "feature": "declare",
+    "toSql": "SELECT 1 AS a UNION ALL DECLARE OVERRIDABLE AUDITED @x := 2 SELECT @x"
+  },
+  {
+    "query": "DECLARE @x := ('a',) SELECT s FROM k WHERE s IN @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5409",
+    "feature": "declare",
+    "toSql": "DECLARE @x := ('a') SELECT s FROM k WHERE s IN @x"
+  },
+  {
+    "query": "DECLARE @x := 1 (SELECT @x AS x)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:4332",
+    "feature": "declare",
+    "toSql": "DECLARE @x := 1 (SELECT @x AS x)"
+  },
+  {
+    "query": "DECLARE @lim := 1, audited WHERE x > @lim",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5867",
+    "feature": "declare",
+    "toSql": "DECLARE @lim := 1 audited WHERE x > @lim"
+  },
+  {
+    "query": "WITH c AS (SELECT 'a'::SYMBOL x) SELECT * FROM c UNION ALL WITH c AS (SELECT 'b'::SYMBOL x) SELECT * FROM c UNION ALL SELECT * FROM c",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/WithClauseTest.java:654",
+    "feature": "declare",
+    "toSql": "WITH c AS (SELECT 'a'::SYMBOL AS x) SELECT * FROM c UNION ALL WITH c AS (SELECT 'b'::SYMBOL AS x) SELECT * FROM c UNION ALL SELECT * FROM c"
   }
 ]

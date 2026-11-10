@@ -1441,7 +1441,8 @@ function refreshMaterializedViewToSql(
 
 function declareClauseToSql(clause: AST.DeclareClause): string {
   const assignments = clause.assignments.map((a) => {
-    const prefix = a.overridable ? "OVERRIDABLE " : ""
+    const prefix =
+      (a.overridable ? "OVERRIDABLE " : "") + (a.audited ? "AUDITED " : "")
     return `${prefix}@${a.name} := ${expressionToSql(a.value)}`
   })
   return `DECLARE ${assignments.join(", ")}`

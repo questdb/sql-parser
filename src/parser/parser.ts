@@ -334,6 +334,7 @@ import {
   BitOr,
   Within,
   Overridable,
+  Audited,
   LBracket,
   RBracket,
   Colon,
@@ -658,6 +659,8 @@ class QuestDBParser extends CstParser {
         // SELECT after WITH: no DECLARE/WITH prefixes allowed here
         ALT: () => this.SUBRULE(this.selectBody),
       },
+      // implicit select after WITH: `WITH c AS (...) c WHERE ...`
+      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
     ])
   })
 
@@ -665,10 +668,37 @@ class QuestDBParser extends CstParser {
   // SELECT Statement
   // ==========================================================================
 
+  // After a DECLARE or WITH prefix the query may also be an implicit select
+  // (`DECLARE @x := 1 (SELECT @x)`, `DECLARE @lim := 1 t WHERE x > @lim`,
+  // `(WITH c AS (...) c)`), as in the server's parseQuery. Without a prefix
+  // a plain SELECT is required (the implicit form is its own statement).
   private selectStatement = this.RULE("selectStatement", () => {
-    this.OPTION(() => this.SUBRULE(this.declareClause))
-    this.OPTION2(() => this.SUBRULE(this.withClause))
-    this.SUBRULE(this.selectBody)
+    this.OR([
+      {
+        ALT: () => {
+          this.SUBRULE(this.declareClause)
+          this.OPTION(() => this.SUBRULE(this.withClause))
+          this.SUBRULE(this.prefixedQueryBody)
+        },
+      },
+      {
+        ALT: () => {
+          this.SUBRULE1(this.withClause)
+          this.SUBRULE1(this.prefixedQueryBody)
+        },
+      },
+      { ALT: () => this.SUBRULE(this.selectBody) },
+    ])
+  })
+
+  private prefixedQueryBody = this.RULE("prefixedQueryBody", () => {
+    this.OR([
+      {
+        GATE: () => this.LA(1).tokenType === Select,
+        ALT: () => this.SUBRULE(this.selectBody),
+      },
+      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+    ])
   })
 
   private selectBody = this.RULE("selectBody", () => {
@@ -746,9 +776,17 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Intersect) },
     ])
     this.OPTION(() => this.CONSUME(All))
-    // Right operand: full SELECT or bare table/implicit form
+    // Right operand: full SELECT or bare table/implicit form; a branch may
+    // start with its own WITH or DECLARE (WithClauseTest, DeclareTest)
     this.OR1([
       { ALT: () => this.SUBRULE(this.simpleSelect) },
+      {
+        GATE: () => {
+          const t = this.LA(1).tokenType
+          return t === With || t === Declare
+        },
+        ALT: () => this.SUBRULE(this.selectStatement),
+      },
       { ALT: () => this.SUBRULE(this.implicitSelectBody) },
     ])
   })
@@ -1697,12 +1735,37 @@ class QuestDBParser extends CstParser {
     this.SUBRULE(this.declareAssignment)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.declareAssignment)
+      // A trailing comma may end the block: `DECLARE @lim := 1, t WHERE ...`
+      this.OPTION({
+        GATE: () => this.isDeclarationAhead(),
+        DEF: () => this.SUBRULE1(this.declareAssignment),
+      })
     })
   })
 
+  // `[AUDITED|OVERRIDABLE]* @var` ahead? The markers are also valid table
+  // names (`DECLARE @lim := 1, audited WHERE ...`); SqlParser
+  // isMarkedDeclarationAhead treats them as markers only before a variable
+  // (or SELECT / := for its error messages).
+  private isDeclarationAhead(): boolean {
+    let i = 1
+    while (
+      this.LA(i).tokenType === Audited ||
+      this.LA(i).tokenType === Overridable
+    ) {
+      i++
+    }
+    return this.LA(i).tokenType === VariableReference
+  }
+
   private declareAssignment = this.RULE("declareAssignment", () => {
-    this.OPTION(() => this.CONSUME(Overridable))
+    // DECLARE [OVERRIDABLE] [AUDITED] @x, markers in any order
+    this.MANY(() => {
+      this.OR([
+        { ALT: () => this.CONSUME(Overridable) },
+        { ALT: () => this.CONSUME(Audited) },
+      ])
+    })
     this.CONSUME(VariableReference)
     this.CONSUME(ColonEquals)
     this.SUBRULE(this.expression)
@@ -5059,11 +5122,15 @@ class QuestDBParser extends CstParser {
             },
             {
               // Single expression or row constructor: (expr) or (expr, expr, ...)
+              // A trailing comma is allowed: `('a',)` (DECLARE value lists)
               ALT: () => {
                 this.SUBRULE(this.expression)
                 this.MANY2(() => {
                   this.CONSUME1(Comma)
-                  this.SUBRULE1(this.expression)
+                  this.OPTION3({
+                    GATE: () => this.LA(1).tokenType !== RParen,
+                    DEF: () => this.SUBRULE1(this.expression),
+                  })
                 })
               },
             },

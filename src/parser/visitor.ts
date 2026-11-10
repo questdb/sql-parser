@@ -156,6 +156,7 @@ import type {
   SelectItemCstChildren,
   SelectListCstChildren,
   SelectBodyCstChildren,
+  PrefixedQueryBodyCstChildren,
   SelectStatementCstChildren,
   SetClauseCstChildren,
   SetExpressionCstChildren,
@@ -431,6 +432,8 @@ class QuestDBVisitor extends BaseVisitor {
       inner = this.visit(ctx.updateStatement) as AST.UpdateStatement
     } else if (ctx.selectBody) {
       inner = this.visit(ctx.selectBody) as AST.SelectStatement
+    } else if (ctx.implicitSelectStatement) {
+      inner = this.visit(ctx.implicitSelectStatement) as AST.SelectStatement
     } else {
       throw new Error("withStatement: expected insert, update, or select")
     }
@@ -444,7 +447,11 @@ class QuestDBVisitor extends BaseVisitor {
   // ==========================================================================
 
   selectStatement(ctx: SelectStatementCstChildren): AST.SelectStatement {
-    const result = this.visit(ctx.selectBody) as AST.SelectStatement
+    const result = (
+      ctx.selectBody
+        ? this.visit(ctx.selectBody)
+        : this.visit(ctx.prefixedQueryBody!)
+    ) as AST.SelectStatement
 
     if (ctx.declareClause) {
       result.declare = this.visit(ctx.declareClause) as AST.DeclareClause
@@ -455,6 +462,14 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     return result
+  }
+
+  prefixedQueryBody(ctx: PrefixedQueryBodyCstChildren): AST.SelectStatement {
+    return (
+      ctx.selectBody
+        ? this.visit(ctx.selectBody)
+        : this.visit(ctx.implicitSelectStatement!)
+    ) as AST.SelectStatement
   }
 
   selectBody(ctx: SelectBodyCstChildren): AST.SelectStatement {
@@ -553,7 +568,9 @@ class QuestDBVisitor extends BaseVisitor {
 
     const select = ctx.simpleSelect
       ? (this.visit(ctx.simpleSelect) as AST.SelectStatement)
-      : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement)
+      : ctx.selectStatement
+        ? (this.visit(ctx.selectStatement) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement)
 
     const result: AST.SetOperation = {
       type: "setOperation",
@@ -1359,6 +1376,7 @@ class QuestDBVisitor extends BaseVisitor {
         (this.visit(ctx.expression) as AST.Expression),
     }
     if (ctx.Overridable) result.overridable = true
+    if (ctx.Audited) result.audited = true
     return result
   }
 

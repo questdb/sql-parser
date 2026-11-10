@@ -153,6 +153,7 @@ export interface DeclareAssignment extends AstNode {
   name: string
   value: Expression
   overridable?: boolean
+  audited?: boolean
 }
 
 export interface CreateTableStatement extends AstNode {

@@ -307,6 +307,7 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Nocache",
   "Observation",
   "Overridable",
+  "Audited",
   "Owned",
   "Period",
   "Reindex",
@@ -619,6 +620,7 @@ export const Others = getToken("Others")
 export const Outer = getToken("Outer")
 export const Over = getToken("Over")
 export const Overridable = getToken("Overridable")
+export const Audited = getToken("Audited")
 export const Owned = getToken("Owned")
 export const Param = getToken("Param")
 export const Parameters = getToken("Parameters")
