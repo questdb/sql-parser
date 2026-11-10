@@ -173,6 +173,7 @@ import type {
   StoragePolicyCstChildren,
   StoragePolicyTimeUnitCstChildren,
   StoragePolicyTtlCstChildren,
+  TtlClauseCstChildren,
   HorizonJoinCstChildren,
   HorizonOffsetCstChildren,
   StandardJoinCstChildren,
@@ -1548,8 +1549,8 @@ class QuestDBVisitor extends BaseVisitor {
       result.wal = true
     }
 
-    if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
-      result.ttl = this.extractTtl(ctx)
+    if (ctx.ttlClause) {
+      result.ttl = this.visit(ctx.ttlClause) as AST.CreateTableStatement["ttl"]
     }
 
     if (ctx.optionalStoragePolicy) {
@@ -2038,7 +2039,11 @@ class QuestDBVisitor extends BaseVisitor {
         ttl?: AST.CreateMaterializedViewStatement["ttl"]
       }
       if (partition.partitionBy) result.partitionBy = partition.partitionBy
-      if (partition.ttl) result.ttl = partition.ttl
+    }
+    if (ctx.ttlClause) {
+      result.ttl = this.visit(
+        ctx.ttlClause,
+      ) as AST.CreateMaterializedViewStatement["ttl"]
     }
     if (ctx.optionalStoragePolicy) {
       const sp = this.visit(ctx.optionalStoragePolicy) as
@@ -2121,7 +2126,8 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.MaterializedViewRefresh = {
       type: "materializedViewRefresh",
     }
-    if (ctx.Immediate) result.mode = "immediate"
+    // INCREMENTAL is the obsolete name of IMMEDIATE
+    if (ctx.Immediate || ctx.Incremental) result.mode = "immediate"
     if (ctx.Manual) result.mode = "manual"
     if (ctx.intervalValue) {
       result.every = this.extractMaybeString(ctx.intervalValue[0])
@@ -2173,10 +2179,14 @@ class QuestDBVisitor extends BaseVisitor {
         | "DAY"
         | "HOUR"
     }
-    if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
-      result.ttl = this.extractTtl(ctx)
-    }
     return result
+  }
+
+  ttlClause(ctx: TtlClauseCstChildren): {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  } {
+    return this.extractTtl(ctx)
   }
 
   createLiveViewBody(
@@ -5236,6 +5246,20 @@ class QuestDBVisitor extends BaseVisitor {
       unit = this.visit(ctx.timeUnit as CstNode[]) as typeof unit
     } else if (ctx.storagePolicyTimeUnit) {
       unit = this.visit(ctx.storagePolicyTimeUnit as CstNode[]) as typeof unit
+    } else if (ctx.Identifier) {
+      // single-letter unit: TTL 2 h
+      const LETTER_UNITS: Record<
+        string,
+        "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+      > = {
+        h: "HOURS",
+        d: "DAYS",
+        w: "WEEKS",
+        m: "MONTHS",
+        y: "YEARS",
+      }
+      unit =
+        LETTER_UNITS[(ctx.Identifier[0] as IToken).image.toLowerCase()] ?? unit
       // Check plural forms first (TTL units) before singular (which may be PARTITION BY units)
     } else if (ctx.Hours) unit = "HOURS"
     else if (ctx.Days) unit = "DAYS"

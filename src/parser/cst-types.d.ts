@@ -875,19 +875,7 @@ export type CreateTableBodyCstChildren = {
   Partition?: IToken[];
   By?: (IToken)[];
   partitionPeriod?: PartitionPeriodCstNode[];
-  Ttl?: IToken[];
-  DurationLiteral?: IToken[];
-  NumberLiteral?: IToken[];
-  Hours?: IToken[];
-  Days?: IToken[];
-  Weeks?: IToken[];
-  Months?: IToken[];
-  Years?: IToken[];
-  Hour?: IToken[];
-  Day?: IToken[];
-  Week?: IToken[];
-  Month?: IToken[];
-  Year?: IToken[];
+  ttlClause?: TtlClauseCstNode[];
   optionalStoragePolicy: OptionalStoragePolicyCstNode[];
   optionalTableFormat: (OptionalTableFormatCstNode)[];
   Bypass?: IToken[];
@@ -1043,8 +1031,8 @@ export type CreateMaterializedViewBodyCstChildren = {
   With?: IToken[];
   Base?: IToken[];
   Refresh?: IToken[];
-  materializedViewPeriod?: (MaterializedViewPeriodCstNode)[];
   materializedViewRefresh?: MaterializedViewRefreshCstNode[];
+  materializedViewPeriod?: MaterializedViewPeriodCstNode[];
   As: IToken[];
   LParen?: (IToken)[];
   selectStatement?: (SelectStatementCstNode)[];
@@ -1055,6 +1043,7 @@ export type CreateMaterializedViewBodyCstChildren = {
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   materializedViewPartition?: MaterializedViewPartitionCstNode[];
+  ttlClause?: TtlClauseCstNode[];
   optionalStoragePolicy: OptionalStoragePolicyCstNode[];
   optionalExpireRows: OptionalExpireRowsCstNode[];
   In?: IToken[];
@@ -1108,6 +1097,7 @@ export interface MaterializedViewRefreshCstNode extends CstNode {
 export type MaterializedViewRefreshCstChildren = {
   Immediate?: IToken[];
   Manual?: IToken[];
+  Incremental?: IToken[];
   Deferred?: (IToken)[];
   Every?: IToken[];
   intervalValue?: IntervalValueCstNode[];
@@ -1147,19 +1137,19 @@ export type MaterializedViewPartitionCstChildren = {
   Partition: IToken[];
   By: IToken[];
   partitionPeriod: PartitionPeriodCstNode[];
-  Ttl?: IToken[];
+};
+
+export interface TtlClauseCstNode extends CstNode {
+  name: "ttlClause";
+  children: TtlClauseCstChildren;
+}
+
+export type TtlClauseCstChildren = {
+  Ttl: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
-  Hours?: IToken[];
-  Days?: IToken[];
-  Weeks?: IToken[];
-  Months?: IToken[];
-  Years?: IToken[];
-  Hour?: IToken[];
-  Day?: IToken[];
-  Week?: IToken[];
-  Month?: IToken[];
-  Year?: IToken[];
+  storagePolicyTimeUnit?: StoragePolicyTimeUnitCstNode[];
+  Identifier?: IToken[];
 };
 
 export interface ColumnDefinitionCstNode extends CstNode {
@@ -3247,6 +3237,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   materializedViewRefresh(children: MaterializedViewRefreshCstChildren, param?: IN): OUT;
   materializedViewPeriod(children: MaterializedViewPeriodCstChildren, param?: IN): OUT;
   materializedViewPartition(children: MaterializedViewPartitionCstChildren, param?: IN): OUT;
+  ttlClause(children: TtlClauseCstChildren, param?: IN): OUT;
   columnDefinition(children: ColumnDefinitionCstChildren, param?: IN): OUT;
   columnNullModifier(children: ColumnNullModifierCstChildren, param?: IN): OUT;
   parquetConfig(children: ParquetConfigCstChildren, param?: IN): OUT;

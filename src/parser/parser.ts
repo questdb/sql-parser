@@ -2086,29 +2086,7 @@ class QuestDBParser extends CstParser {
     })
 
     // Optional TTL (must come before WAL per Java order)
-    this.OPTION4(() => {
-      this.CONSUME(Ttl)
-      this.OR2([
-        { ALT: () => this.CONSUME1(DurationLiteral) },
-        {
-          ALT: () => {
-            this.CONSUME1(NumberLiteral)
-            this.OR5([
-              { ALT: () => this.CONSUME(Hours) },
-              { ALT: () => this.CONSUME(Days) },
-              { ALT: () => this.CONSUME(Weeks) },
-              { ALT: () => this.CONSUME(Months) },
-              { ALT: () => this.CONSUME(Years) },
-              { ALT: () => this.CONSUME1(Hour) },
-              { ALT: () => this.CONSUME1(Day) },
-              { ALT: () => this.CONSUME1(Week) },
-              { ALT: () => this.CONSUME1(Month) },
-              { ALT: () => this.CONSUME1(Year) },
-            ])
-          },
-        },
-      ])
-    })
+    this.OPTION4(() => this.SUBRULE(this.ttlClause))
 
     this.SUBRULE(this.optionalStoragePolicy)
 
@@ -2353,15 +2331,11 @@ class QuestDBParser extends CstParser {
         this.CONSUME(Base)
         this.SUBRULE1(this.stringOrQualifiedName)
       })
+      // REFRESH [mode] [DEFERRED] [PERIOD(...)] — mode is optional
+      // (SqlParser.parseCreateMatView); PERIOD is matched by OPTION3.
       this.OPTION2(() => {
         this.CONSUME(Refresh)
-        this.OR1([
-          {
-            GATE: () => this.LA(1).tokenType === Period,
-            ALT: () => this.SUBRULE(this.materializedViewPeriod),
-          },
-          { ALT: () => this.SUBRULE(this.materializedViewRefresh) },
-        ])
+        this.OPTION5(() => this.SUBRULE(this.materializedViewRefresh))
       })
       this.OPTION3(() => {
         this.SUBRULE1(this.materializedViewPeriod)
@@ -2408,6 +2382,8 @@ class QuestDBParser extends CstParser {
       this.OPTION7(() => {
         this.SUBRULE(this.materializedViewPartition)
       })
+      // TTL does not require PARTITION BY (SqlParserCallback.parseTtlSettings)
+      this.OPTION4(() => this.SUBRULE(this.ttlClause))
       this.SUBRULE(this.optionalStoragePolicy)
       this.SUBRULE(this.optionalExpireRows)
       this.OPTION8(() => {
@@ -2519,10 +2495,14 @@ class QuestDBParser extends CstParser {
           this.OR1([
             { ALT: () => this.CONSUME(Immediate) },
             { ALT: () => this.CONSUME(Manual) },
+            // obsolete synonym of IMMEDIATE (not suggested)
+            { ALT: () => this.CONSUME(Incremental) },
           ])
           this.OPTION(() => this.CONSUME(Deferred))
         },
       },
+      // REFRESH DEFERRED (mode defaults to IMMEDIATE)
+      { ALT: () => this.CONSUME2(Deferred) },
       {
         ALT: () => {
           this.CONSUME(Every)
@@ -2578,31 +2558,30 @@ class QuestDBParser extends CstParser {
       this.CONSUME(Partition)
       this.CONSUME(By)
       this.SUBRULE(this.partitionPeriod)
-      this.OPTION(() => {
-        this.CONSUME(Ttl)
-        this.OR1([
-          { ALT: () => this.CONSUME(DurationLiteral) },
-          {
-            ALT: () => {
-              this.CONSUME(NumberLiteral)
-              this.OR2([
-                { ALT: () => this.CONSUME(Hours) },
-                { ALT: () => this.CONSUME(Days) },
-                { ALT: () => this.CONSUME(Weeks) },
-                { ALT: () => this.CONSUME(Months) },
-                { ALT: () => this.CONSUME(Years) },
-                { ALT: () => this.CONSUME(Hour) },
-                { ALT: () => this.CONSUME(Day) },
-                { ALT: () => this.CONSUME(Week) },
-                { ALT: () => this.CONSUME(Month) },
-                { ALT: () => this.CONSUME(Year) },
-              ])
-            },
-          },
-        ])
-      })
     },
   )
+
+  // TTL <n><unit> | TTL <n> <unit> where unit is HOUR(S)/DAY(S)/WEEK(S)/
+  // MONTH(S)/YEAR(S) or a single letter h/d/w/m/y
+  // (SqlParser.parseTtlHoursOrMonths, PartitionBy.ttlUnitFromString).
+  private ttlClause = this.RULE("ttlClause", () => {
+    this.CONSUME(Ttl)
+    this.OR([
+      { ALT: () => this.CONSUME(DurationLiteral) },
+      {
+        ALT: () => {
+          this.CONSUME(NumberLiteral)
+          this.OR1([
+            { ALT: () => this.SUBRULE(this.storagePolicyTimeUnit) },
+            {
+              GATE: () => /^[hdwmy]$/i.test(this.LA(1).image),
+              ALT: () => this.CONSUME(Identifier),
+            },
+          ])
+        },
+      },
+    ])
+  })
 
   // allowDoublePrecision: CREATE TABLE columns (SqlParser.toColumnType skips
   // PRECISION after DOUBLE). ALTER TABLE ADD COLUMN does not

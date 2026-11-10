@@ -1728,5 +1728,24 @@
     "source": "questdb:core/src/test/java/io/questdb/test/cairo/CreateTableTest.java:468",
     "feature": "create-table-options",
     "toSql": "CREATE TABLE new AS (SELECT * FROM old), CAST(s AS SYMBOL), CAST(ts AS DATE), INDEX(s)"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 1m) TTL 5H",
+    "source": "questdb-enterprise:src/test/java/com/questdb/cairo/cold/storage/StoragePolicyWriterTest.java:2510",
+    "feature": "mat-view-create-options",
+    "toSql": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 1m) TTL 5 HOURS"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 2h) TTL 24 MONTHS",
+    "source": "questdb-enterprise:src/test/java/com/questdb/cairo/cold/storage/StoragePolicyWriterTest.java:2637",
+    "feature": "mat-view-create-options",
+    "toSql": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 2h) TTL 24 MONTHS"
+  },
+  {
+    "query": "create materialized view price_1h refresh incremental period(length 1d) as select sym, last(price) as price, ts from base_price sample by 1h;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewReloadOnRestartTest.java:970",
+    "feature": "mat-view-create-options",
+    "toSql": "CREATE MATERIALIZED VIEW price_1h REFRESH IMMEDIATE PERIOD (LENGTH 1d) AS SELECT sym, last(price) AS price, ts FROM base_price SAMPLE BY 1h",
+    "skipAutocomplete": "INCREMENTAL is an obsolete synonym of IMMEDIATE and intentionally not suggested"
   }
 ]
