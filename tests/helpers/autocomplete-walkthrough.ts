@@ -218,6 +218,7 @@ export const SKIP_TOKEN_TYPES = new Set([
   "Semicolon",
   "LBracket",
   "RBracket",
+  "Colon",
   "AtSign",
   "ColonEquals",
   // Operators
@@ -244,6 +245,8 @@ export const SKIP_TOKEN_TYPES = new Set([
   "BitAnd",
   // Variable references
   "VariableReference",
+  // Bind variables ($1, :name)
+  "BindVariable",
   // Interval literals
   "IntervalLiteral",
 ])

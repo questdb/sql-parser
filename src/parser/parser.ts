@@ -260,6 +260,7 @@ import {
   Lock,
   Exclusive,
   VariableReference,
+  BindVariable,
   ColonEquals,
   RegexMatch,
   RegexNotMatch,
@@ -1316,6 +1317,20 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(DurationLiteral) },
       { ALT: () => this.CONSUME(VariableReference) },
+      {
+        // SAMPLE BY $1 d / :n h — a bind variable is not a full period, so
+        // the server requires a one-letter unit after it
+        // (SqlParser.expectSample: "one letter sample by period unit expected").
+        ALT: () => {
+          this.CONSUME(BindVariable)
+          this.OR1([
+            {
+              GATE: () => this.isSampleByPeriodLetter(this.LA(1).image),
+              ALT: () => this.CONSUME1(Identifier, { LABEL: "sampleByUnit" }),
+            },
+          ])
+        },
+      },
       // Bare single-letter period unit with no leading digit, e.g. `SAMPLE BY w`
       // (equivalent to `SAMPLE BY 1w`). Lexes as an Identifier; the GATE keeps
       // this alternative restricted to valid unit letters.
@@ -4943,6 +4958,8 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => this.CONSUME(VariableReference),
       },
+      // Bind variable: $1 or :name
+      { ALT: () => this.CONSUME(BindVariable) },
       { ALT: () => this.SUBRULE(this.identifierExpression) },
       {
         ALT: () => {

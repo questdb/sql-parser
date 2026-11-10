@@ -1,4 +1,4 @@
-import { createToken, Lexer, TokenType } from "chevrotain"
+import { createToken, IToken, Lexer, TokenType } from "chevrotain"
 
 // Import all keyword tokens from tokens.ts (auto-generated from grammar arrays)
 // Re-export all named tokens for parser usage
@@ -781,6 +781,72 @@ export const VariableReference = createToken({
 // Bare @ sign (only matches when not followed by a word character)
 export const AtSign = createToken({ name: "AtSign", pattern: /@/ })
 
+// Bind variables: `$1` (positional) and `:name` (named).
+// Server: ExpressionNode.of types a token as BIND_VARIABLE when it is `$` +
+// digits or starts with `:`. A named variable is glued in
+// ExpressionParser.processColon: a lone `:` that does not follow a completed
+// operand (literal, constant, `)`, `]`) and is not followed by whitespace takes
+// the next token as its name. So `arr[1:n]` / `arr[i:j]` stay slices, while
+// `x = :sym`, `IN (:a, :b)`, `LIMIT :n` and `arr[:1]` are bind variables.
+// `::` and `:=` are matched earlier by DoubleColon / ColonEquals.
+const POSITIONAL_BIND_VARIABLE = /\$\d+(?![\w$\u0080-\uFFFF])/y
+const NAMED_BIND_VARIABLE = /:[a-zA-Z0-9_\u0080-\uFFFF]+/y
+
+const COMPLETED_OPERAND_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
+  "Identifier",
+  "QuotedIdentifier",
+  "RParen",
+  "RBracket",
+  "BindVariable",
+  "VariableReference",
+  "True",
+  "False",
+  "Null",
+  "Nan",
+])
+
+/**
+ * Whether the token before a `:` ends an operand, which makes the colon an
+ * array-slice separator rather than the start of a `:name` bind variable.
+ * Keywords are operators / clause words (`= :x`, `LIMIT :x`, `THEN :x`)
+ * except the value constants; a non-reserved keyword glued to the colon is a
+ * column name (`arr[offset:n]`).
+ */
+function endsOperand(prev: IToken, colonOffset: number): boolean {
+  const type = prev.tokenType
+  if (COMPLETED_OPERAND_TOKEN_NAMES.has(type.name)) return true
+  if (type.name.endsWith("Literal")) return true
+  return (
+    prev.endOffset !== undefined &&
+    prev.endOffset + 1 === colonOffset &&
+    (type.CATEGORIES ?? []).includes(IdentifierKeyword)
+  )
+}
+
+function matchBindVariable(
+  text: string,
+  offset: number,
+  tokens: IToken[],
+): RegExpExecArray | null {
+  const ch = text.charAt(offset)
+  if (ch === "$") {
+    POSITIONAL_BIND_VARIABLE.lastIndex = offset
+    return POSITIONAL_BIND_VARIABLE.exec(text)
+  }
+  if (ch !== ":") return null
+  const prev = tokens[tokens.length - 1]
+  if (prev && endsOperand(prev, offset)) return null
+  NAMED_BIND_VARIABLE.lastIndex = offset
+  return NAMED_BIND_VARIABLE.exec(text)
+}
+
+export const BindVariable = createToken({
+  name: "BindVariable",
+  pattern: matchBindVariable,
+  start_chars_hint: ["$", ":"],
+  line_breaks: false,
+})
+
 // =============================================================================
 // Literals
 // =============================================================================
@@ -974,6 +1040,7 @@ export const allTokens: TokenType[] = [
   BitXor,
   BitOr,
   RegexMatch,
+  BindVariable,
   Colon,
   VariableReference,
   AtSign,

@@ -1253,6 +1253,7 @@ export type Expression =
   | UnaryExpression
   | ColumnRef
   | VariableRef
+  | BindVariable
   | Literal
   | FunctionCall
   | CaseExpression
@@ -1401,6 +1402,15 @@ export interface IsNullExpression extends AstNode {
 
 export interface VariableRef extends AstNode {
   type: "variable"
+  name: string
+}
+
+/**
+ * Bind variable: positional `$1` or named `:name`. `name` is the token as
+ * written, including the `$` / `:` sigil.
+ */
+export interface BindVariable extends AstNode {
+  type: "bindVariable"
   name: string
 }
 

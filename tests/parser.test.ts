@@ -5606,8 +5606,10 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.ast[0].type).toBe("select")
     })
 
-    it("should parse array subscript with open-ended slice (:end)", () => {
-      const result = parseToAst("SELECT arr[:5] FROM t")
+    it("should parse array subscript with open-ended slice (: end)", () => {
+      // `arr[:5]` (no space) is an index by bind variable `:5`, as on the
+      // server (ArrayTest:4428), see tests/bind-variables.test.ts
+      const result = parseToAst("SELECT arr[: 5] FROM t")
       expect(result.errors).toHaveLength(0)
       expect(result.ast[0].type).toBe("select")
     })

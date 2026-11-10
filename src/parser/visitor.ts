@@ -1040,7 +1040,9 @@ class QuestDBVisitor extends BaseVisitor {
         ? this.tokenImage(ctx.DurationLiteral[0])
         : ctx.VariableReference
           ? this.tokenImage(ctx.VariableReference[0])
-          : this.tokenImage(ctx.Identifier![0]),
+          : ctx.BindVariable
+            ? `${this.tokenImage(ctx.BindVariable[0])} ${this.tokenImage(ctx.sampleByUnit![0])}`
+            : this.tokenImage(ctx.Identifier![0]),
     }
     if (ctx.groupingSetsSpec) {
       result.groupingSets = this.visit(ctx.groupingSetsSpec) as AST.GroupingSets
@@ -4283,6 +4285,12 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         type: "variable",
         name: image.substring(1), // strip leading @
+      }
+    }
+    if (ctx.BindVariable) {
+      return {
+        type: "bindVariable",
+        name: ctx.BindVariable[0].image, // "$1" or ":name"
       }
     }
     if (ctx.identifierExpression) {

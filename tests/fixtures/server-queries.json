@@ -748,5 +748,233 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/wal/transfer/ReplicationAclTest.java:2310",
     "feature": "duration-boundary",
     "toSql": "ALTER GROUP test_group SET MEMORY LIMIT 1G"
+  },
+  {
+    "query": "SELECT sym, val FROM t_bv_latest WHERE sym = $1 LATEST ON ts PARTITION BY sym",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexBindVariableKeyTest.java:46",
+    "feature": "bind-variables",
+    "toSql": "SELECT sym, val FROM t_bv_latest WHERE sym = $1 LATEST ON ts PARTITION BY sym"
+  },
+  {
+    "query": "SELECT sym, price FROM t_in_dup_bind WHERE sym IN ($1, $2) LATEST ON ts PARTITION BY sym",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexTest.java:12920",
+    "feature": "bind-variables",
+    "toSql": "SELECT sym, price FROM t_in_dup_bind WHERE sym IN ($1, $2) LATEST ON ts PARTITION BY sym"
+  },
+  {
+    "query": "INSERT INTO test VALUES($1, $2);",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGJobContextTest.java:6412",
+    "feature": "bind-variables",
+    "toSql": "INSERT INTO test VALUES ($1, $2)"
+  },
+  {
+    "query": "select * from y limit $1, $2;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:723",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM y LIMIT $1, $2"
+  },
+  {
+    "query": "SELECT $1::UUID AS u FROM long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressBindFuzzTest.java:227",
+    "feature": "bind-variables",
+    "toSql": "SELECT $1::UUID AS u FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT CAST($1 AS BOOLEAN) AS v FROM long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressBindRoundTripTest.java:384",
+    "feature": "bind-variables",
+    "toSql": "SELECT CAST($1 AS BOOLEAN) AS v FROM long_sequence(1)"
+  },
+  {
+    "query": "alter materialized view mv set expire rows when v > $1",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsHardeningTest.java:1188",
+    "feature": "bind-variables",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS WHEN v > $1"
+  },
+  {
+    "query": "DECLARE @x := $1, @y := $2 SELECT @x, @y",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:856",
+    "feature": "bind-variables",
+    "toSql": "DECLARE @x := $1, @y := $2 SELECT @x, @y"
+  },
+  {
+    "query": "select $1+x, $2 from long_sequence(10)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCodeGeneratorTest.java:7919",
+    "feature": "bind-variables",
+    "toSql": "SELECT $1 + x, $2 FROM long_sequence(10)"
+  },
+  {
+    "query": "SELECT ARRAY[1.0, $1]",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/array/ArrayCreateFunctionFactoryTest.java:60",
+    "feature": "bind-variables",
+    "toSql": "SELECT ARRAY[1.0, $1]"
+  },
+  {
+    "query": "SELECT rn FROM x WHERE (a*$1) IS NULL",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/InLongFunctionFactoryTest.java:668",
+    "feature": "bind-variables",
+    "toSql": "SELECT rn FROM x WHERE (a * $1) IS NULL"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE date_trunc('day', timestamp) BETWEEN $1 AND $2",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/MonotonicTimestampPruningTest.java:183",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM trades WHERE date_trunc('day', timestamp) BETWEEN $1 AND $2"
+  },
+  {
+    "query": "UPDATE up SET x = $1 WHERE x > 1 and x < 4",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UpdateTest.java:3011",
+    "feature": "bind-variables",
+    "toSql": "UPDATE up SET x = $1 WHERE x > 1 AND x < 4"
+  },
+  {
+    "query": "select k, s, first(lat) lat, last(lon) lon from x where s in ('a') sample by $1 T align to calendar",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByNanoTimestampTest.java:143",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, s, first(lat) AS lat, last(lon) AS lon FROM x WHERE s IN ('a') SAMPLE BY $1 T ALIGN TO CALENDAR"
+  },
+  {
+    "query": "SELECT r.reading_ts, count(*) n, sum(r.energy_kwh) energy FROM r JOIN p ON r.plant_id = p.plant_id SAMPLE BY 1d FROM $1 TO $2 ALIGN TO CALENDAR TIME ZONE 'Europe/Berlin'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/HashJoinGroupByRuntimeConstantTest.java:450",
+    "feature": "bind-variables",
+    "toSql": "SELECT r.reading_ts, count(*) AS n, sum(r.energy_kwh) AS energy FROM r JOIN p ON r.plant_id = p.plant_id SAMPLE BY 1d FROM $1 TO $2 ALIGN TO CALENDAR TIME ZONE 'Europe/Berlin'"
+  },
+  {
+    "query": "SELECT k, percentile_disc($1, 0.5) OVER () p, quantile_disc($2, 0.5) OVER (PARTITION BY k) q FROM t",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/PercentileWindowFunctionTest.java:1933",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, percentile_disc($1, 0.5) OVER () AS p, quantile_disc($2, 0.5) OVER (PARTITION BY k) AS q FROM t"
+  },
+  {
+    "query": "EXPLAIN SELECT price, ts FROM t SUBSAMPLE cadence($1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SubsampleTest.java:5481",
+    "feature": "bind-variables",
+    "toSql": "EXPLAIN SELECT price, ts FROM t SUBSAMPLE cadence($1)"
+  },
+  {
+    "query": "DECLARE @flag := ($1 = 1) SELECT * FROM v_flag",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:644",
+    "feature": "bind-variables",
+    "toSql": "DECLARE @flag := ($1 = 1) SELECT * FROM v_flag"
+  },
+  {
+    "query": "COPY (SELECT * FROM ts_table2 WHERE x <= $1) TO 'bind_streaming' WITH FORMAT parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:2208",
+    "feature": "bind-variables",
+    "toSql": "COPY (SELECT * FROM ts_table2 WHERE x <= $1) TO 'bind_streaming' WITH FORMAT parquet"
+  },
+  {
+    "query": "select * from alcatel_traffic_tmp where deviceName not in ($1,$2) and time < '1970-01-01T00:00:00.300000Z'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCodeGeneratorTest.java:9952",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM alcatel_traffic_tmp WHERE deviceName NOT IN ($1, $2) AND time < '1970-01-01T00:00:00.300000Z'"
+  },
+  {
+    "query": "SELECT price FROM t_latest_bind WHERE sym = :sym LATEST ON ts PARTITION BY sym",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexTest.java:6363",
+    "feature": "bind-variables",
+    "toSql": "SELECT price FROM t_latest_bind WHERE sym = :sym LATEST ON ts PARTITION BY sym"
+  },
+  {
+    "query": "SELECT count() cnt FROM t_pf_mk_bind WHERE sym IN (:k1, :k2)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexTest.java:12786",
+    "feature": "bind-variables",
+    "toSql": "SELECT count() AS cnt FROM t_pf_mk_bind WHERE sym IN (:k1, :k2)"
+  },
+  {
+    "query": "SELECT id FROM neg_min WHERE -:sv = s",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:7460",
+    "feature": "bind-variables",
+    "toSql": "SELECT id FROM neg_min WHERE -:sv = s"
+  },
+  {
+    "query": "select k, f, l from a4b where (:fv + f) * 1.0 > 1.5",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:8560",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, f, l FROM a4b WHERE (:fv + f) * 1.0 > 1.5"
+  },
+  {
+    "query": "DECLARE @a := :value SELECT * FROM (SELECT @a AS value)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareOperatorPrecedenceTest.java:75",
+    "feature": "bind-variables",
+    "toSql": "DECLARE @a := :value SELECT * FROM (SELECT @a AS value)"
+  },
+  {
+    "query": "SELECT :b0::LONG + 1 AS e0, count() AS a0 FROM t",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupByTest.java:4090",
+    "feature": "bind-variables",
+    "toSql": "SELECT :b0::LONG + 1 AS e0, count() AS a0 FROM t"
+  },
+  {
+    "query": "select * from x where ts in :date and ts != :ts1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IntervalFilterTest.java:224",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM x WHERE ts IN :date AND ts != :ts1"
+  },
+  {
+    "query": "select * from x where ts not in :i",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IntervalFilterTest.java:641",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM x WHERE ts NOT IN :i"
+  },
+  {
+    "query": "select * from y limit :lo,:hi",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:1206",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM y LIMIT :lo, :hi"
+  },
+  {
+    "query": "SELECT count(*) cnt, min(v) mn, max(v) mx FROM (SELECT * FROM x ORDER BY v LIMIT :n)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/OrderByEncodeSortTest.java:642",
+    "feature": "bind-variables",
+    "toSql": "SELECT count(*) AS cnt, min(v) AS mn, max(v) AS mx FROM (SELECT * FROM x ORDER BY v LIMIT :n)"
+  },
+  {
+    "query": "SELECT c0, ts FROM t WHERE NOT ((:b0::BYTE)::DECIMAL(38, 1) >= c0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/ParquetTest.java:789",
+    "feature": "bind-variables",
+    "toSql": "SELECT c0, ts FROM t WHERE NOT ((:b0::BYTE)::DECIMAL(38, 1) >= c0)"
+  },
+  {
+    "query": "SELECT k, mode(l > :b0::INT * 17_161::SHORT) m FROM t ORDER BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/RuntimeConstFunctionTest.java:1114",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, mode(l > :b0::INT * 17_161::SHORT) AS m FROM t ORDER BY k"
+  },
+  {
+    "query": "SELECT * FROM ca SUBSAMPLE minmax(x, :target)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SubsampleWildcardProjectionTest.java:974",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM ca SUBSAMPLE minmax(x, :target)"
+  },
+  {
+    "query": "SELECT sym FROM x WHERE sym ILIKE $1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/regex/ILikeSymbolFunctionFactoryTest.java:78",
+    "feature": "bind-variables",
+    "toSql": "SELECT sym FROM x WHERE sym ILIKE $1"
+  },
+  {
+    "query": "SELECT * FROM t WHERE :b0 LATEST ON ts PARTITION BY c3",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:1280",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM t WHERE :b0 LATEST ON ts PARTITION BY c3"
+  },
+  {
+    "query": "SELECT count() FROM table_cold_partitions(:table_name)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/cold/storage/TableColdPartitionsTest.java:92",
+    "feature": "bind-variables",
+    "toSql": "SELECT count() FROM table_cold_partitions(:table_name)"
+  },
+  {
+    "query": "SELECT arr[1:n] FROM tango",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:488",
+    "feature": "bind-variables",
+    "toSql": "SELECT arr[1:n] FROM tango"
+  },
+  {
+    "query": "SELECT arr[i:j+j-i-i] x FROM tango",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:677",
+    "feature": "bind-variables",
+    "toSql": "SELECT arr[i:j + j - i - i] AS x FROM tango"
   }
 ]

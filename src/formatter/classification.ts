@@ -56,6 +56,7 @@ const literalTokenNames = [
   "QuotedIdentifier",
   "Identifier",
   "VariableReference",
+  "BindVariable",
 ]
 
 export const wordTokenNames: ReadonlySet<string> = new Set([

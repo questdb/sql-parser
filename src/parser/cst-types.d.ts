@@ -496,6 +496,8 @@ export type SampleByClauseCstChildren = {
   By: IToken[];
   DurationLiteral?: IToken[];
   VariableReference?: IToken[];
+  BindVariable?: IToken[];
+  sampleByUnit?: IToken[];
   Identifier?: IToken[];
   groupingSetsSpec?: GroupingSetsSpecCstNode[];
   fromToClause?: FromToClauseCstNode[];
@@ -2672,6 +2674,7 @@ export type PrimaryExpressionCstChildren = {
   functionCall?: FunctionCallCstNode[];
   literal?: LiteralCstNode[];
   VariableReference?: IToken[];
+  BindVariable?: IToken[];
   identifierExpression?: IdentifierExpressionCstNode[];
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];

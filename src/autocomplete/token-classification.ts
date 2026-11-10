@@ -107,6 +107,8 @@ export const SKIP_TOKENS = new Set([
   "BitOr",
   // Variable references (user-defined, can't suggest)
   "VariableReference",
+  // Bind variables ($1, :name)
+  "BindVariable",
   // Literals (don't suggest literal tokens)
   "StringLiteral",
   "NumberLiteral",

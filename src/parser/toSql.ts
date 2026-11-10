@@ -1848,6 +1848,8 @@ function expressionToSql(expr: AST.Expression): string {
       return qualifiedNameToSql(expr.name)
     case "variable":
       return `@${expr.name}`
+    case "bindVariable":
+      return expr.name
     case "literal":
       return literalToSql(expr)
     case "function":
