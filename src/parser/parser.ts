@@ -1880,8 +1880,11 @@ class QuestDBParser extends CstParser {
   private updateStatement = this.RULE("updateStatement", () => {
     this.CONSUME(Update)
     this.SUBRULE(this.tableName)
-    // Optional alias
-    this.OPTION2(() => this.SUBRULE(this.identifier))
+    // Optional alias, with optional AS (SqlParser.parseUpdate)
+    this.OPTION2(() => {
+      this.OPTION3(() => this.CONSUME(As))
+      this.SUBRULE(this.identifier)
+    })
     this.CONSUME(Set)
     this.SUBRULE(this.setClause)
     this.MANY(() => {
@@ -3918,8 +3921,9 @@ class QuestDBParser extends CstParser {
     this.OR([
       {
         ALT: () => {
+          // DROP ALL [TABLES] (SqlCompilerImpl.compileDrop)
           this.CONSUME(All)
-          this.CONSUME(Tables)
+          this.OPTION1(() => this.CONSUME(Tables))
         },
       },
       {
@@ -4374,7 +4378,11 @@ class QuestDBParser extends CstParser {
             },
             { ALT: () => this.CONSUME(PartitionBy) },
           ])
-          this.SUBRULE(this.partitionPeriod)
+          this.OR6([
+            { ALT: () => this.SUBRULE(this.partitionPeriod) },
+            // expectLiteral unquotes: partition_by 'DAY'
+            { ALT: () => this.CONSUME3(StringLiteral) },
+          ])
         },
       },
       {
@@ -4400,6 +4408,8 @@ class QuestDBParser extends CstParser {
             { ALT: () => this.CONSUME(Lz4Raw) },
             { ALT: () => this.CONSUME(Brotli) },
             { ALT: () => this.CONSUME(Lzo) },
+            // expectLiteral unquotes: compression_codec 'zstd'
+            { ALT: () => this.CONSUME2(StringLiteral) },
           ])
         },
       },
@@ -4779,7 +4789,11 @@ class QuestDBParser extends CstParser {
 
   private vacuumTableStatement = this.RULE("vacuumTableStatement", () => {
     this.CONSUME(Vacuum)
-    this.CONSUME(Table)
+    // VACUUM PARTITIONS is the legacy spelling (SqlCompilerImpl.compileVacuum)
+    this.OR([
+      { ALT: () => this.CONSUME(Table) },
+      { ALT: () => this.CONSUME(Partitions) },
+    ])
     this.SUBRULE(this.tableName)
   })
 

@@ -766,6 +766,7 @@ export interface UpdateStatementCstNode extends CstNode {
 export type UpdateStatementCstChildren = {
   Update: IToken[];
   tableName: TableNameCstNode[];
+  As?: IToken[];
   identifier?: IdentifierCstNode[];
   Set: IToken[];
   setClause: (SetClauseCstNode)[];
@@ -2167,7 +2168,7 @@ export type CopyOptionCstChildren = {
   stringOrIdentifier?: (StringOrIdentifierCstNode)[];
   Delimiter?: IToken[];
   Format?: IToken[];
-  StringLiteral?: IToken[];
+  StringLiteral?: (IToken)[];
   identifier?: IdentifierCstNode[];
   Partition?: IToken[];
   By?: IToken[];
@@ -2398,7 +2399,8 @@ export interface VacuumTableStatementCstNode extends CstNode {
 
 export type VacuumTableStatementCstChildren = {
   Vacuum: IToken[];
-  Table: IToken[];
+  Table?: IToken[];
+  Partitions?: IToken[];
   tableName: TableNameCstNode[];
 };
 

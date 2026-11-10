@@ -1875,5 +1875,41 @@
     "feature": "pg-session-statements",
     "toSql": "CLOSE ALL;\nUNLISTEN *;\nRESET ALL",
     "statements": 3
+  },
+  {
+    "query": "DROP ALL",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/DdlListenerTest.java:173",
+    "feature": "misc-statements",
+    "toSql": "DROP ALL TABLES"
+  },
+  {
+    "query": "drop all;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:3561",
+    "feature": "misc-statements",
+    "toSql": "DROP ALL TABLES"
+  },
+  {
+    "query": "update tblx as xx set tt = 1 from tbly y where xx.x = y and x > 10",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserUpdateTest.java:392",
+    "feature": "misc-statements",
+    "toSql": "UPDATE tblx xx SET tt = 1 FROM tbly AS y WHERE xx.x = y AND x > 10"
+  },
+  {
+    "query": "update tblx as xx set tt = 1 from (tbly LIMIT 10) y where xx.x = y and x > 10",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserUpdateTest.java:446",
+    "feature": "misc-statements",
+    "toSql": "UPDATE tblx xx SET tt = 1 FROM (tbly LIMIT 10) AS y WHERE xx.x = y AND x > 10"
+  },
+  {
+    "query": "vacuum partitions tbl",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3PartitionPurgeTest.java:1293",
+    "feature": "misc-statements",
+    "toSql": "VACUUM TABLE tbl"
+  },
+  {
+    "query": "VACUUM partitions \"таблица\";",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/VacuumTablePartitionTest.java:43",
+    "feature": "misc-statements",
+    "toSql": "VACUUM TABLE таблица"
   }
 ]
