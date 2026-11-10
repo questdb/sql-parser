@@ -2061,5 +2061,35 @@
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:674",
     "feature": "ent-view-audit",
     "toSql": "CREATE VIEW view_c AS (SELECT ts, symbol, price FROM trades WHERE symbol = 'MSFT') WITH AUDIT"
+  },
+  {
+    "query": "GRANT CANCEL ANY COPY TO canceller",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/lifecycle/CopyThroughDemoteTest.java:80",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT CANCEL ANY COPY TO canceller"
+  },
+  {
+    "query": "GRANT SET REFRESH LIMIT ON mv TO testUser",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/security/AlterPermissionTest.java:171",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT SET REFRESH LIMIT ON mv TO testUser"
+  },
+  {
+    "query": "GRANT SET MEMORY LIMIT TO granted_sa",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/security/AdminSecurityContextTest.java:139",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT SET MEMORY LIMIT TO granted_sa"
+  },
+  {
+    "query": "grant rename table on test to test_user",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/wal/transfer/ReplicationAclTest.java:260",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT rename table ON test TO test_user"
+  },
+  {
+    "query": "GRANT CANCEL ANY COPY ON my_table TO admin;",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntSqlParserTest.java:1269",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT CANCEL ANY COPY ON my_table TO admin"
   }
 ]

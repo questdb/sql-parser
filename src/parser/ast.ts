@@ -966,6 +966,7 @@ export interface RevokeStatement extends AstNode {
   permissions: string[]
   on?: GrantOnTarget
   from: QualifiedName
+  verification?: boolean
 }
 
 export interface GrantOnTarget extends AstNode {
@@ -988,6 +989,8 @@ export interface GrantAssumeServiceAccountStatement extends AstNode {
   type: "grantAssumeServiceAccount"
   account: QualifiedName
   to: QualifiedName
+  /** All grantees when more than one is listed (`to` is the first) */
+  toList?: QualifiedName[]
   grantOption?: boolean
 }
 
@@ -995,6 +998,8 @@ export interface RevokeAssumeServiceAccountStatement extends AstNode {
   type: "revokeAssumeServiceAccount"
   account: QualifiedName
   from: QualifiedName
+  /** All grantees when more than one is listed (`from` is the first) */
+  fromList?: QualifiedName[]
 }
 
 export interface VacuumTableStatement extends AstNode {

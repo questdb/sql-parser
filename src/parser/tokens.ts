@@ -452,6 +452,11 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Unset",
   // CREATE VIEW ... WITH AUDIT (Enterprise)
   "Audit",
+  // GRANT permission-name words (SQL ENGINE ADMIN, SETTINGS, ...)
+  "Admin",
+  "Engine",
+  "Settings",
+  "Sql",
   "Daily",
   "Expression",
   "Posting",

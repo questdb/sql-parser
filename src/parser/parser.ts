@@ -48,6 +48,7 @@ import {
   On,
   Partition,
   Limit,
+  Any,
   Order,
   Asc,
   Desc,
@@ -4833,14 +4834,19 @@ class QuestDBParser extends CstParser {
     })
     this.CONSUME(To)
     this.SUBRULE(this.qualifiedName)
-    this.OPTION1(() => {
+    // WITH GRANT OPTION / WITH VERIFICATION in either order
+    // (PermissionParser.parse)
+    this.MANY1(() => {
       this.CONSUME(With)
-      this.CONSUME1(Grant)
-      this.CONSUME(Option)
-    })
-    this.OPTION2(() => {
-      this.CONSUME1(With)
-      this.CONSUME(Verification)
+      this.OR1([
+        {
+          ALT: () => {
+            this.CONSUME1(Grant)
+            this.CONSUME(Option)
+          },
+        },
+        { ALT: () => this.CONSUME(Verification) },
+      ])
     })
   })
 
@@ -4869,6 +4875,10 @@ class QuestDBParser extends CstParser {
     })
     this.CONSUME(From)
     this.SUBRULE(this.qualifiedName)
+    this.OPTION1(() => {
+      this.CONSUME(With)
+      this.CONSUME(Verification)
+    })
   })
 
   private permissionList = this.RULE("permissionList", () => {
@@ -4899,6 +4909,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Vacuum) },
       { ALT: () => this.CONSUME(Lock) },
       { ALT: () => this.CONSUME(Set) },
+      { ALT: () => this.CONSUME(Rename) },
     ])
     // Optional second word (for compound permissions like CREATE TABLE, ALTER MATERIALIZED VIEW)
     this.OPTION(() => {
@@ -4918,13 +4929,21 @@ class QuestDBParser extends CstParser {
         // Reserved keywords that are NOT in the identifier rule
         { ALT: () => this.CONSUME(Table) },
         { ALT: () => this.CONSUME(Group) },
+        // CANCEL ANY COPY
+        { ALT: () => this.CONSUME(Any) },
         // Any other keyword/identifier as second word (VIEW, USER, INDEX, COLUMN,
         // DATABASE ADMIN, etc.)
         { ALT: () => this.SUBRULE1(this.identifier) },
       ])
       // Optional third word for 3-word permissions, e.g. SET TABLE FORMAT,
       // SET STORAGE POLICY, SET TABLE TYPE, REMOVE STORAGE POLICY.
-      this.OPTION1(() => this.SUBRULE2(this.identifier))
+      // SET REFRESH LIMIT / SET MEMORY LIMIT end in reserved LIMIT.
+      this.OPTION1(() => {
+        this.OR3([
+          { ALT: () => this.SUBRULE2(this.identifier) },
+          { ALT: () => this.CONSUME(Limit) },
+        ])
+      })
       // Trailing "TO PARQUET|NATIVE" for the CONVERT PARTITION TO {PARQUET|NATIVE}
       // permission names, whose phrase embeds the TO that normally delimits
       // GRANT … TO / REVOKE … FROM. Gated so an ordinary "… TO <grantee>" is
@@ -4990,6 +5009,10 @@ class QuestDBParser extends CstParser {
       this.SUBRULE(this.qualifiedName)
       this.CONSUME(To)
       this.SUBRULE1(this.qualifiedName)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE2(this.qualifiedName)
+      })
       this.OPTION(() => {
         this.CONSUME(With)
         this.CONSUME1(Grant)
@@ -5008,6 +5031,10 @@ class QuestDBParser extends CstParser {
       this.SUBRULE(this.qualifiedName)
       this.CONSUME(From)
       this.SUBRULE1(this.qualifiedName)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE2(this.qualifiedName)
+      })
     },
   )
 

@@ -2386,7 +2386,7 @@ export type GrantStatementCstChildren = {
   Comma?: IToken[];
   To: IToken[];
   qualifiedName: QualifiedNameCstNode[];
-  With?: (IToken)[];
+  With?: IToken[];
   Option?: IToken[];
   Verification?: IToken[];
 };
@@ -2406,6 +2406,8 @@ export type RevokeStatementCstChildren = {
   Comma?: IToken[];
   From: IToken[];
   qualifiedName: QualifiedNameCstNode[];
+  With?: IToken[];
+  Verification?: IToken[];
 };
 
 export interface PermissionListCstNode extends CstNode {
@@ -2440,12 +2442,15 @@ export type PermissionTokenCstChildren = {
   Vacuum?: IToken[];
   Lock?: IToken[];
   Set?: IToken[];
+  Rename?: IToken[];
   Materialized?: IToken[];
   View?: IToken[];
   Service?: IToken[];
   Account?: IToken[];
   Table?: IToken[];
   Group?: IToken[];
+  Any?: IToken[];
+  Limit?: IToken[];
   To?: IToken[];
   Parquet?: IToken[];
   Native?: IToken[];
@@ -2478,6 +2483,7 @@ export type GrantAssumeServiceAccountStatementCstChildren = {
   Account: IToken[];
   qualifiedName: (QualifiedNameCstNode)[];
   To: IToken[];
+  Comma?: IToken[];
   With?: IToken[];
   Option?: IToken[];
 };
@@ -2494,6 +2500,7 @@ export type RevokeAssumeServiceAccountStatementCstChildren = {
   Account: IToken[];
   qualifiedName: (QualifiedNameCstNode)[];
   From: IToken[];
+  Comma?: IToken[];
 };
 
 export interface VacuumTableStatementCstNode extends CstNode {

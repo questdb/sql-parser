@@ -3919,6 +3919,9 @@ class QuestDBVisitor extends BaseVisitor {
       permissions: this.visit(ctx.permissionList) as string[],
       from: this.visit(ctx.qualifiedName) as AST.QualifiedName,
     }
+    if (ctx.Verification) {
+      result.verification = true
+    }
     if (ctx.On) {
       if (ctx.All && ctx.Tables) {
         result.on = { type: "grantOn", allTables: true }
@@ -3991,22 +3994,34 @@ class QuestDBVisitor extends BaseVisitor {
   grantAssumeServiceAccountStatement(
     ctx: GrantAssumeServiceAccountStatementCstChildren,
   ): AST.GrantAssumeServiceAccountStatement {
-    return {
+    const result: AST.GrantAssumeServiceAccountStatement = {
       type: "grantAssumeServiceAccount",
       account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
       to: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
       grantOption: !!ctx.Option,
     }
+    if (ctx.qualifiedName.length > 2) {
+      result.toList = ctx.qualifiedName
+        .slice(1)
+        .map((n) => this.visit(n) as AST.QualifiedName)
+    }
+    return result
   }
 
   revokeAssumeServiceAccountStatement(
     ctx: RevokeAssumeServiceAccountStatementCstChildren,
   ): AST.RevokeAssumeServiceAccountStatement {
-    return {
+    const result: AST.RevokeAssumeServiceAccountStatement = {
       type: "revokeAssumeServiceAccount",
       account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
       from: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
     }
+    if (ctx.qualifiedName.length > 2) {
+      result.fromList = ctx.qualifiedName
+        .slice(1)
+        .map((n) => this.visit(n) as AST.QualifiedName)
+    }
+    return result
   }
 
   // ==========================================================================

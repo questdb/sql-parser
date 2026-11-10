@@ -1747,6 +1747,7 @@ function revokeToSql(stmt: AST.RevokeStatement): string {
   const parts: string[] = [`REVOKE ${stmt.permissions.join(", ")}`]
   if (stmt.on) parts.push(grantOnTargetToSql(stmt.on))
   parts.push(`FROM ${qualifiedNameToSql(stmt.from)}`)
+  if (stmt.verification) parts.push("WITH VERIFICATION")
   return parts.join(" ")
 }
 
@@ -1754,7 +1755,7 @@ function grantAssumeToSql(
   stmt: AST.GrantAssumeServiceAccountStatement,
 ): string {
   const parts: string[] = [
-    `GRANT ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} TO ${qualifiedNameToSql(stmt.to)}`,
+    `GRANT ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} TO ${(stmt.toList ?? [stmt.to]).map(qualifiedNameToSql).join(", ")}`,
   ]
   if (stmt.grantOption) parts.push("WITH GRANT OPTION")
   return parts.join(" ")
@@ -1763,7 +1764,7 @@ function grantAssumeToSql(
 function revokeAssumeToSql(
   stmt: AST.RevokeAssumeServiceAccountStatement,
 ): string {
-  return `REVOKE ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} FROM ${qualifiedNameToSql(stmt.from)}`
+  return `REVOKE ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} FROM ${(stmt.fromList ?? [stmt.from]).map(qualifiedNameToSql).join(", ")}`
 }
 
 // =============================================================================

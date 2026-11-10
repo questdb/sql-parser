@@ -882,6 +882,90 @@ function contextFunctionSuggestions(
   return inSubsample ? [...SUBSAMPLE_METHODS] : []
 }
 
+// Enterprise permission names (Permission.java namePermissionMap)
+export const PERMISSION_NAMES: readonly string[] = [
+  "ALL",
+  "SELECT",
+  "INSERT",
+  "UPDATE",
+  "CREATE TABLE",
+  "DROP TABLE",
+  "RENAME TABLE",
+  "TRUNCATE TABLE",
+  "ADD COLUMN",
+  "DROP COLUMN",
+  "RENAME COLUMN",
+  "ALTER COLUMN TYPE",
+  "ALTER COLUMN CACHE",
+  "ALTER SYMBOL CAPACITY",
+  "ADD INDEX",
+  "DROP INDEX",
+  "REINDEX",
+  "ATTACH PARTITION",
+  "DETACH PARTITION",
+  "DROP PARTITION",
+  "SET TABLE PARAM",
+  "SET TABLE TYPE",
+  "SET TABLE FORMAT",
+  "RESUME WAL",
+  "CREATE GROUP",
+  "DROP GROUP",
+  "CREATE USER",
+  "DROP USER",
+  "CREATE SERVICE ACCOUNT",
+  "DROP SERVICE ACCOUNT",
+  "ADD USER",
+  "REMOVE USER",
+  "CANCEL ANY COPY",
+  "BACKUP TABLE",
+  "BACKUP DATABASE",
+  "SNAPSHOT",
+  "VACUUM TABLE",
+  "ENABLE USER",
+  "DISABLE USER",
+  "ADD PASSWORD",
+  "REMOVE PASSWORD",
+  "ADD EXTERNAL ALIAS",
+  "REMOVE EXTERNAL ALIAS",
+  "CREATE JWK",
+  "DROP JWK",
+  "CREATE REST TOKEN",
+  "DROP REST TOKEN",
+  "LIST USERS",
+  "USER DETAILS",
+  "DEDUP ENABLE",
+  "DEDUP DISABLE",
+  "HTTP",
+  "PGWIRE",
+  "ILP",
+  "SQL ENGINE ADMIN",
+  "SYSTEM ADMIN",
+  "CREATE MATERIALIZED VIEW",
+  "DROP MATERIALIZED VIEW",
+  "REFRESH MATERIALIZED VIEW",
+  "SETTINGS",
+  "DATABASE ADMIN",
+  "AUDIT VIEW",
+  "CREATE VIEW",
+  "DROP VIEW",
+  "CREATE LIVE VIEW",
+  "DROP LIVE VIEW",
+  "COMPILE VIEW",
+  "ALTER VIEW",
+  "SET REFRESH LIMIT",
+  "SET REFRESH TYPE",
+  "CONVERT PARTITION TO PARQUET",
+  "CONVERT PARTITION TO NATIVE",
+  "SET PARQUET SETTINGS",
+  "SET STORAGE POLICY",
+  "REMOVE STORAGE POLICY",
+  "ENABLE STORAGE POLICY",
+  "DISABLE STORAGE POLICY",
+  "SWITCH ROLE",
+  "SET MEMORY LIMIT",
+  "RESOURCE GROUP ADMIN",
+]
+
 // Category names valid inside SHOW CREATE DATABASE (INCLUDE|EXCLUDE) ( ... ).
 // The grammar consumes these via `identifier` (they are non-reserved), so only
 // the explicit `ALL` token surfaces on its own; re-inject the rest.
@@ -922,27 +1006,21 @@ function contextKeywordSuggestions(
     idKeywordStacks.some((stack) => stack.includes(r))
 
   const last = tokens[tokens.length - 1]?.tokenType.name
-  const prev = tokens[tokens.length - 2]?.tokenType.name
   const out = new Set<string>()
 
-  // GRANT / REVOKE permission phrases whose words route through `identifier`:
-  //   CONVERT PARTITION [TO PARQUET|NATIVE], SET TABLE FORMAT, SET TABLE TYPE,
-  //   SET STORAGE POLICY, REMOVE STORAGE POLICY.
-  // (SET / TABLE / TO / PARQUET / NATIVE at their spots are explicit CONSUMEs
-  // and already surface; we only add the identifier-path words.)
+  // GRANT / REVOKE permission phrases: the grammar takes any 1-3 words (most
+  // via `identifier`), so offer the next word of every server permission name
+  // that extends the words typed so far in the current list item.
   if (inRule("permissionToken")) {
-    if (last === "Grant" || last === "Revoke") {
-      out.add("CONVERT")
-      out.add("REMOVE")
-    } else if (last === "Convert") {
-      out.add("PARTITION")
-    } else if (last === "Set" || last === "Remove") {
-      out.add("STORAGE")
-    } else if (last === "Table" && prev === "Set") {
-      out.add("FORMAT")
-      out.add("TYPE")
-    } else if (last === "Storage" && (prev === "Set" || prev === "Remove")) {
-      out.add("POLICY")
+    const words: string[] = []
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      const name = tokens[i].tokenType.name
+      if (name === "Grant" || name === "Revoke" || name === "Comma") break
+      words.unshift(tokens[i].image.toUpperCase())
+    }
+    const prefix = words.length > 0 ? words.join(" ") + " " : ""
+    for (const perm of PERMISSION_NAMES) {
+      if (perm.startsWith(prefix)) out.add(perm.split(" ")[words.length])
     }
   }
 
@@ -1065,6 +1143,10 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
         (s.nextTokenType.name === "Is" ||
           s.nextTokenType.name === "Ilike" ||
           s.nextTokenType.name === "Declare")) ||
+      // ANY only continues CANCEL in permission names (CANCEL ANY COPY)
+      (s.nextTokenType.name === "Any" &&
+        s.ruleStack[s.ruleStack.length - 1] === "permissionToken" &&
+        tokens[tokens.length - 1]?.tokenType.name !== "Cancel") ||
       // INCREMENTAL is an obsolete synonym of IMMEDIATE in REFRESH modes
       (s.nextTokenType.name === "Incremental" &&
         s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh")
