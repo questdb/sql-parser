@@ -1305,12 +1305,84 @@ function matchingParen(tokens: IToken[], open: number): number {
 }
 
 /**
+ * Output columns of a query, as a scope for a key-column slot:
+ *  - named items (aliases, column names) become columns of the output;
+ *  - `*` / `t.*` resolve through sub-queries in FROM / JOIN to their output
+ *    names, and down to the physical tables at the bottom, whose columns
+ *    come from the schema.
+ */
+function queryOutput(
+  query: Record<string, unknown>,
+  depth = 0,
+): { columns: { name: string; type: string }[]; tables: TableRef[] } {
+  const items = Array.isArray(query.columns) ? query.columns : []
+  const columns = extractCteColumnNames(items)
+  const tables: TableRef[] = []
+  const hasStar = items.some((c) => {
+    const t = (c as { type?: string } | null)?.type
+    return t === "star" || t === "qualifiedStar"
+  })
+  if (!hasStar || depth > 8) return { columns, tables }
+  const sources: unknown[] = []
+  for (const ref of Array.isArray(query.from) ? query.from : []) {
+    const r = ref as { table?: unknown; joins?: { table?: unknown }[] }
+    sources.push(r.table)
+    for (const join of r.joins ?? []) sources.push(join.table)
+  }
+  for (const source of sources) {
+    const src = source as Record<string, unknown> | undefined
+    if (!src) continue
+    if (src.type === "select") {
+      const inner = queryOutput(src, depth + 1)
+      columns.push(...inner.columns)
+      tables.push(...inner.tables)
+    } else {
+      const name = normalizeTableName(src)
+      if (name) tables.push({ table: name })
+    }
+  }
+  return { columns, tables }
+}
+
+/** Scope for a key-column slot from the query text between `first` and `last`. */
+function queryOutputScope(
+  body: IToken[],
+  fullSql: string,
+  scopeName: string,
+):
+  | {
+      tables: TableRef[]
+      columns: Record<string, { name: string; type: string }[]>
+    }
+  | undefined {
+  if (body.length === 0) return undefined
+  const last = body[body.length - 1]
+  const sql = fullSql.substring(
+    body[0].startOffset,
+    last.startOffset + last.image.length,
+  )
+  let ast: Statement[]
+  try {
+    ast = visitor.visit(parseRaw(sql).cst) as Statement[]
+  } catch {
+    return undefined
+  }
+  const query = ast[0] as unknown as Record<string, unknown> | undefined
+  if (!query || query.type !== "select") return undefined
+  const out = queryOutput(query)
+  return {
+    tables: [{ table: scopeName }, ...out.tables],
+    columns: { [scopeName.toLowerCase()]: out.columns },
+  }
+}
+
+/**
  * Columns for a DEDUP KEYS / EXPIRE ROWS KEEP column slot, which must name a
  * column of the table or view being defined or altered (the server resolves
- * them against the new table's columns / the view's SELECT output):
- *  - CREATE TABLE: the column definitions of the statement;
- *  - CREATE MATERIALIZED VIEW: the view query's output names (aliases); a `*`
- *    adds the query's tables;
+ * them against the new table's columns / the query's output metadata):
+ *  - CREATE TABLE (cols ...): the column definitions of the statement;
+ *  - CREATE TABLE ... AS (query) and CREATE MATERIALIZED VIEW: the query's
+ *    output (see queryOutput);
  *  - ALTER TABLE / ALTER MATERIALIZED VIEW: the target, already in scope.
  * Returns undefined when the default scope applies.
  */
@@ -1324,23 +1396,51 @@ function keyColumnScope(
       columns: Record<string, { name: string; type: string }[]>
     }
   | undefined {
+  // The query after AS: `AS ( query )` or an unparenthesized query that ends
+  // before the clause the slot belongs to.
+  const queryAfter = (as: number, stopAt: string): IToken[] => {
+    let start = as + 1
+    let end: number
+    if (statementTokens[start]?.tokenType.name === "LParen") {
+      end = matchingParen(statementTokens, start)
+      start++
+    } else {
+      end = statementTokens.findIndex(
+        (t, i) => i > as && t.tokenType.name === stopAt,
+      )
+      if (end < 0) end = statementTokens.length
+    }
+    return statementTokens.slice(start, end)
+  }
+
   if (ruleStack.includes("createTableBody")) {
-    // CREATE [ATOMIC] TABLE name ( col type ..., ... )
-    const open = statementTokens.findIndex((t) => t.tokenType.name === "LParen")
-    if (open < 0) return undefined
-    const close = matchingParen(statementTokens, open)
+    const table = statementTokens.findIndex((t) => t.tokenType.name === "Table")
+    // Whichever comes first after TABLE <name>: `(` (columns) or AS (CTAS)
+    const next = statementTokens.findIndex(
+      (t, i) =>
+        i > table &&
+        (t.tokenType.name === "LParen" || t.tokenType.name === "As"),
+    )
+    if (table < 0 || next < 0) return undefined
+    if (statementTokens[next].tokenType.name === "As") {
+      return queryOutputScope(
+        queryAfter(next, "Timestamp"),
+        fullSql,
+        DECLARED_COLUMNS_SCOPE,
+      )
+    }
+    const close = matchingParen(statementTokens, next)
     const cols: { name: string; type: string }[] = []
     let depth = 0
     let expectName = true
-    for (let i = open + 1; i < close; i++) {
+    for (let i = next + 1; i < close; i++) {
       const name = statementTokens[i].tokenType.name
       if (name === "LParen") depth++
       else if (name === "RParen") depth--
       else if (depth === 0 && name === "Comma") expectName = true
       else if (depth === 0 && expectName) {
         expectName = false
-        // CTAS / LIKE bodies have no column definitions
-        if (name === "Select" || name === "Like" || name === "With") break
+        if (name === "Like") return undefined // CREATE TABLE t (LIKE x)
         cols.push({ name: namePart(statementTokens[i]), type: "" })
       }
     }
@@ -1351,46 +1451,13 @@ function keyColumnScope(
     }
   }
   if (ruleStack.includes("createMaterializedViewBody")) {
-    // ... AS [(] <query> [)] ... EXPIRE ROWS
     const as = statementTokens.findIndex((t) => t.tokenType.name === "As")
     if (as < 0) return undefined
-    let start = as + 1
-    let end: number
-    if (statementTokens[start]?.tokenType.name === "LParen") {
-      end = matchingParen(statementTokens, start)
-      start++
-    } else {
-      end = statementTokens.findIndex(
-        (t, i) => i > as && t.tokenType.name === "Expire",
-      )
-      if (end < 0) end = statementTokens.length
-    }
-    const body = statementTokens.slice(start, end)
-    if (body.length === 0) return undefined
-    const last = body[body.length - 1]
-    const sql = fullSql.substring(
-      body[0].startOffset,
-      last.startOffset + last.image.length,
+    return queryOutputScope(
+      queryAfter(as, "Expire"),
+      fullSql,
+      VIEW_OUTPUT_SCOPE,
     )
-    let ast: Statement[]
-    try {
-      ast = visitor.visit(parseRaw(sql).cst) as Statement[]
-    } catch {
-      return undefined
-    }
-    const query = ast[0] as { type?: string; columns?: unknown[] } | undefined
-    if (!query || query.type !== "select" || !query.columns) return undefined
-    const cols = extractCteColumnNames(query.columns)
-    const tables: TableRef[] = [{ table: VIEW_OUTPUT_SCOPE }]
-    const hasStar = query.columns.some((c) => {
-      const t = (c as { type?: string } | null)?.type
-      return t === "star" || t === "qualifiedStar"
-    })
-    if (hasStar) tables.push(...extractTablesFromAst(query).tables)
-    return {
-      tables,
-      columns: { [VIEW_OUTPUT_SCOPE.toLowerCase()]: cols },
-    }
   }
   return undefined
 }

@@ -116,3 +116,49 @@ describe("key column scope", () => {
     expect(labels).not.toContain("other")
   })
 })
+
+// PR #42 review: resolve the output columns of CTAS and nested queries.
+describe("key column scope: CTAS and nested queries", () => {
+  const p = createAutocompleteProvider({
+    tables: [{ name: "base" }, { name: "other" }],
+    columns: {
+      base: [
+        { name: "k", type: "SYMBOL" },
+        { name: "v", type: "DOUBLE" },
+        { name: "ts", type: "TIMESTAMP" },
+      ],
+      other: [{ name: "wrong", type: "INT" }],
+    },
+  })
+  const l = (sql: string) =>
+    p.getSuggestions(sql, sql.length).map((s) => s.label)
+
+  it("CTAS with aliases offers the query's output names", () => {
+    const labels = l(
+      "CREATE TABLE out AS (SELECT ts, k AS output_k FROM base) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS( ",
+    )
+    expect(labels).toEqual(expect.arrayContaining(["ts", "output_k"]))
+    expect(labels).not.toContain("k")
+    expect(labels).not.toContain("v")
+    expect(labels).not.toContain("wrong")
+  })
+
+  it("CTAS over a bare table offers that table's columns", () => {
+    const labels = l(
+      "CREATE TABLE out AS (base) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS( ",
+    )
+    expect(labels).toEqual(expect.arrayContaining(["ts", "v", "k"]))
+    expect(labels).not.toContain("base")
+    expect(labels).not.toContain("wrong")
+  })
+
+  it.each([
+    "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM (SELECT k AS out_k, v AS out_v, ts FROM base)) EXPIRE ROWS KEEP HIGHEST ON ",
+    "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM (SELECT k AS out_k, v AS out_v, ts FROM base)) EXPIRE ROWS KEEP HIGHEST ON out_v PARTITION BY ",
+  ])("SELECT * over a sub-query uses its output names: %s", (sql) => {
+    const labels = l(sql)
+    expect(labels).toEqual(expect.arrayContaining(["ts", "out_v", "out_k"]))
+    expect(labels).not.toContain("k")
+    expect(labels).not.toContain("v")
+  })
+})
