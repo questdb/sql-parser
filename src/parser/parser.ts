@@ -2364,10 +2364,7 @@ class QuestDBParser extends CstParser {
         {
           ALT: () => {
             this.CONSUME1(Password)
-            this.OR1([
-              { ALT: () => this.CONSUME(StringLiteral) },
-              { ALT: () => this.SUBRULE1(this.identifier) },
-            ])
+            this.SUBRULE1(this.passwordValue)
           },
         },
       ])
@@ -2408,10 +2405,7 @@ class QuestDBParser extends CstParser {
           {
             ALT: () => {
               this.CONSUME(Password)
-              this.OR1([
-                { ALT: () => this.CONSUME(StringLiteral) },
-                { ALT: () => this.SUBRULE1(this.identifier) },
-              ])
+              this.SUBRULE1(this.passwordValue)
             },
           },
           {
@@ -3301,13 +3295,7 @@ class QuestDBParser extends CstParser {
             {
               ALT: () => {
                 this.CONSUME1(Password)
-                // parsePassword: any token, unquoted (`null`, pw, 'pw')
-                this.OR6([
-                  { ALT: () => this.CONSUME(StringLiteral) },
-                  { ALT: () => this.CONSUME(Null) },
-                  { ALT: () => this.CONSUME(NumberLiteral) },
-                  { ALT: () => this.SUBRULE(this.identifier) },
-                ])
+                this.SUBRULE(this.passwordValue)
               },
             },
           ])
@@ -6281,6 +6269,18 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(True) },
       { ALT: () => this.CONSUME(False) },
+    ])
+  })
+
+  // Password value: the server reads any token, unquoted and case-sensitive
+  // (EntSqlCompilerImpl.parsePassword): 'pw', pw, null, 1234. Its own rule so
+  // the formatter treats it as a value and never capitalizes it.
+  private passwordValue = this.RULE("passwordValue", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(StringLiteral) },
+      { ALT: () => this.CONSUME(Null) },
+      { ALT: () => this.CONSUME(NumberLiteral) },
+      { ALT: () => this.SUBRULE(this.identifier) },
     ])
   })
 

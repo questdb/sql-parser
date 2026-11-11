@@ -146,3 +146,19 @@ describe("docs corpus, capitalized", () => {
     },
   )
 })
+
+// PR #42 review: an unquoted password is case-sensitive text on the server
+// (EntSqlCompilerImpl.parsePassword), so capitalizing must not change it.
+describe("capitalize leaves unquoted password values alone", () => {
+  it.each([
+    "ALTER USER u WITH PASSWORD null",
+    "ALTER SERVICE ACCOUNT sa WITH PASSWORD select",
+    "alter user u with password abc",
+    "CREATE USER u WITH PASSWORD null",
+  ])("%s", (sql) => {
+    const out = format(sql, { capitalize: true })
+    const value = sql.split(/password /i)[1]
+    expect(out.endsWith(` ${value}`)).toBe(true)
+    expect(out).toMatch(/PASSWORD /)
+  })
+})

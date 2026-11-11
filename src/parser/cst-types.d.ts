@@ -981,8 +981,7 @@ export type CreateUserStatementCstChildren = {
   With?: IToken[];
   No?: IToken[];
   Password?: (IToken)[];
-  StringLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  passwordValue?: PasswordValueCstNode[];
 };
 
 export interface CreateGroupStatementCstNode extends CstNode {
@@ -1016,8 +1015,7 @@ export type CreateServiceAccountStatementCstChildren = {
   qualifiedName: QualifiedNameCstNode[];
   With?: IToken[];
   Password?: (IToken)[];
-  StringLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  passwordValue?: PasswordValueCstNode[];
   No?: IToken[];
   Owned?: IToken[];
   By?: IToken[];
@@ -1590,10 +1588,7 @@ export type AlterUserActionCstChildren = {
   With?: (IToken)[];
   No?: IToken[];
   Password?: (IToken)[];
-  StringLiteral?: (IToken)[];
-  Null?: IToken[];
-  NumberLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  passwordValue?: PasswordValueCstNode[];
   Create?: IToken[];
   Token?: (IToken)[];
   Type?: (IToken)[];
@@ -1601,6 +1596,7 @@ export type AlterUserActionCstChildren = {
   Public?: IToken[];
   Key?: IToken[];
   Identifier?: (IToken)[];
+  StringLiteral?: (IToken)[];
   Rest?: (IToken)[];
   Ttl?: IToken[];
   DurationLiteral?: IToken[];
@@ -3307,6 +3303,18 @@ export type BooleanLiteralCstChildren = {
   False?: IToken[];
 };
 
+export interface PasswordValueCstNode extends CstNode {
+  name: "passwordValue";
+  children: PasswordValueCstChildren;
+}
+
+export type PasswordValueCstChildren = {
+  StringLiteral?: IToken[];
+  Null?: IToken[];
+  NumberLiteral?: IToken[];
+  identifier?: IdentifierCstNode[];
+};
+
 export interface StringOrIdentifierCstNode extends CstNode {
   name: "stringOrIdentifier";
   children: StringOrIdentifierCstChildren;
@@ -3611,6 +3619,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   windowFrameBound(children: WindowFrameBoundCstChildren, param?: IN): OUT;
   literal(children: LiteralCstChildren, param?: IN): OUT;
   booleanLiteral(children: BooleanLiteralCstChildren, param?: IN): OUT;
+  passwordValue(children: PasswordValueCstChildren, param?: IN): OUT;
   stringOrIdentifier(children: StringOrIdentifierCstChildren, param?: IN): OUT;
   stringOrQualifiedName(children: StringOrQualifiedNameCstChildren, param?: IN): OUT;
   intervalValue(children: IntervalValueCstChildren, param?: IN): OUT;

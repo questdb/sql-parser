@@ -3,8 +3,12 @@ import { keywordTokenArray } from "../parser/tokens"
 
 const keywordNames = new Set(keywordTokenArray.map((token) => token.name))
 
-/** The grammar rule through which any word becomes a name. */
-const IDENTIFIER_RULE = "identifier"
+/**
+ * Grammar rules whose words are names or values, never syntax: `identifier`
+ * (any word becomes a name) and `passwordValue` (an unquoted password is
+ * case-sensitive text on the server).
+ */
+const NAME_RULES: ReadonlySet<string> = new Set(["identifier", "passwordValue"])
 
 type CstNode = { name?: string; children?: Record<string, unknown[]> }
 type CstToken = { startOffset?: number; tokenType?: { name: string } }
@@ -25,7 +29,8 @@ const collect = (
   }
 
   const rule = node as CstNode
-  const namesSomething = insideName || rule.name === IDENTIFIER_RULE
+  const namesSomething =
+    insideName || (rule.name !== undefined && NAME_RULES.has(rule.name))
   for (const children of Object.values(rule.children ?? {})) {
     for (const child of children) collect(child, namesSomething, offsets)
   }

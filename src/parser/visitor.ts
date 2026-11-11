@@ -194,6 +194,7 @@ import type {
   StatementCstChildren,
   StatementsCstChildren,
   StringOrIdentifierCstChildren,
+  PasswordValueCstChildren,
   StringOrIdentifierCstNode,
   StringOrQualifiedNameCstChildren,
   TableFunctionCallCstChildren,
@@ -2036,12 +2037,8 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.No) {
       result.noPassword = true
     }
-    if (ctx.Password) {
-      if (ctx.StringLiteral) {
-        result.password = unquoteSingle(ctx.StringLiteral[0].image)
-      } else if (ctx.identifier) {
-        result.password = this.extractIdentifierName(ctx.identifier[0].children)
-      }
+    if (ctx.Password && ctx.passwordValue) {
+      result.password = this.visit(ctx.passwordValue) as string
     }
     return result
   }
@@ -2073,12 +2070,8 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.No) {
       result.noPassword = true
     }
-    if (ctx.Password && !ctx.No) {
-      if (ctx.StringLiteral) {
-        result.password = unquoteSingle(ctx.StringLiteral[0].image)
-      } else if (ctx.identifier) {
-        result.password = this.extractIdentifierName(ctx.identifier[0].children)
-      }
+    if (ctx.Password && !ctx.No && ctx.passwordValue) {
+      result.password = this.visit(ctx.passwordValue) as string
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
       result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
@@ -2809,13 +2802,9 @@ class QuestDBVisitor extends BaseVisitor {
       return { actionType: "disable" }
     }
     if (ctx.Password || ctx.No) {
-      let password: string | undefined
-      if (ctx.StringLiteral)
-        password = unquoteSingle(ctx.StringLiteral[0].image)
-      else if (ctx.Null) password = ctx.Null[0].image
-      else if (ctx.NumberLiteral) password = ctx.NumberLiteral[0].image
-      else if (ctx.identifier)
-        password = this.extractIdentifierName(ctx.identifier[0].children)
+      const password = ctx.passwordValue
+        ? (this.visit(ctx.passwordValue) as string)
+        : undefined
       return {
         actionType: "password",
         noPassword: !!ctx.No,
@@ -5435,6 +5424,13 @@ class QuestDBVisitor extends BaseVisitor {
     const str = node.children.StringLiteral
     if (str) return unquoteSingle(str[0].image)
     return this.visit(node) as string
+  }
+
+  passwordValue(ctx: PasswordValueCstChildren): string {
+    if (ctx.StringLiteral) return unquoteSingle(ctx.StringLiteral[0].image)
+    if (ctx.Null) return ctx.Null[0].image
+    if (ctx.NumberLiteral) return ctx.NumberLiteral[0].image
+    return this.extractIdentifierName(ctx.identifier![0].children)
   }
 
   stringOrIdentifier(ctx: StringOrIdentifierCstChildren): string {
