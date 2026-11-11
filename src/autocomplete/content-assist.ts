@@ -861,8 +861,8 @@ interface ComputeResult extends CategoryFlags {
   isConditionContext: boolean
   contextKeywords: string[]
   contextFunctions: string[]
-  /** Rule stack when the cursor is in a DEDUP KEYS / EXPIRE ROWS column slot */
-  keyColumnRuleStack?: string[]
+  /** Rule stack for columns bound to the object being created or altered. */
+  objectColumnRuleStack?: string[]
 }
 
 // SUBSAMPLE methods (questdb/questdb#7013). The grammar reads the method
@@ -1151,6 +1151,22 @@ function quietExpressionAnchor(ruleStack: string[]): string | undefined {
   return undefined
 }
 
+/** A policy expression binds to view output; a SELECT nested in it has its own scope. */
+function isExpiryPredicatePath(ruleStack: string[]): boolean {
+  const expiry = ruleStack.lastIndexOf("expireRowsClause")
+  if (
+    expiry < 0 ||
+    !ruleStack.slice(expiry + 1).includes("identifierExpression")
+  )
+    return false
+  return !ruleStack
+    .slice(expiry + 1)
+    .some(
+      (rule) =>
+        rule === "selectStatement" || rule === "implicitSelectStatement",
+    )
+}
+
 /**
  * Compute content assist suggestions, handling CTE context specially.
  *
@@ -1311,10 +1327,10 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   if (fillOperandStart) contextKeywords.push("PREV", "LINEAR", "NONE")
   const contextFunctions = contextFunctionSuggestions(tokens, suggestions)
 
-  const keyColumnRuleStack = suggestions.find(
+  const objectColumnRuleStack = suggestions.find(
     (s) =>
       s.nextTokenType.name === "IdentifierKeyword" &&
-      s.ruleStack.includes("keyColumn"),
+      (s.ruleStack.includes("keyColumn") || isExpiryPredicatePath(s.ruleStack)),
   )?.ruleStack
 
   return {
@@ -1323,7 +1339,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
     isConditionContext,
     contextKeywords,
     contextFunctions,
-    keyColumnRuleStack,
+    objectColumnRuleStack,
   }
 }
 
@@ -1341,9 +1357,17 @@ export const KEY_COLUMN_SCOPES: ReadonlySet<string> = new Set([
 ])
 
 function namePart(token: IToken): string {
-  return token.tokenType.name === "QuotedIdentifier"
-    ? token.image.slice(1, -1).replace(/""/g, '"')
-    : token.image
+  if (
+    token.tokenType.name === "QuotedIdentifier" ||
+    token.tokenType.name === "StringLiteral"
+  ) {
+    const quote = token.image[0]
+    return token.image
+      .slice(1, -1)
+      .split(quote + quote)
+      .join(quote)
+  }
+  return token.image
 }
 
 /** Index of the `)` that closes the `(` at `open` (or tokens.length). */
@@ -1476,16 +1500,17 @@ function queryOutputScope(
 }
 
 /**
- * Columns for a DEDUP KEYS / EXPIRE ROWS KEEP column slot, which must name a
+ * Scope for DEDUP keys and EXPIRE ROWS KEEP / WHEN columns. These name a
  * column of the table or view being defined or altered (the server resolves
  * them against the new table's columns / the query's output metadata):
  *  - CREATE TABLE (cols ...): the column definitions of the statement;
  *  - CREATE TABLE ... AS (query) and CREATE MATERIALIZED VIEW: the query's
  *    output (see queryOutput);
- *  - ALTER TABLE / ALTER MATERIALIZED VIEW: the target, already in scope.
+ *  - ALTER MATERIALIZED VIEW: the named target, even with an unfinished policy;
+ *  - ALTER TABLE: the target, already in scope.
  * Returns undefined when the default scope applies.
  */
-function keyColumnScope(
+function objectColumnScope(
   ruleStack: string[],
   statementTokens: IToken[],
   fullSql: string,
@@ -1547,6 +1572,22 @@ function keyColumnScope(
     return {
       tables: [{ table: DECLARED_COLUMNS_SCOPE }],
       columns: { [DECLARED_COLUMNS_SCOPE.toLowerCase()]: cols },
+    }
+  }
+  if (ruleStack.includes("alterMaterializedViewStatement")) {
+    const view = statementTokens.findIndex((t) => t.tokenType.name === "View")
+    let target = view + 1
+    if (view < 0 || !statementTokens[target]) return undefined
+    while (statementTokens[target + 1]?.tokenType.name === "Dot") target += 2
+    if (!statementTokens[target]) return undefined
+    return {
+      // The placeholder also disables global fallback when schema metadata
+      // for the target is unavailable.
+      tables: [
+        { table: VIEW_OUTPUT_SCOPE },
+        { table: namePart(statementTokens[target]) },
+      ],
+      columns: { [VIEW_OUTPUT_SCOPE.toLowerCase()]: [] },
     }
   }
   if (ruleStack.includes("createMaterializedViewBody")) {
@@ -1739,10 +1780,10 @@ export function getContentAssist(
   let isConditionContext = false
   let contextKeywords: string[] = []
   let contextFunctions: string[] = []
-  let keyColumnRuleStack: string[] | undefined
+  let objectColumnRuleStack: string[] | undefined
   try {
     const computed = computeSuggestions(tokensForAssist)
-    keyColumnRuleStack = computed.keyColumnRuleStack
+    objectColumnRuleStack = computed.objectColumnRuleStack
     nextTokenTypes = computed.nextTokenTypes
     suggestColumns = computed.suggestColumns
     suggestTables = computed.suggestTables
@@ -1806,21 +1847,25 @@ export function getContentAssist(
     }
   }
 
-  // DEDUP KEYS / EXPIRE ROWS column slots name a column of the object being
-  // defined: scope them to its declared columns / the view's output.
-  if (keyColumnRuleStack) {
+  // DEDUP keys and retention expressions bind against the object being
+  // defined or altered, rather than the defining SELECT's source tables.
+  if (objectColumnRuleStack) {
     let start = 0
     for (let j = 0; j < tokensForAssist.length; j++) {
       if (tokensForAssist[j].tokenType.name === "Semicolon") start = j + 1
     }
-    const scope = keyColumnScope(
-      keyColumnRuleStack,
+    const scope = objectColumnScope(
+      objectColumnRuleStack,
       tokensForAssist.slice(start),
       fullSql,
     )
     if (scope) {
       tablesInScope.splice(0, tablesInScope.length, ...scope.tables)
       Object.assign(cteColumns, scope.columns)
+      // Policy expressions can suggest functions, but table names and the
+      // synthetic output scope are not operands. Nested SELECT paths retain
+      // their ordinary table suggestions.
+      if (isExpiryPredicatePath(objectColumnRuleStack)) suggestTables = false
     }
   }
 
