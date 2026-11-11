@@ -371,3 +371,40 @@ describe("slice bounds that end a value", () => {
     )
   })
 })
+
+// PR #42 follow-up review: the slice rule must look at the innermost open
+// delimiter, and WHEN / THEN / ELSE are CASE words only inside an open CASE.
+describe("slice vs bind decided by the innermost delimiter", () => {
+  it.each([
+    "SELECT ARRAY[row_number() OVER (PARTITION BY :k)] FROM t",
+    "SELECT arr[row_number() OVER (PARTITION BY :k)] FROM t",
+    "SELECT arr[f(:a)] FROM t",
+  ])("bind inside parentheses within brackets: %s", (sql) => {
+    expect(tokenTypes(sql).some((t) => t.startsWith("BindVariable::"))).toBe(
+      true,
+    )
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+  })
+
+  it.each([
+    "SELECT arr[when:n] FROM t",
+    "SELECT arr[then:n] FROM t",
+    "SELECT arr[else :n] FROM t",
+    "SELECT arr[by:n] FROM t",
+  ])("keyword-named slice bound outside CASE: %s", (sql) => {
+    expect(tokenTypes(sql)).toContain("Colon::")
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+  })
+
+  it("keeps CASE binds inside brackets", () => {
+    const sql = "SELECT arr[CASE WHEN x THEN :lo ELSE :hi END:n] FROM t"
+    expect(tokenTypes(sql)).toEqual(
+      expect.arrayContaining(["BindVariable::lo", "BindVariable::hi"]),
+    )
+    expect(parseToAst(sql).errors).toEqual([])
+  })
+})

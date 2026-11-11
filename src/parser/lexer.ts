@@ -894,6 +894,7 @@ function endsOperand(
   prev: IToken,
   colonOffset: number,
   insideBrackets: boolean,
+  openCase: boolean,
 ): boolean {
   const type = prev.tokenType
   if (COMPLETED_OPERAND_TOKEN_NAMES.has(type.name)) return true
@@ -905,7 +906,8 @@ function endsOperand(
   // Inside brackets a clause-named column (`arr[left:n]`, `arr[window :n]`)
   // is an operand too; only CASE control words keep a following bind
   // variable (`THEN :lo`, `ELSE :hi`).
-  if (insideBrackets) return !CASE_CONTROL_TOKEN_NAMES.has(type.name)
+  if (insideBrackets)
+    return !(openCase && CASE_CONTROL_TOKEN_NAMES.has(type.name))
   return (
     prev.endOffset !== undefined &&
     prev.endOffset + 1 === colonOffset &&
@@ -913,17 +915,33 @@ function endsOperand(
   )
 }
 
-function isInsideBrackets(tokens: IToken[]): boolean {
+/**
+ * Slice context of a `:` — whether the innermost open delimiter is `[`, and
+ * whether a CASE opened after that `[` is still open. Inside `(...)` (even
+ * within brackets, e.g. `arr[f() OVER (PARTITION BY :k)]`) the ordinary rule
+ * applies.
+ */
+function sliceContext(tokens: IToken[]): {
+  insideBrackets: boolean
+  openCase: boolean
+} {
   let depth = 0
+  let caseBalance = 0
   for (let i = tokens.length - 1; i >= 0; i--) {
     const name = tokens[i].tokenType.name
-    if (name === "RBracket") depth++
-    else if (name === "LBracket") {
-      if (depth === 0) return true
+    if (name === "RBracket" || name === "RParen") depth++
+    else if (name === "LBracket" || name === "LParen") {
+      if (depth === 0)
+        return {
+          insideBrackets: name === "LBracket",
+          openCase: caseBalance > 0,
+        }
       depth--
-    } else if (name === "Semicolon") return false
+    } else if (depth === 0 && name === "Case") caseBalance++
+    else if (depth === 0 && name === "End") caseBalance--
+    else if (name === "Semicolon") break
   }
-  return false
+  return { insideBrackets: false, openCase: false }
 }
 
 function matchBindVariable(
@@ -938,7 +956,10 @@ function matchBindVariable(
   }
   if (ch !== ":") return null
   const prev = tokens[tokens.length - 1]
-  if (prev && endsOperand(prev, offset, isInsideBrackets(tokens))) return null
+  if (prev) {
+    const { insideBrackets, openCase } = sliceContext(tokens)
+    if (endsOperand(prev, offset, insideBrackets, openCase)) return null
+  }
   NAMED_BIND_VARIABLE.lastIndex = offset
   return NAMED_BIND_VARIABLE.exec(text)
 }
