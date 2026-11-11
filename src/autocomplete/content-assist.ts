@@ -983,6 +983,25 @@ const DATABASE_CATEGORY_KEYWORDS = [
 ]
 
 /**
+ * Next words of every server permission name that extends the words typed so
+ * far in the current GRANT / REVOKE list item.
+ */
+function nextPermissionWords(tokens: IToken[]): Set<string> {
+  const words: string[] = []
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const name = tokens[i].tokenType.name
+    if (name === "Grant" || name === "Revoke" || name === "Comma") break
+    words.unshift(tokens[i].image.toUpperCase())
+  }
+  const prefix = words.length > 0 ? words.join(" ") + " " : ""
+  const next = new Set<string>()
+  for (const perm of PERMISSION_NAMES) {
+    if (perm.startsWith(prefix)) next.add(perm.split(" ")[words.length])
+  }
+  return next
+}
+
+/**
  * Re-inject the concrete keywords that the grammar only accepts through the
  * generic `identifier` sub-rule — kept non-reserved on purpose, which means
  * Chevrotain's content-assist reports them merely as the abstract
@@ -1012,16 +1031,7 @@ function contextKeywordSuggestions(
   // via `identifier`), so offer the next word of every server permission name
   // that extends the words typed so far in the current list item.
   if (inRule("permissionToken")) {
-    const words: string[] = []
-    for (let i = tokens.length - 1; i >= 0; i--) {
-      const name = tokens[i].tokenType.name
-      if (name === "Grant" || name === "Revoke" || name === "Comma") break
-      words.unshift(tokens[i].image.toUpperCase())
-    }
-    const prefix = words.length > 0 ? words.join(" ") + " " : ""
-    for (const perm of PERMISSION_NAMES) {
-      if (perm.startsWith(prefix)) out.add(perm.split(" ")[words.length])
-    }
+    for (const word of nextPermissionWords(tokens)) out.add(word)
   }
 
   // ALTER TABLE ... CONVERT PARTITION TO { PARQUET | NATIVE }: the target is
@@ -1152,7 +1162,18 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
         s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh")
     )
   })
-  const result = suggestions.map((s) => s.nextTokenType)
+  const result = suggestions
+    .filter(
+      (s) =>
+        // permissionToken accepts LIMIT as a third word (SET REFRESH LIMIT,
+        // SET MEMORY LIMIT); only offer it where a permission continues so.
+        !(
+          s.nextTokenType.name === "Limit" &&
+          s.ruleStack[s.ruleStack.length - 1] === "permissionToken" &&
+          !nextPermissionWords(tokens).has("LIMIT")
+        ),
+    )
+    .map((s) => s.nextTokenType)
 
   // Walk every IdentifierKeyword path and union the category flags valid at
   // that position. Multiple paths may be alive simultaneously (Chevrotain

@@ -146,3 +146,30 @@ describe("GRANT / REVOKE permissions", () => {
     expect(labels("REVOKE SELECT FROM u WITH ")).toContain("VERIFICATION")
   })
 })
+
+// PR #42 review: the grammar allows LIMIT as a third permission word (SET
+// REFRESH LIMIT / SET MEMORY LIMIT), so it was suggested after any two words.
+describe("permission completion does not offer LIMIT where no permission continues with it", () => {
+  const labels = (sql: string) =>
+    createAutocompleteProvider({ tables: [], columns: {} })
+      .getSuggestions(sql, sql.length)
+      .map((s) => s.label)
+
+  it.each(["GRANT CREATE TABLE ", "REVOKE CREATE TABLE ", "GRANT CANCEL ANY "])(
+    "%s",
+    (sql) => {
+      expect(labels(sql)).not.toContain("LIMIT")
+    },
+  )
+
+  it.each(["GRANT SET REFRESH ", "GRANT SET MEMORY ", "REVOKE SET MEMORY "])(
+    "still offers LIMIT after %s",
+    (sql) => {
+      expect(labels(sql)).toContain("LIMIT")
+    },
+  )
+
+  it("keeps the valid continuation after GRANT CANCEL ANY", () => {
+    expect(labels("GRANT CANCEL ANY ")).toContain("COPY")
+  })
+})
