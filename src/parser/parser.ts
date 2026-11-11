@@ -2336,12 +2336,19 @@ class QuestDBParser extends CstParser {
     ])
     this.CONSUME(Keys)
     this.CONSUME(LParen)
-    this.SUBRULE(this.identifier)
+    this.SUBRULE(this.keyColumn)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.identifier)
+      this.SUBRULE1(this.keyColumn)
     })
     this.CONSUME(RParen)
+  })
+
+  // A column of the table / view being defined or altered (DEDUP KEYS,
+  // EXPIRE ROWS KEEP ... ON / PARTITION BY). Same as identifier, but its own
+  // rule so autocomplete offers the columns in scope there.
+  private keyColumn = this.RULE("keyColumn", () => {
+    this.SUBRULE(this.identifier)
   })
 
   private createUserStatement = this.RULE("createUserStatement", () => {
@@ -2547,14 +2554,14 @@ class QuestDBParser extends CstParser {
                 this.CONSUME(Latest)
                 this.OPTION(() => {
                   this.CONSUME(On)
-                  this.SUBRULE(this.identifier)
+                  this.SUBRULE(this.keyColumn)
                 })
                 this.CONSUME(Partition)
                 this.CONSUME(By)
-                this.SUBRULE1(this.identifier)
+                this.SUBRULE1(this.keyColumn)
                 this.MANY(() => {
                   this.CONSUME(Comma)
-                  this.SUBRULE2(this.identifier)
+                  this.SUBRULE2(this.keyColumn)
                 })
               },
             },
@@ -2567,14 +2574,14 @@ class QuestDBParser extends CstParser {
                   { ALT: () => this.CONSUME(Lowest) },
                 ])
                 this.CONSUME1(On)
-                this.SUBRULE3(this.identifier)
+                this.SUBRULE3(this.keyColumn)
                 this.OPTION2(() => {
                   this.CONSUME1(Partition)
                   this.CONSUME1(By)
-                  this.SUBRULE4(this.identifier)
+                  this.SUBRULE4(this.keyColumn)
                   this.MANY1(() => {
                     this.CONSUME1(Comma)
-                    this.SUBRULE5(this.identifier)
+                    this.SUBRULE5(this.keyColumn)
                   })
                 })
               },

@@ -124,6 +124,7 @@ import type {
   LatestOnColumnCstChildren,
   LimitClauseCstChildren,
   LiteralCstChildren,
+  KeyColumnCstChildren,
   TimestampWithTimeZoneLiteralCstChildren,
   MaterializedViewPartitionCstChildren,
   MaterializedViewPeriodCstChildren,
@@ -2190,8 +2191,8 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   expireRowsClause(ctx: ExpireRowsClauseCstChildren): AST.ExpireRowsClause {
-    const idents = (ctx.identifier ?? []).map((id: IdentifierCstNode) =>
-      this.extractIdentifierName(id.children),
+    const idents = (ctx.keyColumn ?? []).map(
+      (c: CstNode) => this.visit(c) as string,
     )
     let clause: AST.ExpireRowsClause
     if (ctx.When) {
@@ -2444,12 +2445,14 @@ class QuestDBVisitor extends BaseVisitor {
     // DEDUP | DEDUPLICATE carry no value; printed as DEDUP
   }
 
+  keyColumn(ctx: KeyColumnCstChildren): string {
+    return this.extractIdentifierName(ctx.identifier[0].children)
+  }
+
   dedupModeKeys(ctx: DedupModeKeysCstChildren): DedupModeKeys {
     return {
       mode: ctx.Skip ? "skip" : "upsert",
-      keys: ctx.identifier.map((id: IdentifierCstNode) =>
-        this.extractIdentifierName(id.children),
-      ),
+      keys: ctx.keyColumn.map((c: CstNode) => this.visit(c) as string),
     }
   }
 

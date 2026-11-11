@@ -760,7 +760,9 @@ function classifyIdentifierPath(ruleStack: string[]): PositionKind {
   // columnRef without an enclosing expression rule = bare column-name reference.
   // E.g. ALTER TABLE x DROP COLUMN <name>, CREATE INDEX ON x(<name>).
   // Columns are valid; functions and other tables are not.
-  if (ruleStack.includes("columnRef")) return "columnReference"
+  // keyColumn = DEDUP KEYS / EXPIRE ROWS KEEP ... ON / PARTITION BY columns.
+  if (ruleStack.includes("columnRef") || ruleStack.includes("keyColumn"))
+    return "columnReference"
 
   if (ruleStack.includes("tableName")) {
     // tableSource = under fromClause / joinClause / tableRef (functions OK).

@@ -962,9 +962,18 @@ export type DedupModeKeysCstChildren = {
   Skip?: IToken[];
   Keys: IToken[];
   LParen: IToken[];
-  identifier: (IdentifierCstNode)[];
+  keyColumn: (KeyColumnCstNode)[];
   Comma?: IToken[];
   RParen: IToken[];
+};
+
+export interface KeyColumnCstNode extends CstNode {
+  name: "keyColumn";
+  children: KeyColumnCstChildren;
+}
+
+export type KeyColumnCstChildren = {
+  identifier: IdentifierCstNode[];
 };
 
 export interface CreateUserStatementCstNode extends CstNode {
@@ -1074,7 +1083,7 @@ export type ExpireRowsClauseCstChildren = {
   Keep?: IToken[];
   Latest?: IToken[];
   On?: (IToken)[];
-  identifier?: (IdentifierCstNode)[];
+  keyColumn?: (KeyColumnCstNode)[];
   Partition?: (IToken)[];
   By?: (IToken)[];
   Comma?: (IToken)[];
@@ -3482,6 +3491,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   dedupClause(children: DedupClauseCstChildren, param?: IN): OUT;
   dedupKeyword(children: DedupKeywordCstChildren, param?: IN): OUT;
   dedupModeKeys(children: DedupModeKeysCstChildren, param?: IN): OUT;
+  keyColumn(children: KeyColumnCstChildren, param?: IN): OUT;
   createUserStatement(children: CreateUserStatementCstChildren, param?: IN): OUT;
   createGroupStatement(children: CreateGroupStatementCstChildren, param?: IN): OUT;
   createServiceAccountStatement(children: CreateServiceAccountStatementCstChildren, param?: IN): OUT;
