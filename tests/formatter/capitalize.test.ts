@@ -188,3 +188,30 @@ describe("capitalize keeps keyword-named columns as written", () => {
     ).toContain("WHERE a IS NULL AND b ILIKE 'x'")
   })
 })
+
+// PR #42 review: one statement the parser does not support must not turn
+// capitalization off for the other statements of the script.
+describe("capitalize per statement", () => {
+  it("capitalizes the statements that parse", () => {
+    expect(
+      format("select 1; select .5m + 1; select 2", { capitalize: true }),
+    ).toBe("SELECT 1;\n\nselect .5m + 1;\n\nSELECT 2")
+  })
+
+  it("keeps semicolons inside strings and comments out of the split", () => {
+    const out = format(
+      "select ';' from t; select .5m + 1; /* ; */ select x from t",
+      { capitalize: true },
+    )
+    expect(out).toContain("SELECT ';'")
+    expect(out).toContain("FROM t;")
+    expect(out).toContain("select .5m + 1;")
+    expect(out).toMatch(/SELECT x\nFROM t$/)
+  })
+
+  it("still capitalizes a fully valid script in one pass", () => {
+    expect(format("select 1; select 2", { capitalize: true })).toBe(
+      "SELECT 1;\n\nSELECT 2",
+    )
+  })
+})
