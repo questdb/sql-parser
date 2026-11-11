@@ -3346,6 +3346,7 @@ export type PasswordValueCstChildren = {
   AnyKeyword?: (IToken)[];
   VariableReference?: (IToken)[];
   BindVariable?: (IToken)[];
+  AtSign?: (IToken)[];
 };
 
 export interface StringOrIdentifierCstNode extends CstNode {

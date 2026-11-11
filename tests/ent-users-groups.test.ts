@@ -165,3 +165,30 @@ describe("passwords with @ and $", () => {
     expect(labels).toContain("OWNED")
   })
 })
+
+// PR #42 follow-up review: @ before a digit, trailing or alone.
+describe("passwords with a bare @", () => {
+  it.each([
+    ["CREATE USER u WITH PASSWORD @123", "@123"],
+    ["CREATE USER u WITH PASSWORD abc@", "abc@"],
+    ["CREATE USER u WITH PASSWORD @", "@"],
+  ])("%s", (sql, password) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(JSON.stringify(result.ast[0])).toContain(
+      `"password":${JSON.stringify(password)}`,
+    )
+  })
+
+  it("keeps OWNED BY after abc@123", () => {
+    const result = parseToAst(
+      "CREATE SERVICE ACCOUNT sa WITH PASSWORD abc@123 OWNED BY g",
+    )
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    const json = JSON.stringify(result.ast[0])
+    expect(json).toContain('"password":"abc@123"')
+    expect(json).toContain('"g"')
+  })
+})

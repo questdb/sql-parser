@@ -373,6 +373,7 @@ import {
   Include,
   GeohashBinaryLiteral,
   GeohashLiteral,
+  AtSign,
   MalformedDurationLiteral,
   AnyKeyword,
   HexLiteral,
@@ -6330,6 +6331,8 @@ class QuestDBParser extends CstParser {
         // @x and $1 are one server token (abc@def via the glue below)
         { ALT: () => this.CONSUME(VariableReference) },
         { ALT: () => this.CONSUME(BindVariable) },
+        // @ before a digit, trailing or alone (@123, abc@, @): bare AtSign
+        { ALT: () => this.CONSUME(AtSign) },
       ],
     })
     // The server reads one whitespace-delimited token; this lexer may split
@@ -6348,6 +6351,7 @@ class QuestDBParser extends CstParser {
             { ALT: () => this.CONSUME1(AnyKeyword) },
             { ALT: () => this.CONSUME1(VariableReference) },
             { ALT: () => this.CONSUME1(BindVariable) },
+            { ALT: () => this.CONSUME1(AtSign) },
           ],
         })
       },
