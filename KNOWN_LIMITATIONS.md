@@ -7,12 +7,12 @@ parser. It is used for:
 2. the formatter;
 3. autocomplete.
 
-There is one rule: it must never be stricter than the server. SQL the server
-accepts must parse here, while SQL the server rejects may still parse.
-Everything below was reviewed and accepted with that in mind (PR #42 and its
-review).
+The goal is that it is never stricter than the server: SQL the server accepts
+should parse here, while SQL the server rejects may still parse. The gaps below
+are known exceptions to that goal. They were reviewed in PR #42, and the package
+owner chose to defer them; they are follow-ups, not things that meet the goal.
 
-## Accepted gaps: server-valid SQL that does not parse yet
+## Deferred gaps: server-valid SQL that does not parse yet
 
 All of these are rare. A parse error is never shown to users: the console's
 error markers come from the server's `/api/v1/sql/validate`.
@@ -139,9 +139,11 @@ toSql output keeps the meaning, but it is not a byte-for-byte copy of the input:
 
 ## Web console (separate `ui` repo)
 
-The console's Monaco highlighter and editor helpers do not know the newer
-lexical forms yet. These are cosmetic, and need changes in the `ui` repo when it
-picks up this version:
+The console's Monaco highlighter and editor helpers do not know these lexical
+forms. The highlighting problems already show with the parser version the
+console uses today (0.1.20). The completion problems are functional, not
+cosmetic. All of them need changes in the `ui` repo, which should ship together
+with the dependency upgrade:
 
 - nested block comments are highlighted as code after the inner `*/`;
 - backtick-quoted names are colored as separate words;
