@@ -38,6 +38,7 @@ The impact is limited to two places:
 | `GRANT CREATE TABLE TO parquet` (also `native`)                     | Grantee named `parquet` / `native` is read as part of a `… TO PARQUET` permission                                                                                                                                                           |
 | `SELECT :"foo"`, `SELECT :'foo'`, `SELECT :$1`, `SELECT :+`         | Bind names that are not plain identifiers                                                                                                                                                                                                   |
 | `SELECT any FROM (SELECT 1 any)`, `CREATE TABLE any (any INT)`      | `any` as a name: it stays reserved because of `= ANY(…)`                                                                                                                                                                                    |
+| `CREATE USER u WITH PASSWORD $`                                     | A lone `$` is not a token in this lexer                                                                                                                                                                                                     |
 | `SELECT timestamp '…' AT TIME ZONE 'UTC'::timestamp`                | Cast directly after AT TIME ZONE                                                                                                                                                                                                            |
 | `/* '*/' */` inside a statement                                     | The server pairs quotes inside block comments (four `DeclareTest` queries rely on it). Not copied on purpose: an apostrophe in a comment (`/* don't */`) would swallow the rest of the query in the editor. This looks like a server quirk. |
 
@@ -97,10 +98,10 @@ These parse here although the server rejects them. They never break valid SQL:
   they are typed as doubles; `d` is a double suffix only after an exponent
   (`1e36d`). `ARRAY` is a keyword token, exported as `ArrayType`.
 - **Passwords:** an unquoted password is one value, read as written, as on the
-  server (`WITH PASSWORD null`, `1G`, `true`, `select`, `abc@def`, `$1`).
-  Unquoted pieces with no whitespace between them are joined; a quoted value
-  ends on its own (`'pw'OWNED BY g`). The formatter never capitalizes it, and
-  autocomplete offers no keywords there.
+  server (`WITH PASSWORD null`, `1G`, `true`, `select`, `abc@def`, `abc@123`,
+  `@123`, `$1`). Unquoted pieces with no whitespace between them are joined; a
+  quoted value ends on its own (`'pw'OWNED BY g`). The formatter never
+  capitalizes it, and autocomplete offers no keywords there.
 
 ## toSql normalisations
 
@@ -164,22 +165,23 @@ with the dependency upgrade:
 
 Fixed after the reviews of 11 November 2026:
 
-| Finding                                                                                                                            | Fix                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `arr[CASE … END:n]` slice regression; keyword-named slice bounds; binds inside `[ … OVER (PARTITION BY :k)]`                       | slice vs bind decided by the innermost open delimiter; END ends an operand           |
-| `UNNEST(…) LEFT JOIN` / `WINDOW` taken as an alias                                                                                 | UNNEST alias uses the table-alias stop list                                          |
-| `LIMIT` suggested after `GRANT CREATE TABLE `                                                                                      | only where a permission continues with it                                            |
-| Unquoted passwords: capitalized by the formatter, split (`1G`, `abc@def`, `'pw'OWNED`), or rejected (`true`, `select`, `@x`, `$1`) | one `passwordValue` rule, formatter name role                                        |
-| Non-persistable types suggested in DDL; `UNLIMITED` for every resource-group option                                                | suggestion filters                                                                   |
-| No / wrong columns in DEDUP KEYS and EXPIRE ROWS KEEP slots (base columns, unrelated schema columns, CTAS / nested query output)   | key-column scope resolves the defined object's columns, through CTAS and sub-queries |
-| `ROLLUP((x))`, `CUBE((x))`, `GROUPING SETS (((x)), ())`, `ROLLUP(@k)`                                                              | shared `groupingKey` rule                                                            |
-| `IS` / `ILIKE` / `DECLARE` column names capitalized                                                                                | formatter treats them as names                                                       |
-| One unsupported statement disabled capitalization for the whole script                                                             | capitalization per statement                                                         |
+| Finding                                                                                                                                                       | Fix                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `arr[CASE … END:n]` slice regression; keyword-named slice bounds; binds inside `[ … OVER (PARTITION BY :k)]`                                                  | slice vs bind decided by the innermost open delimiter; END ends an operand                                                                                                                     |
+| `UNNEST(…) LEFT JOIN` / `WINDOW` taken as an alias                                                                                                            | UNNEST alias uses the table-alias stop list                                                                                                                                                    |
+| `LIMIT` suggested after `GRANT CREATE TABLE `                                                                                                                 | only where a permission continues with it                                                                                                                                                      |
+| Unquoted passwords: capitalized by the formatter, split (`1G`, `abc@def`, `abc@123`, `'pw'OWNED`), or rejected (`true`, `select`, `@x`, `@123`, `abc@`, `$1`) | one `passwordValue` rule, formatter name role; a lone `$` is still deferred                                                                                                                    |
+| Non-persistable types suggested in DDL; `UNLIMITED` for every resource-group option                                                                           | suggestion filters                                                                                                                                                                             |
+| No / wrong columns in DEDUP KEYS and EXPIRE ROWS KEEP slots (base or unrelated schema columns)                                                                | the slot resolves the defined table / view: declared columns, or the query output through aliases, `*` / `t.*`, joins, comma sources, sub-queries and CTEs; no fallback to every schema column |
+| `ROLLUP((x))`, `CUBE((x))`, `GROUPING SETS (((x)), ())`, `ROLLUP(@k)`                                                                                         | shared `groupingKey` rule                                                                                                                                                                      |
+| `IS` / `ILIKE` / `DECLARE` column names capitalized                                                                                                           | formatter treats them as names                                                                                                                                                                 |
+| One unsupported statement disabled capitalization for the whole script                                                                                        | capitalization per statement                                                                                                                                                                   |
 
 Deferred to later (listed in the sections above):
 
 - server-valid gaps in the "Deferred gaps" table, including `:"foo"`-style bind
-  names, `any` as a name, the cast after `AT TIME ZONE` and `CLEANUP EVERY h`;
+  names, `any` as a name, a lone `$` as a password, the cast after
+  `AT TIME ZONE` and `CLEANUP EVERY h`;
 - broad GRANT / REVOKE suggestions (`GRANT CONVERT `, `GRANT ALTER COLUMN `);
 - formatter layout of keyword-named columns (`window - price`);
 - all web console (`ui`) items: backtick completion and comment guards (should
