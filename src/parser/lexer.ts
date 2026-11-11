@@ -867,12 +867,20 @@ const COMPLETED_OPERAND_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
   "QuotedIdentifier",
   "RParen",
   "RBracket",
+  // CASE ... END completes a value: `arr[CASE ... END:n]`
+  "End",
   "BindVariable",
   "VariableReference",
   "True",
   "False",
   "Null",
   "Nan",
+])
+
+const CASE_CONTROL_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
+  "When",
+  "Then",
+  "Else",
 ])
 
 /**
@@ -893,10 +901,14 @@ function endsOperand(
   // Inside `[...]` a non-reserved keyword before the colon is a column name
   // (`arr[offset :n]`), with or without whitespace. Outside brackets it only
   // counts when glued, so `WITH OFFSET :off` keeps its bind variable.
+  if (!(type.CATEGORIES ?? []).includes(IdentifierKeyword)) return false
+  // Inside brackets a clause-named column (`arr[left:n]`, `arr[window :n]`)
+  // is an operand too; only CASE control words keep a following bind
+  // variable (`THEN :lo`, `ELSE :hi`).
+  if (insideBrackets) return !CASE_CONTROL_TOKEN_NAMES.has(type.name)
   return (
-    (insideBrackets ||
-      (prev.endOffset !== undefined && prev.endOffset + 1 === colonOffset)) &&
-    (type.CATEGORIES ?? []).includes(IdentifierKeyword) &&
+    prev.endOffset !== undefined &&
+    prev.endOffset + 1 === colonOffset &&
     !CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(type.name)
   )
 }

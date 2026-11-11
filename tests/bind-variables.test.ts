@@ -341,3 +341,33 @@ describe("formatter", () => {
     )
   })
 })
+
+// PR #42 audit: CASE ... END and keyword-named columns as slice bounds.
+describe("slice bounds that end a value", () => {
+  it.each([
+    "SELECT arr[CASE WHEN x THEN 1 ELSE 2 END:n] FROM t",
+    "SELECT arr[CASE WHEN x THEN 1 ELSE 2 END :n] FROM t",
+    "SELECT arr[left:n] FROM t",
+    "SELECT arr[window :n] FROM t",
+    "SELECT arr[group:n] FROM t",
+    "SELECT arr[offset:n] FROM t",
+  ])("%s", (sql) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(tokenTypes(sql)).toContain("Colon::")
+  })
+
+  it("keeps THEN / ELSE :bind as bind variables, inside brackets too", () => {
+    const sql = "SELECT arr[CASE WHEN x THEN :lo ELSE :hi END] FROM t"
+    expect(tokenTypes(sql)).toContain("BindVariable::lo")
+    expect(tokenTypes(sql)).toContain("BindVariable::hi")
+    expect(parseToAst(sql).errors).toEqual([])
+  })
+
+  it("keeps WHERE / LIMIT binds", () => {
+    expect(tokenTypes("SELECT * FROM t WHERE a = :x LIMIT :n")).toEqual(
+      expect.arrayContaining(["BindVariable::x", "BindVariable::n"]),
+    )
+  })
+})
