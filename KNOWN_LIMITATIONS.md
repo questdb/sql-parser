@@ -21,9 +21,9 @@ The impact is limited to two places:
 
 - **Autocomplete:** suggestions are lost _after_ the unsupported spot, in the
   same statement only. The console sends only the text since the last `;`.
-- **Formatter:** with `capitalize`, keywords are not capitalized anywhere in the
-  input if any statement in it does not parse (the whole script, not only the
-  failing statement). Layout and meaning are kept.
+- **Formatter:** with `capitalize`, the keywords of the statement that does not
+  parse are left as written; the other `;`-separated statements are still
+  capitalized. Layout and meaning are kept.
 
 | SQL                                                                 | Notes                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,11 +32,12 @@ The impact is limited to two places:
 | `SELECT 1 BETWEEN(0, 2)`                                            | Tuple form of BETWEEN                                                                                                                                                                                                                       |
 | `SELECT max('orders_1'.revenue) FROM …`                             | Single-quoted table qualifier                                                                                                                                                                                                               |
 | `ALTER USER u SET MEMORY LIMIT "1G"`; `… WITH (cpu_weight = "100")` | Double-quoted memory / resource-group values                                                                                                                                                                                                |
-| `DECLARE @k := a … GROUP BY ROLLUP(@k)`                             | Declared variable inside ROLLUP / CUBE / GROUPING SETS                                                                                                                                                                                      |
 | `… EXPIRE ROWS WHEN … CLEANUP EVERY h`                              | Interval unit without a number                                                                                                                                                                                                              |
 | `SELECT double precision '1'`                                       | Typed literal with the two-word type: read as `double AS precision` plus a statement `'1'`                                                                                                                                                  |
 | `DECLARE @foo$bar := 1 …`, `DECLARE @1 := 1 …`                      | `$` or a leading digit in a variable name                                                                                                                                                                                                   |
 | `GRANT CREATE TABLE TO parquet` (also `native`)                     | Grantee named `parquet` / `native` is read as part of a `… TO PARQUET` permission                                                                                                                                                           |
+| `SELECT :"foo"`, `SELECT :'foo'`, `SELECT :$1`, `SELECT :+`         | Bind names that are not plain identifiers                                                                                                                                                                                                   |
+| `SELECT any FROM (SELECT 1 any)`, `CREATE TABLE any (any INT)`      | `any` as a name: it stays reserved because of `= ANY(…)`                                                                                                                                                                                    |
 | `SELECT timestamp '…' AT TIME ZONE 'UTC'::timestamp`                | Cast directly after AT TIME ZONE                                                                                                                                                                                                            |
 | `/* '*/' */` inside a statement                                     | The server pairs quotes inside block comments (four `DeclareTest` queries rely on it). Not copied on purpose: an apostrophe in a comment (`/* don't */`) would swallow the rest of the query in the editor. This looks like a server quirk. |
 
@@ -80,7 +81,8 @@ These parse here although the server rejects them. They never break valid SQL:
   - They are not taken as implicit aliases where they start a join, clause or
     statement (the server's `tableAliasStop` / `columnAliasStop`).
   - `any` stays reserved because of `= ANY(…)`.
-  - `is`, `ilike` and `declare` are names only in column definitions.
+  - `is`, `ilike` and `declare` are names only in column definitions, where the
+    formatter keeps them as written.
 - **Single-quoted values and names:** `''` inside a single-quoted _value_
   round-trips unchanged. A single-quoted _name_ (`FROM 'it''s'`) is not
   unescaped, because the server strips only the outer quotes
@@ -95,8 +97,10 @@ These parse here although the server rejects them. They never break valid SQL:
   they are typed as doubles; `d` is a double suffix only after an exponent
   (`1e36d`). `ARRAY` is a keyword token, exported as `ArrayType`.
 - **Passwords:** an unquoted password is one value, read as written, as on the
-  server (`WITH PASSWORD null`, `1G`, `true`, `abc1`). The formatter never
-  capitalizes it, and autocomplete offers no keywords there.
+  server (`WITH PASSWORD null`, `1G`, `true`, `select`, `abc@def`, `$1`).
+  Unquoted pieces with no whitespace between them are joined; a quoted value
+  ends on its own (`'pw'OWNED BY g`). The formatter never capitalizes it, and
+  autocomplete offers no keywords there.
 
 ## toSql normalisations
 
@@ -134,8 +138,6 @@ toSql output keeps the meaning, but it is not a byte-for-byte copy of the input:
   clause: `select price, window from trades` →
   `SELECT price,\nwindow\nFROM trades`, and `window - price` → `window -price`.
   The meaning is unchanged.
-- With `capitalize`, one statement that does not parse leaves the keywords of
-  the whole input uncapitalized (e.g. `select 1; select .5m + 1; select 2`).
 
 ## Web console (separate `ui` repo)
 
@@ -151,8 +153,38 @@ with the dependency upgrade:
   token colors;
 - accepting a completion after an opening backtick (``FROM `tra``) leaves the
   backtick unclosed; the UI only handles double-quoted names there;
-- the console's comment guard treats `--` inside a backtick name
-  (`` `my--table` ``) as a comment, so it shows no suggestions after it.
+- the console's comment guard treats `--` or `/*` inside a backtick name
+  (`` `my--table` ``) as a comment, so it shows no suggestions after it; and it
+  does not track nested comments, so it offers suggestions inside
+  `/* outer /* inner */ …`;
+- inside `ARRAY[…]`, functions, CASE, identifiers and operators get no
+  highlighting (the `arrayArguments` state only knows literals and brackets).
+
+## Review status (PR #42)
+
+Fixed after the reviews of 11 November 2026:
+
+| Finding                                                                                                                            | Fix                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `arr[CASE … END:n]` slice regression; keyword-named slice bounds; binds inside `[ … OVER (PARTITION BY :k)]`                       | slice vs bind decided by the innermost open delimiter; END ends an operand           |
+| `UNNEST(…) LEFT JOIN` / `WINDOW` taken as an alias                                                                                 | UNNEST alias uses the table-alias stop list                                          |
+| `LIMIT` suggested after `GRANT CREATE TABLE `                                                                                      | only where a permission continues with it                                            |
+| Unquoted passwords: capitalized by the formatter, split (`1G`, `abc@def`, `'pw'OWNED`), or rejected (`true`, `select`, `@x`, `$1`) | one `passwordValue` rule, formatter name role                                        |
+| Non-persistable types suggested in DDL; `UNLIMITED` for every resource-group option                                                | suggestion filters                                                                   |
+| No / wrong columns in DEDUP KEYS and EXPIRE ROWS KEEP slots (base columns, unrelated schema columns, CTAS / nested query output)   | key-column scope resolves the defined object's columns, through CTAS and sub-queries |
+| `ROLLUP((x))`, `CUBE((x))`, `GROUPING SETS (((x)), ())`, `ROLLUP(@k)`                                                              | shared `groupingKey` rule                                                            |
+| `IS` / `ILIKE` / `DECLARE` column names capitalized                                                                                | formatter treats them as names                                                       |
+| One unsupported statement disabled capitalization for the whole script                                                             | capitalization per statement                                                         |
+
+Deferred to later (listed in the sections above):
+
+- server-valid gaps in the "Deferred gaps" table, including `:"foo"`-style bind
+  names, `any` as a name, the cast after `AT TIME ZONE` and `CLEANUP EVERY h`;
+- broad GRANT / REVOKE suggestions (`GRANT CONVERT `, `GRANT ALTER COLUMN `);
+- formatter layout of keyword-named columns (`window - price`);
+- all web console (`ui`) items: backtick completion and comment guards (should
+  ship with the dependency upgrade), highlighting of nested comments, backticks,
+  newer literals, binds and `ARRAY[…]` contents.
 
 ## Tests
 
