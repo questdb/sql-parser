@@ -860,6 +860,8 @@ interface ComputeResult extends CategoryFlags {
   isConditionContext: boolean
   contextKeywords: string[]
   contextFunctions: string[]
+  /** Rule stack when the cursor is in a DEDUP KEYS / EXPIRE ROWS column slot */
+  keyColumnRuleStack?: string[]
 }
 
 // SUBSAMPLE methods (questdb/questdb#7013). The grammar reads the method
@@ -1265,13 +1267,132 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   if (fillOperandStart) contextKeywords.push("PREV", "LINEAR", "NONE")
   const contextFunctions = contextFunctionSuggestions(tokens, suggestions)
 
+  const keyColumnRuleStack = suggestions.find(
+    (s) =>
+      s.nextTokenType.name === "IdentifierKeyword" &&
+      s.ruleStack.includes("keyColumn"),
+  )?.ruleStack
+
   return {
     nextTokenTypes: result,
     ...flags,
     isConditionContext,
     contextKeywords,
     contextFunctions,
+    keyColumnRuleStack,
   }
+}
+
+// Placeholder scope names for key-column slots (not valid table names)
+const DECLARED_COLUMNS_SCOPE = "<declared columns>"
+const VIEW_OUTPUT_SCOPE = "<view output>"
+
+function namePart(token: IToken): string {
+  return token.tokenType.name === "QuotedIdentifier"
+    ? token.image.slice(1, -1).replace(/""/g, '"')
+    : token.image
+}
+
+/** Index of the `)` that closes the `(` at `open` (or tokens.length). */
+function matchingParen(tokens: IToken[], open: number): number {
+  let depth = 0
+  for (let i = open; i < tokens.length; i++) {
+    const name = tokens[i].tokenType.name
+    if (name === "LParen") depth++
+    else if (name === "RParen" && --depth === 0) return i
+  }
+  return tokens.length
+}
+
+/**
+ * Columns for a DEDUP KEYS / EXPIRE ROWS KEEP column slot, which must name a
+ * column of the table or view being defined or altered (the server resolves
+ * them against the new table's columns / the view's SELECT output):
+ *  - CREATE TABLE: the column definitions of the statement;
+ *  - CREATE MATERIALIZED VIEW: the view query's output names (aliases); a `*`
+ *    adds the query's tables;
+ *  - ALTER TABLE / ALTER MATERIALIZED VIEW: the target, already in scope.
+ * Returns undefined when the default scope applies.
+ */
+function keyColumnScope(
+  ruleStack: string[],
+  statementTokens: IToken[],
+  fullSql: string,
+):
+  | {
+      tables: TableRef[]
+      columns: Record<string, { name: string; type: string }[]>
+    }
+  | undefined {
+  if (ruleStack.includes("createTableBody")) {
+    // CREATE [ATOMIC] TABLE name ( col type ..., ... )
+    const open = statementTokens.findIndex((t) => t.tokenType.name === "LParen")
+    if (open < 0) return undefined
+    const close = matchingParen(statementTokens, open)
+    const cols: { name: string; type: string }[] = []
+    let depth = 0
+    let expectName = true
+    for (let i = open + 1; i < close; i++) {
+      const name = statementTokens[i].tokenType.name
+      if (name === "LParen") depth++
+      else if (name === "RParen") depth--
+      else if (depth === 0 && name === "Comma") expectName = true
+      else if (depth === 0 && expectName) {
+        expectName = false
+        // CTAS / LIKE bodies have no column definitions
+        if (name === "Select" || name === "Like" || name === "With") break
+        cols.push({ name: namePart(statementTokens[i]), type: "" })
+      }
+    }
+    if (cols.length === 0) return undefined
+    return {
+      tables: [{ table: DECLARED_COLUMNS_SCOPE }],
+      columns: { [DECLARED_COLUMNS_SCOPE.toLowerCase()]: cols },
+    }
+  }
+  if (ruleStack.includes("createMaterializedViewBody")) {
+    // ... AS [(] <query> [)] ... EXPIRE ROWS
+    const as = statementTokens.findIndex((t) => t.tokenType.name === "As")
+    if (as < 0) return undefined
+    let start = as + 1
+    let end: number
+    if (statementTokens[start]?.tokenType.name === "LParen") {
+      end = matchingParen(statementTokens, start)
+      start++
+    } else {
+      end = statementTokens.findIndex(
+        (t, i) => i > as && t.tokenType.name === "Expire",
+      )
+      if (end < 0) end = statementTokens.length
+    }
+    const body = statementTokens.slice(start, end)
+    if (body.length === 0) return undefined
+    const last = body[body.length - 1]
+    const sql = fullSql.substring(
+      body[0].startOffset,
+      last.startOffset + last.image.length,
+    )
+    let ast: Statement[]
+    try {
+      ast = visitor.visit(parseRaw(sql).cst) as Statement[]
+    } catch {
+      return undefined
+    }
+    const query = ast[0] as { type?: string; columns?: unknown[] } | undefined
+    if (!query || query.type !== "select" || !query.columns) return undefined
+    const cols = extractCteColumnNames(query.columns)
+    const tables: TableRef[] = [{ table: VIEW_OUTPUT_SCOPE }]
+    const hasStar = query.columns.some((c) => {
+      const t = (c as { type?: string } | null)?.type
+      return t === "star" || t === "qualifiedStar"
+    })
+    if (hasStar) tables.push(...extractTablesFromAst(query).tables)
+    return {
+      tables,
+      columns: { [VIEW_OUTPUT_SCOPE.toLowerCase()]: cols },
+    }
+  }
+  return undefined
 }
 
 /**
@@ -1452,8 +1573,10 @@ export function getContentAssist(
   let isConditionContext = false
   let contextKeywords: string[] = []
   let contextFunctions: string[] = []
+  let keyColumnRuleStack: string[] | undefined
   try {
     const computed = computeSuggestions(tokensForAssist)
+    keyColumnRuleStack = computed.keyColumnRuleStack
     nextTokenTypes = computed.nextTokenTypes
     suggestColumns = computed.suggestColumns
     suggestTables = computed.suggestTables
@@ -1514,6 +1637,24 @@ export function getContentAssist(
           tablesInScope.push({ table: tableName })
         }
       }
+    }
+  }
+
+  // DEDUP KEYS / EXPIRE ROWS column slots name a column of the object being
+  // defined: scope them to its declared columns / the view's output.
+  if (keyColumnRuleStack) {
+    let start = 0
+    for (let j = 0; j < tokensForAssist.length; j++) {
+      if (tokensForAssist[j].tokenType.name === "Semicolon") start = j + 1
+    }
+    const scope = keyColumnScope(
+      keyColumnRuleStack,
+      tokensForAssist.slice(start),
+      fullSql,
+    )
+    if (scope) {
+      tablesInScope.splice(0, tablesInScope.length, ...scope.tables)
+      Object.assign(cteColumns, scope.columns)
     }
   }
 

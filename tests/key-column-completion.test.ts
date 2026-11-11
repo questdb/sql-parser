@@ -48,3 +48,71 @@ describe("key column slots suggest columns", () => {
     expect(JSON.stringify(mv.ast[0])).toContain('"sym"')
   })
 })
+
+// PR #42 follow-up review: the key-column slots resolve names against the
+// object being defined, not against the global schema or the base table.
+describe("key column scope", () => {
+  const base = createAutocompleteProvider({
+    tables: [{ name: "base" }, { name: "unrelated" }],
+    columns: {
+      base: [
+        { name: "k", type: "SYMBOL" },
+        { name: "v", type: "DOUBLE" },
+        { name: "ts", type: "TIMESTAMP" },
+      ],
+      unrelated: [{ name: "other", type: "INT" }],
+    },
+  })
+  const l = (sql: string) =>
+    base.getSuggestions(sql, sql.length).map((s) => s.label)
+
+  it.each([
+    "CREATE MATERIALIZED VIEW mv AS (SELECT k AS output_k, v AS output_v, ts FROM base) EXPIRE ROWS KEEP HIGHEST ON ",
+    "CREATE MATERIALIZED VIEW mv AS (SELECT k AS output_k, v AS output_v, ts FROM base) EXPIRE ROWS KEEP HIGHEST ON output_v PARTITION BY ",
+  ])("MV retention uses the view's output columns: %s", (sql) => {
+    const labels = l(sql)
+    expect(labels).toEqual(
+      expect.arrayContaining(["output_k", "output_v", "ts"]),
+    )
+    expect(labels).not.toContain("k")
+    expect(labels).not.toContain("v")
+    expect(labels).not.toContain("other")
+  })
+
+  it("MV with SELECT * offers the base table's columns", () => {
+    const labels = l(
+      "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON ",
+    )
+    expect(labels).toEqual(expect.arrayContaining(["k", "v", "ts"]))
+    expect(labels).not.toContain("other")
+  })
+
+  it("CREATE TABLE DEDUP KEYS offers the declared columns only", () => {
+    const labels = l(
+      "CREATE TABLE t (local_ts TIMESTAMP, local_sym SYMBOL) TIMESTAMP(local_ts) PARTITION BY DAY WAL DEDUP SKIP KEYS( ",
+    )
+    expect(labels).toEqual(expect.arrayContaining(["local_ts", "local_sym"]))
+    expect(labels).not.toContain("other")
+    expect(labels).not.toContain("k")
+  })
+
+  it("ALTER TABLE DEDUP KEYS keeps the target table's columns", () => {
+    const labels = l("ALTER TABLE base DEDUP ENABLE UPSERT KEYS( ")
+    expect(labels).toEqual(expect.arrayContaining(["k", "v", "ts"]))
+    expect(labels).not.toContain("other")
+  })
+
+  it("ALTER MATERIALIZED VIEW uses the view's columns", () => {
+    const p = createAutocompleteProvider({
+      tables: [{ name: "mv" }, { name: "unrelated" }],
+      columns: {
+        mv: [{ name: "output_v", type: "DOUBLE" }],
+        unrelated: [{ name: "other", type: "INT" }],
+      },
+    })
+    const sql = "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON "
+    const labels = p.getSuggestions(sql, sql.length).map((s) => s.label)
+    expect(labels).toContain("output_v")
+    expect(labels).not.toContain("other")
+  })
+})
