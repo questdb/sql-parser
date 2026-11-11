@@ -1286,6 +1286,15 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
 // Placeholder scope names for key-column slots (not valid table names)
 const DECLARED_COLUMNS_SCOPE = "<declared columns>"
 const VIEW_OUTPUT_SCOPE = "<view output>"
+/**
+ * Placeholder scopes of key-column slots. When one is in scope the slot's
+ * columns are known exactly, so the suggestion builder must not fall back to
+ * every schema column when they resolve to nothing.
+ */
+export const KEY_COLUMN_SCOPES: ReadonlySet<string> = new Set([
+  DECLARED_COLUMNS_SCOPE,
+  VIEW_OUTPUT_SCOPE,
+])
 
 function namePart(token: IToken): string {
   return token.tokenType.name === "QuotedIdentifier"
@@ -1307,38 +1316,84 @@ function matchingParen(tokens: IToken[], open: number): number {
 /**
  * Output columns of a query, as a scope for a key-column slot:
  *  - named items (aliases, column names) become columns of the output;
- *  - `*` / `t.*` resolve through sub-queries in FROM / JOIN to their output
- *    names, and down to the physical tables at the bottom, whose columns
- *    come from the schema.
+ *  - `*` expands every FROM / JOIN source, `t.*` only the source aliased or
+ *    named `t`;
+ *  - a source that is a sub-query or a CTE (from this query's WITH or an
+ *    enclosing one) expands to that query's output, recursively; a physical
+ *    table is returned as a table, whose columns come from the schema.
  */
 function queryOutput(
   query: Record<string, unknown>,
+  ctes: ReadonlyMap<string, Record<string, unknown>> = new Map(),
   depth = 0,
 ): { columns: { name: string; type: string }[]; tables: TableRef[] } {
-  const items = Array.isArray(query.columns) ? query.columns : []
-  const columns = extractCteColumnNames(items)
+  const columns: { name: string; type: string }[] = []
   const tables: TableRef[] = []
-  const hasStar = items.some((c) => {
-    const t = (c as { type?: string } | null)?.type
-    return t === "star" || t === "qualifiedStar"
-  })
-  if (!hasStar || depth > 8) return { columns, tables }
-  const sources: unknown[] = []
-  for (const ref of Array.isArray(query.from) ? query.from : []) {
-    const r = ref as { table?: unknown; joins?: { table?: unknown }[] }
-    sources.push(r.table)
-    for (const join of r.joins ?? []) sources.push(join.table)
+  if (depth > 8) return { columns, tables }
+
+  // CTEs visible inside this query: its own WITH plus the enclosing ones
+  const env = new Map(ctes)
+  for (const cte of Array.isArray(query.with) ? query.with : []) {
+    const c = cte as { name?: unknown; query?: unknown }
+    if (typeof c.name === "string" && c.query && typeof c.query === "object") {
+      env.set(c.name.toLowerCase(), c.query as Record<string, unknown>)
+    }
   }
-  for (const source of sources) {
-    const src = source as Record<string, unknown> | undefined
-    if (!src) continue
+
+  // FROM / JOIN / comma sources with their aliases
+  type Source = { table: unknown; alias?: string }
+  const sources: Source[] = []
+  const addSource = (ref: unknown) => {
+    const r = ref as { table?: unknown; alias?: unknown } | undefined
+    if (!r) return
+    sources.push({
+      table: r.table,
+      alias: typeof r.alias === "string" ? r.alias : undefined,
+    })
+  }
+  for (const ref of Array.isArray(query.from) ? query.from : []) {
+    addSource(ref)
+    const joins = (ref as { joins?: { table?: unknown }[] }).joins ?? []
+    for (const join of joins) addSource(join.table) // join.table is a tableRef
+  }
+
+  const expand = (source: Source) => {
+    const src = source.table as Record<string, unknown> | undefined
+    if (!src) return
     if (src.type === "select") {
-      const inner = queryOutput(src, depth + 1)
+      const inner = queryOutput(src, env, depth + 1)
+      columns.push(...inner.columns)
+      tables.push(...inner.tables)
+      return
+    }
+    const name = normalizeTableName(src)
+    if (!name) return
+    const cte = env.get(name.toLowerCase())
+    if (cte) {
+      const inner = queryOutput(cte, env, depth + 1)
       columns.push(...inner.columns)
       tables.push(...inner.tables)
     } else {
-      const name = normalizeTableName(src)
-      if (name) tables.push({ table: name })
+      tables.push({ table: name })
+    }
+  }
+  const matches = (source: Source, qualifier: string) => {
+    const q = qualifier.toLowerCase()
+    if (source.alias) return source.alias.toLowerCase() === q
+    return normalizeTableName(source.table)?.toLowerCase() === q
+  }
+
+  for (const item of Array.isArray(query.columns) ? query.columns : []) {
+    const it = item as { type?: string; qualifier?: unknown } | null
+    if (it?.type === "star") {
+      sources.forEach(expand)
+    } else if (it?.type === "qualifiedStar") {
+      const parts = (it.qualifier as { parts?: string[] } | undefined)?.parts
+      const qualifier = parts?.[parts.length - 1]
+      if (qualifier)
+        sources.filter((s) => matches(s, qualifier)).forEach(expand)
+    } else {
+      columns.push(...extractCteColumnNames([item]))
     }
   }
   return { columns, tables }

@@ -26,6 +26,7 @@ import {
   tableValuedFunctions,
 } from "../grammar/index"
 import type { TableRef } from "./content-assist"
+import { KEY_COLUMN_SCOPES } from "./content-assist"
 
 /**
  * Column with table context for detailed suggestions
@@ -232,8 +233,11 @@ export function buildSuggestions(
     // (e.g., FROM read_parquet(...) — function call, not a schema table).
     const scopedColumns =
       tablesInScope.length > 0 ? getColumnsInScope(tablesInScope, schema) : []
+    // A key-column slot (DEDUP KEYS / EXPIRE ROWS) knows its columns exactly:
+    // never fall back to every schema column there.
+    const exactScope = tablesInScope.some((t) => KEY_COLUMN_SCOPES.has(t.table))
     const columnsInScope = includeColumns
-      ? scopedColumns.length > 0
+      ? scopedColumns.length > 0 || exactScope
         ? scopedColumns
         : getAllColumns(schema)
       : []

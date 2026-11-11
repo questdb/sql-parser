@@ -162,3 +162,62 @@ describe("key column scope: CTAS and nested queries", () => {
     expect(labels).not.toContain("v")
   })
 })
+
+// PR #42 follow-up review: JOIN sources, qualified stars, comma sources and
+// CTEs in the defining query; no global fallback in a known key slot.
+describe("key column scope: joins, qualified stars and CTEs", () => {
+  const p = createAutocompleteProvider({
+    tables: [{ name: "base" }, { name: "other" }, { name: "third" }],
+    columns: {
+      base: [
+        { name: "k", type: "SYMBOL" },
+        { name: "v", type: "DOUBLE" },
+        { name: "ts", type: "TIMESTAMP" },
+      ],
+      other: [{ name: "wrong", type: "INT" }],
+      third: [{ name: "unrelated", type: "INT" }],
+    },
+  })
+  const l = (sql: string) =>
+    p.getSuggestions(sql, sql.length).map((s) => s.label)
+  const ctas = (q: string) =>
+    `CREATE TABLE out AS (${q}) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS( `
+
+  it.each([
+    [
+      "SELECT * FROM base CROSS JOIN other",
+      ["ts", "v", "k", "wrong"],
+      ["unrelated"],
+    ],
+    [
+      "SELECT b.ts, o.* FROM base b CROSS JOIN other o",
+      ["ts", "wrong"],
+      ["v", "k", "unrelated"],
+    ],
+    [
+      "SELECT b.* FROM base b, other o",
+      ["ts", "v", "k"],
+      ["wrong", "unrelated"],
+    ],
+    [
+      "WITH c AS (SELECT * FROM (SELECT k AS out_k, ts FROM base)) SELECT * FROM c",
+      ["ts", "out_k"],
+      ["k", "v", "wrong", "unrelated"],
+    ],
+    [
+      "WITH c AS (SELECT k AS a FROM base) SELECT c.* FROM c",
+      ["a"],
+      ["k", "wrong"],
+    ],
+  ])("%s", (query, present, absent) => {
+    const labels = l(ctas(query))
+    expect(labels).toEqual(expect.arrayContaining(present))
+    for (const name of absent) expect(labels).not.toContain(name)
+  })
+
+  it("offers nothing rather than every schema column when the output is unknown", () => {
+    const labels = l(ctas("SELECT * FROM read_parquet('x.parquet')"))
+    expect(labels).not.toContain("wrong")
+    expect(labels).not.toContain("unrelated")
+  })
+})
