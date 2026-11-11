@@ -6279,10 +6279,43 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(StringLiteral) },
       { ALT: () => this.CONSUME(Null) },
+      { ALT: () => this.CONSUME(True) },
+      { ALT: () => this.CONSUME(False) },
+      { ALT: () => this.CONSUME(DurationLiteral) },
+      { ALT: () => this.CONSUME(LongLiteral) },
+      { ALT: () => this.CONSUME(DecimalLiteral) },
+      { ALT: () => this.CONSUME(FloatLiteral) },
+      { ALT: () => this.CONSUME(HexLiteral) },
       { ALT: () => this.CONSUME(NumberLiteral) },
       { ALT: () => this.SUBRULE(this.identifier) },
     ])
+    // The server reads one whitespace-delimited token; this lexer may split
+    // it (`1G` = NumberLiteral + Identifier). Glue the pieces back together.
+    this.MANY({
+      GATE: () => this.nextTokenIsGlued(),
+      DEF: () => {
+        this.OR1([
+          { ALT: () => this.CONSUME1(NumberLiteral) },
+          { ALT: () => this.CONSUME1(DurationLiteral) },
+          { ALT: () => this.SUBRULE1(this.identifier) },
+        ])
+      },
+    })
   })
+
+  // LA(1) starts exactly where the last consumed token ended (no whitespace).
+  private nextTokenIsGlued(): boolean {
+    const internals = this as unknown as CstParserInternals & {
+      input: IToken[]
+    }
+    const prev = internals.input[internals.currIdx]
+    const next = this.LA(1)
+    return (
+      prev !== undefined &&
+      prev.endOffset !== undefined &&
+      next.startOffset === prev.endOffset + 1
+    )
+  }
 
   private stringOrIdentifier = this.RULE("stringOrIdentifier", () => {
     this.OR([

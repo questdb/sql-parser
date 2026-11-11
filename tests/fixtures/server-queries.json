@@ -2126,6 +2126,7 @@
     "query": "alter user minion with password null",
     "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/HttpBasicDynamicAuthenticationTest.java:221",
     "feature": "ent-users-groups",
-    "toSql": "ALTER USER minion WITH PASSWORD 'null'"
+    "toSql": "ALTER USER minion WITH PASSWORD 'null'",
+    "skipAutocomplete": "password values are free text; NULL/TRUE/FALSE are deliberately not suggested there"
   }
 ]

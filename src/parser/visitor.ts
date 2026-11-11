@@ -292,6 +292,26 @@ type DedupModeKeys = { mode: AST.DedupMode; keys: string[] }
 // Get the base visitor class from the parser
 const BaseVisitor = parser.getBaseCstVisitorConstructor()
 
+/** All tokens under a CST node, in source order. */
+function collectTokens(node: unknown): IToken[] {
+  const out: IToken[] = []
+  const walk = (n: unknown): void => {
+    if (n === null || typeof n !== "object") return
+    const t = n as IToken
+    if (t.tokenType !== undefined && t.image !== undefined) {
+      out.push(t)
+      return
+    }
+    const children = (n as { children?: Record<string, unknown[]> }).children
+    const values = children
+      ? Object.values(children)
+      : Object.values(n as Record<string, unknown[]>)
+    for (const list of values) if (Array.isArray(list)) list.forEach(walk)
+  }
+  walk(node)
+  return out.sort((a, b) => a.startOffset - b.startOffset)
+}
+
 class QuestDBVisitor extends BaseVisitor {
   constructor() {
     super()
@@ -5427,10 +5447,13 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   passwordValue(ctx: PasswordValueCstChildren): string {
-    if (ctx.StringLiteral) return unquoteSingle(ctx.StringLiteral[0].image)
-    if (ctx.Null) return ctx.Null[0].image
-    if (ctx.NumberLiteral) return ctx.NumberLiteral[0].image
-    return this.extractIdentifierName(ctx.identifier![0].children)
+    const tokens = collectTokens(ctx)
+    if (tokens.length === 1 && ctx.StringLiteral)
+      return unquoteSingle(ctx.StringLiteral[0].image)
+    if (tokens.length === 1 && ctx.identifier)
+      return this.extractIdentifierName(ctx.identifier[0].children)
+    // Raw text of the (possibly lexer-split) token, e.g. 1G, 1h, true
+    return tokens.map((t) => t.image).join("")
   }
 
   stringOrIdentifier(ctx: StringOrIdentifierCstChildren): string {

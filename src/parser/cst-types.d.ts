@@ -3311,8 +3311,15 @@ export interface PasswordValueCstNode extends CstNode {
 export type PasswordValueCstChildren = {
   StringLiteral?: IToken[];
   Null?: IToken[];
-  NumberLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  True?: IToken[];
+  False?: IToken[];
+  DurationLiteral?: (IToken)[];
+  LongLiteral?: IToken[];
+  DecimalLiteral?: IToken[];
+  FloatLiteral?: IToken[];
+  HexLiteral?: IToken[];
+  NumberLiteral?: (IToken)[];
+  identifier?: (IdentifierCstNode)[];
 };
 
 export interface StringOrIdentifierCstNode extends CstNode {

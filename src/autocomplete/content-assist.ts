@@ -1167,6 +1167,13 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       (s) =>
         // permissionToken accepts LIMIT as a third word (SET REFRESH LIMIT,
         // SET MEMORY LIMIT); only offer it where a permission continues so.
+        // A password is free text: don't offer NULL / TRUE / FALSE there.
+        !(
+          s.ruleStack[s.ruleStack.length - 1] === "passwordValue" &&
+          (s.nextTokenType.name === "Null" ||
+            s.nextTokenType.name === "True" ||
+            s.nextTokenType.name === "False")
+        ) &&
         !(
           s.nextTokenType.name === "Limit" &&
           s.ruleStack[s.ruleStack.length - 1] === "permissionToken" &&
