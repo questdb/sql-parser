@@ -173,3 +173,57 @@ describe("permission completion does not offer LIMIT where no permission continu
     expect(labels("GRANT CANCEL ANY ")).toContain("COPY")
   })
 })
+
+// Permission suggestions only continue real permission names; ON / TO /
+// FROM / `,` only after a complete one.
+describe("permission completion follows the permission names", () => {
+  const labels = (sql: string) =>
+    createAutocompleteProvider({ tables: [], columns: {} })
+      .getSuggestions(sql, sql.length)
+      .map((s) => s.label)
+  const noise = ["MATERIALIZED", "SERVICE", "TABLE", "GROUP", "ANY", "LIMIT"]
+
+  it("GRANT CONVERT offers only PARTITION", () => {
+    const l = labels("GRANT CONVERT ")
+    expect(l).toContain("PARTITION")
+    for (const w of [...noise, "ON", "TO"]) expect(l).not.toContain(w)
+  })
+
+  it("GRANT ALTER COLUMN offers only TYPE / CACHE", () => {
+    const l = labels("GRANT ALTER COLUMN ")
+    expect(l).toEqual(expect.arrayContaining(["TYPE", "CACHE"]))
+    for (const w of [...noise, "ON", "TO"]) expect(l).not.toContain(w)
+  })
+
+  it("a complete permission offers ON / TO", () => {
+    const l = labels("GRANT SELECT ")
+    expect(l).toEqual(expect.arrayContaining(["ON", "TO"]))
+    for (const w of noise) expect(l).not.toContain(w)
+  })
+
+  it("REVOKE: a complete permission offers ON / FROM", () => {
+    const l = labels("REVOKE CREATE TABLE ")
+    expect(l).toEqual(expect.arrayContaining(["ON", "FROM"]))
+    for (const w of noise) expect(l).not.toContain(w)
+  })
+
+  it("keeps the TO inside CONVERT PARTITION TO PARQUET|NATIVE", () => {
+    expect(labels("GRANT CONVERT PARTITION ")).toContain("TO")
+    expect(labels("GRANT CONVERT PARTITION TO ")).toEqual(
+      expect.arrayContaining(["PARQUET", "NATIVE"]),
+    )
+  })
+
+  it("after a comma, offers the first words of the permissions", () => {
+    const l = labels("GRANT SELECT, ")
+    expect(l).toEqual(expect.arrayContaining(["INSERT", "CREATE", "CONVERT"]))
+    expect(l).not.toContain("ON")
+    expect(l).not.toContain("TO")
+  })
+
+  it("still parses loosely", () => {
+    expect(
+      parseToAst("GRANT CONVERT PARTITION TO PARQUET ON t TO u").errors,
+    ).toEqual([])
+  })
+})

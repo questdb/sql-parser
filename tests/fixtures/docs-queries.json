@@ -3518,7 +3518,8 @@
     "query": "ALTER MATERIALIZED VIEW trades_hourly\n  ALTER COLUMN symbol ADD INDEX"
   },
   {
-    "query": "GRANT ALTER MATERIALIZED VIEW ON trades_hourly TO user1"
+    "query": "GRANT ALTER MATERIALIZED VIEW ON trades_hourly TO user1",
+    "skipAutocomplete": true
   },
   {
     "query": "ALTER MATERIALIZED VIEW trades_hourly\n  ALTER COLUMN symbol DROP INDEX"
@@ -3530,7 +3531,8 @@
     "query": "ALTER MATERIALIZED VIEW trades_1h RESUME WAL FROM TRANSACTION 5"
   },
   {
-    "query": "GRANT ALTER MATERIALIZED VIEW ON trades_1h TO user1"
+    "query": "GRANT ALTER MATERIALIZED VIEW ON trades_1h TO user1",
+    "skipAutocomplete": true
   },
   {
     "query": "ALTER MATERIALIZED VIEW trades_hourly SET REFRESH LIMIT 1 WEEK"

@@ -6,6 +6,7 @@ import { CLAUSE_IDENTIFIER_KEYWORD_NAMES } from "../parser/tokens"
 import type { Statement } from "../parser/ast"
 import {
   IDENTIFIER_KEYWORD_TOKENS,
+  IDENTIFIER_TOKENS,
   EXPRESSION_OPERATORS,
 } from "./token-classification"
 import {
@@ -990,19 +991,60 @@ const DATABASE_CATEGORY_KEYWORDS = [
  * Next words of every server permission name that extends the words typed so
  * far in the current GRANT / REVOKE list item.
  */
-function nextPermissionWords(tokens: IToken[]): Set<string> {
+function typedPermissionWords(tokens: IToken[]): string[] {
   const words: string[] = []
   for (let i = tokens.length - 1; i >= 0; i--) {
     const name = tokens[i].tokenType.name
     if (name === "Grant" || name === "Revoke" || name === "Comma") break
     words.unshift(tokens[i].image.toUpperCase())
   }
+  return words
+}
+
+function nextPermissionWords(tokens: IToken[]): Set<string> {
+  const words = typedPermissionWords(tokens)
   const prefix = words.length > 0 ? words.join(" ") + " " : ""
   const next = new Set<string>()
   for (const perm of PERMISSION_NAMES) {
     if (perm.startsWith(prefix)) next.add(perm.split(" ")[words.length])
   }
   return next
+}
+
+// Tokens that end a permission in the GRANT / REVOKE permission list.
+const PERMISSION_LIST_ENDERS = new Set(["On", "To", "From", "Comma"])
+
+/**
+ * GRANT / REVOKE permissions are parsed loosely (any 1-3 words), so content
+ * assist offers every word the grammar allows there. Keep only words that
+ * continue a real permission name, and offer ON / TO / FROM / `,` only once
+ * the typed words form a complete permission. Applies to the permission list
+ * only, not to what follows ON.
+ */
+function filterPermissionSuggestions(
+  tokens: IToken[],
+  suggestions: ContentAssistSuggestion[],
+): (s: ContentAssistSuggestion) => boolean {
+  if (!suggestions.some((s) => s.ruleStack.includes("permissionList"))) {
+    return () => true
+  }
+  const next = nextPermissionWords(tokens)
+  const complete = PERMISSION_NAMES.includes(
+    typedPermissionWords(tokens).join(" "),
+  )
+  return (s) => {
+    const name = s.nextTokenType.name
+    if (s.ruleStack.includes("permissionToken")) {
+      // Generic name tokens stay: they show no suggestion here, and the
+      // provider needs a grammar token to add the context keywords (the real
+      // next words from PERMISSION_NAMES). Explicit keywords must continue a
+      // permission name.
+      if (IDENTIFIER_TOKENS.has(name) || name === "StringLiteral") return true
+      return next.has(name.toUpperCase())
+    }
+    if (PERMISSION_LIST_ENDERS.has(name)) return complete
+    return true
+  }
 }
 
 /**
@@ -1192,7 +1234,9 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
         resourceGroupOptionKey(tokens) !== "memory_limit")
     )
   })
+  const keepPermissionWord = filterPermissionSuggestions(tokens, suggestions)
   const result = suggestions
+    .filter(keepPermissionWord)
     .filter(
       (s) =>
         // permissionToken accepts LIMIT as a third word (SET REFRESH LIMIT,
