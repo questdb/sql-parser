@@ -68,3 +68,39 @@ describe("join aliases", () => {
     )
   })
 })
+
+// PR #42 review: after `UNNEST(...)` a join / clause word was taken as an
+// implicit alias (`UNNEST(t.arr) LEFT JOIN y` lost the LEFT; `... WINDOW w AS`
+// failed). Both parsed on master and compile on the server.
+describe("UNNEST implicit alias stops at join / clause words", () => {
+  it.each([
+    [
+      "SELECT * FROM t, UNNEST(t.arr) LEFT JOIN y ON t.ts=y.ts",
+      "SELECT * FROM t LEFT JOIN y ON t.ts = y.ts, UNNEST(t.arr)",
+    ],
+    [
+      "SELECT * FROM UNNEST(ARRAY[1.0]) RIGHT JOIN y ON true",
+      "SELECT * FROM UNNEST(ARRAY[1.0]) RIGHT JOIN y ON TRUE",
+    ],
+    [
+      "SELECT row_number() OVER w FROM UNNEST(ARRAY[1.0]) WINDOW w AS (ORDER BY value)",
+      "SELECT row_number() OVER w FROM UNNEST(ARRAY[1.0]) WINDOW w AS (ORDER BY value)",
+    ],
+  ])("%s", (sql, expected) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(toSql(result.ast)).toBe(expected)
+  })
+
+  it.each([
+    "SELECT * FROM UNNEST(ARRAY[1.0]) u",
+    "SELECT * FROM UNNEST(ARRAY[1.0]) AS u",
+    "SELECT * FROM UNNEST(ARRAY[1.0]) u (v)",
+    "SELECT * FROM UNNEST(ARRAY[1.0]) (v)",
+  ])("still takes a real alias: %s", (sql) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+  })
+})

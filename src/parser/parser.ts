@@ -460,6 +460,7 @@ export const IMPLICIT_ALIAS_STOP_TOKENS: ReadonlyMap<
   ReadonlySet<TokenType>
 > = new Map([
   ["tableRef", TABLE_ALIAS_STOP_TOKENS],
+  ["unnestClause", TABLE_ALIAS_STOP_TOKENS],
   ["selectItem", COLUMN_ALIAS_STOP_TOKENS],
   ["pivotAggregation", COLUMN_ALIAS_STOP_TOKENS],
 ])
@@ -1186,16 +1187,25 @@ class QuestDBParser extends CstParser {
     })
     // Optional alias + column aliases; the column alias list may also come
     // without a table alias: UNNEST(...) (v) (server parseUnnest0)
-    this.OPTION1(() => {
-      this.OR([
-        {
-          ALT: () => {
-            this.CONSUME(As)
-            this.SUBRULE(this.identifier, { LABEL: "unnestAlias" })
+    this.OPTION1({
+      // Implicit alias: not a join / clause / statement word (server
+      // tableAliasStop), so `UNNEST(..) LEFT JOIN y` and
+      // `UNNEST(..) WINDOW w AS (..)` keep their meaning.
+      GATE: () =>
+        this.LA(1).tokenType === As ||
+        !TABLE_ALIAS_STOP_TOKENS.has(this.LA(1).tokenType),
+      DEF: () =>
+        this.OR([
+          {
+            ALT: () => {
+              this.CONSUME(As)
+              this.SUBRULE(this.identifier, { LABEL: "unnestAlias" })
+            },
           },
-        },
-        { ALT: () => this.SUBRULE1(this.identifier, { LABEL: "unnestAlias" }) },
-      ])
+          {
+            ALT: () => this.SUBRULE1(this.identifier, { LABEL: "unnestAlias" }),
+          },
+        ]),
     })
     // Optional column alias list: (col1, col2, ...)
     this.OPTION2(() => {
