@@ -3344,6 +3344,8 @@ export type PasswordValueCstChildren = {
   identifier?: (IdentifierCstNode)[];
   MalformedDurationLiteral?: (IToken)[];
   AnyKeyword?: (IToken)[];
+  VariableReference?: (IToken)[];
+  BindVariable?: (IToken)[];
 };
 
 export interface StringOrIdentifierCstNode extends CstNode {

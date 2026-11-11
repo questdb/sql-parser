@@ -6327,6 +6327,9 @@ class QuestDBParser extends CstParser {
         { ALT: () => this.SUBRULE(this.identifier) },
         { ALT: () => this.CONSUME(MalformedDurationLiteral) },
         { ALT: () => this.CONSUME(AnyKeyword) },
+        // @x and $1 are one server token (abc@def via the glue below)
+        { ALT: () => this.CONSUME(VariableReference) },
+        { ALT: () => this.CONSUME(BindVariable) },
       ],
     })
     // The server reads one whitespace-delimited token; this lexer may split
@@ -6343,6 +6346,8 @@ class QuestDBParser extends CstParser {
             { ALT: () => this.CONSUME1(MalformedDurationLiteral) },
             { ALT: () => this.SUBRULE1(this.identifier) },
             { ALT: () => this.CONSUME1(AnyKeyword) },
+            { ALT: () => this.CONSUME1(VariableReference) },
+            { ALT: () => this.CONSUME1(BindVariable) },
           ],
         })
       },

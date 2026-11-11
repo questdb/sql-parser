@@ -133,3 +133,35 @@ describe("password value boundaries", () => {
     )
   })
 })
+
+// PR #42 review: the server reads one lexer token as the password, and
+// @x, $1 and abc@def are each one server token.
+describe("passwords with @ and $", () => {
+  it.each([
+    ["CREATE USER u WITH PASSWORD @x", "@x"],
+    ["CREATE USER u WITH PASSWORD $1", "$1"],
+    ["CREATE USER u WITH PASSWORD abc@def", "abc@def"],
+    ["ALTER USER u WITH PASSWORD P@ssw0rd", "P@ssw0rd"],
+  ])("%s", (sql, password) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(JSON.stringify(result.ast[0])).toContain(
+      `"password":${JSON.stringify(password)}`,
+    )
+  })
+
+  it("keeps OWNED BY after the password, and its completion", () => {
+    const result = parseToAst(
+      "CREATE SERVICE ACCOUNT sa WITH PASSWORD abc@def OWNED BY g",
+    )
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(JSON.stringify(result.ast[0])).toContain('"g"')
+    const sql = "CREATE SERVICE ACCOUNT sa WITH PASSWORD abc@def "
+    const labels = createAutocompleteProvider({ tables: [], columns: {} })
+      .getSuggestions(sql, sql.length)
+      .map((s) => s.label)
+    expect(labels).toContain("OWNED")
+  })
+})
