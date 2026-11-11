@@ -818,32 +818,31 @@ class QuestDBParser extends CstParser {
   // (`DECLARE @x := 1 (SELECT @x)`, `DECLARE @lim := 1 t WHERE x > @lim`,
   // `(WITH c AS (...) c)`), as in the server's parseQuery. Without a prefix
   // a plain SELECT is required (the implicit form is its own statement).
+  // The body stays a direct child (`selectStatement.children.selectBody`):
+  // the web console walks that CST shape (notebook DECLARE injection).
   private selectStatement = this.RULE("selectStatement", () => {
     this.OR([
       {
         ALT: () => {
-          this.SUBRULE(this.declareClause)
-          this.OPTION(() => this.SUBRULE(this.withClause))
-          this.SUBRULE(this.prefixedQueryBody)
-        },
-      },
-      {
-        ALT: () => {
-          this.SUBRULE1(this.withClause)
-          this.SUBRULE1(this.prefixedQueryBody)
+          this.OR1([
+            {
+              ALT: () => {
+                this.SUBRULE(this.declareClause)
+                this.OPTION(() => this.SUBRULE(this.withClause))
+              },
+            },
+            { ALT: () => this.SUBRULE1(this.withClause) },
+          ])
+          this.OR2([
+            {
+              GATE: () => this.LA(1).tokenType === Select,
+              ALT: () => this.SUBRULE1(this.selectBody),
+            },
+            { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+          ])
         },
       },
       { ALT: () => this.SUBRULE(this.selectBody) },
-    ])
-  })
-
-  private prefixedQueryBody = this.RULE("prefixedQueryBody", () => {
-    this.OR([
-      {
-        GATE: () => this.LA(1).tokenType === Select,
-        ALT: () => this.SUBRULE(this.selectBody),
-      },
-      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
     ])
   })
 

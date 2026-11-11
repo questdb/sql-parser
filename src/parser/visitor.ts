@@ -166,7 +166,6 @@ import type {
   SelectItemCstChildren,
   SelectListCstChildren,
   SelectBodyCstChildren,
-  PrefixedQueryBodyCstChildren,
   SelectStatementCstChildren,
   SetClauseCstChildren,
   SetExpressionCstChildren,
@@ -504,7 +503,7 @@ class QuestDBVisitor extends BaseVisitor {
     const result = (
       ctx.selectBody
         ? this.visit(ctx.selectBody)
-        : this.visit(ctx.prefixedQueryBody!)
+        : this.visit(ctx.implicitSelectStatement!)
     ) as AST.SelectStatement
 
     if (ctx.declareClause) {
@@ -516,14 +515,6 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     return result
-  }
-
-  prefixedQueryBody(ctx: PrefixedQueryBodyCstChildren): AST.SelectStatement {
-    return (
-      ctx.selectBody
-        ? this.visit(ctx.selectBody)
-        : this.visit(ctx.implicitSelectStatement!)
-    ) as AST.SelectStatement
   }
 
   selectBody(ctx: SelectBodyCstChildren): AST.SelectStatement {

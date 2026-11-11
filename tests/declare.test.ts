@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { parseToAst, getNextValidTokens } from "../src/index"
+import type { CstNode } from "chevrotain"
+import { parse, parseToAst, getNextValidTokens } from "../src/index"
 import { toSql } from "../src/parser/toSql"
 import type * as AST from "../src/parser/ast"
 
@@ -77,5 +78,37 @@ describe("DECLARE", () => {
     const names = getNextValidTokens("DECLARE ")
     expect(names).toContain("Audited")
     expect(names).toContain("Overridable")
+  })
+})
+
+// The web console walks the CST of `DECLARE ... SELECT` (notebook variable
+// injection, ui src/scenes/Editor/Notebook/declareUtils.ts) and expects the
+// body as a direct `selectStatement.children.selectBody`, as before the
+// implicit-select form was added. Keep that shape.
+describe("DECLARE / WITH CST shape stays compatible", () => {
+  const selectStatement = (sql: string) => {
+    const r = parse(sql)
+    expect(r.parseErrors).toEqual([])
+    const stmt = (r.cst.children.statement as CstNode[])[0]
+    return (stmt.children.selectStatement as CstNode[])[0]
+  }
+
+  it.each([
+    "DECLARE @y := 99 SELECT @x + @y",
+    "DECLARE OVERRIDABLE @a := 1, @b := 2 SELECT @a + @b",
+    "DECLARE @x := 1 WITH a AS (SELECT 1) SELECT * FROM a",
+  ])("%s: selectBody is a direct child", (sql) => {
+    const sel = selectStatement(sql)
+    expect(sel.children.declareClause).toHaveLength(1)
+    expect(sel.children.selectBody).toHaveLength(1)
+  })
+
+  it("implicit select after DECLARE is still accepted", () => {
+    const sel = selectStatement("DECLARE @x := 1 trades WHERE price > @x")
+    expect(sel.children.declareClause).toHaveLength(1)
+    expect(sel.children.implicitSelectStatement).toHaveLength(1)
+    expect(
+      toSql(parseToAst("DECLARE @x := 1 trades WHERE price > @x").ast[0]),
+    ).toContain("@x")
   })
 })

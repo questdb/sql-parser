@@ -76,17 +76,7 @@ export interface SelectStatementCstNode extends CstNode {
 export type SelectStatementCstChildren = {
   declareClause?: DeclareClauseCstNode[];
   withClause?: (WithClauseCstNode)[];
-  prefixedQueryBody?: (PrefixedQueryBodyCstNode)[];
-  selectBody?: SelectBodyCstNode[];
-};
-
-export interface PrefixedQueryBodyCstNode extends CstNode {
-  name: "prefixedQueryBody";
-  children: PrefixedQueryBodyCstChildren;
-}
-
-export type PrefixedQueryBodyCstChildren = {
-  selectBody?: SelectBodyCstNode[];
+  selectBody?: (SelectBodyCstNode)[];
   implicitSelectStatement?: ImplicitSelectStatementCstNode[];
 };
 
@@ -3447,7 +3437,6 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   statement(children: StatementCstChildren, param?: IN): OUT;
   withStatement(children: WithStatementCstChildren, param?: IN): OUT;
   selectStatement(children: SelectStatementCstChildren, param?: IN): OUT;
-  prefixedQueryBody(children: PrefixedQueryBodyCstChildren, param?: IN): OUT;
   selectBody(children: SelectBodyCstChildren, param?: IN): OUT;
   withClause(children: WithClauseCstChildren, param?: IN): OUT;
   cteDefinition(children: CteDefinitionCstChildren, param?: IN): OUT;
