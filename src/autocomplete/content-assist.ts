@@ -1049,6 +1049,24 @@ function contextKeywordSuggestions(
   return [...out]
 }
 
+// Types the server only accepts as cast targets (SqlUtil.toPersistedType
+// rejects them as column types): offered after `::` / CAST, not in DDL.
+const CAST_ONLY_TYPE_TOKENS: ReadonlySet<string> = new Set([
+  "Regclass",
+  "Regprocedure",
+  "Array",
+])
+
+/** Key of the resource group option whose value is being typed (`key =`). */
+function resourceGroupOptionKey(tokens: IToken[]): string | undefined {
+  for (let i = tokens.length - 1; i > 0; i--) {
+    const name = tokens[i].tokenType.name
+    if (name === "Equals") return tokens[i - 1].image.toLowerCase()
+    if (name === "Comma" || name === "LParen") return undefined
+  }
+  return undefined
+}
+
 const QUIET_EXPRESSION_ANCHORS = [
   "sampleByClause",
   "alignToClause",
@@ -1159,7 +1177,15 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
         tokens[tokens.length - 1]?.tokenType.name !== "Cancel") ||
       // INCREMENTAL is an obsolete synonym of IMMEDIATE in REFRESH modes
       (s.nextTokenType.name === "Incremental" &&
-        s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh")
+        s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh") ||
+      // Cast-only types: the server cannot persist them as column types
+      (CAST_ONLY_TYPE_TOKENS.has(s.nextTokenType.name) &&
+        s.ruleStack.includes("dataType") &&
+        !s.ruleStack.includes("castDataType")) ||
+      // UNLIMITED is only a memory_limit value among resource group options
+      (s.nextTokenType.name === "Unlimited" &&
+        s.ruleStack.includes("resourceGroupOption") &&
+        resourceGroupOptionKey(tokens) !== "memory_limit")
     )
   })
   const result = suggestions
