@@ -105,6 +105,8 @@ export const SKIP_TOKENS = new Set([
   "BitAnd",
   "BitXor",
   "BitOr",
+  // Category of every keyword (password values) — never a suggestion itself
+  "AnyKeyword",
   // Variable references (user-defined, can't suggest)
   "VariableReference",
   // Bind variables ($1, :name)

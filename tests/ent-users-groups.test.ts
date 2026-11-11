@@ -103,3 +103,33 @@ describe("password slot suggestions", () => {
     },
   )
 })
+
+// PR #42 follow-up review: never glue across a quoted token; any word works.
+describe("password value boundaries", () => {
+  it.each([
+    ["CREATE SERVICE ACCOUNT sa WITH PASSWORD 'pw'OWNED BY g", "pw"],
+    ['CREATE SERVICE ACCOUNT sa WITH PASSWORD "pw"OWNED BY g', "pw"],
+  ])("%s", (sql, password) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    const json = JSON.stringify(result.ast[0])
+    expect(json).toContain(`"password":${JSON.stringify(password)}`)
+    expect(json).toContain('"g"')
+  })
+
+  it.each([
+    ["CREATE USER u WITH PASSWORD select", "select"],
+    ["CREATE USER u WITH PASSWORD 1hour", "1hour"],
+    ["CREATE USER u WITH PASSWORD 12true", "12true"],
+    ["ALTER USER u WITH PASSWORD from", "from"],
+    ["CREATE USER u WITH PASSWORD 1G", "1G"],
+  ])("any word as a password: %s", (sql, password) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(JSON.stringify(result.ast[0])).toContain(
+      `"password":${JSON.stringify(password)}`,
+    )
+  })
+})

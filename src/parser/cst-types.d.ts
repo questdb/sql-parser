@@ -3329,6 +3329,8 @@ export type PasswordValueCstChildren = {
   HexLiteral?: IToken[];
   NumberLiteral?: (IToken)[];
   identifier?: (IdentifierCstNode)[];
+  MalformedDurationLiteral?: (IToken)[];
+  AnyKeyword?: (IToken)[];
 };
 
 export interface StringOrIdentifierCstNode extends CstNode {

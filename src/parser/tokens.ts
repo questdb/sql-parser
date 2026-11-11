@@ -15,6 +15,13 @@ export const IdentifierKeyword = createToken({
   pattern: Lexer.NA,
 })
 
+// Category of EVERY keyword token, reserved or not. Only the password value
+// slot uses it: the server reads any token there as the password text.
+export const AnyKeyword = createToken({
+  name: "AnyKeyword",
+  pattern: Lexer.NA,
+})
+
 // =============================================================================
 // Token Generation Utilities
 // =============================================================================
@@ -505,6 +512,10 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Unlisten",
   ...CLAUSE_IDENTIFIER_KEYWORD_NAMES,
 ])
+
+for (const token of allGeneratedTokens.values()) {
+  token.CATEGORIES = [...(token.CATEGORIES ?? []), AnyKeyword]
+}
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
   const token = allGeneratedTokens.get(name)

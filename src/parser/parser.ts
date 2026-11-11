@@ -373,6 +373,8 @@ import {
   Include,
   GeohashBinaryLiteral,
   GeohashLiteral,
+  MalformedDurationLiteral,
+  AnyKeyword,
   HexLiteral,
   FloatLiteral,
   EscapeStringLiteral,
@@ -490,6 +492,13 @@ const TYPED_LITERAL_TYPE_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
   Bigint,
   Real,
   Bytea,
+])
+
+// Quoted tokens end on their own (no gluing across them).
+const QUOTED_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
+  "StringLiteral",
+  "QuotedIdentifier",
+  "EscapeStringLiteral",
 ])
 
 class QuestDBParser extends CstParser {
@@ -6283,29 +6292,42 @@ class QuestDBParser extends CstParser {
   // (EntSqlCompilerImpl.parsePassword): 'pw', pw, null, 1234. Its own rule so
   // the formatter treats it as a value and never capitalizes it.
   private passwordValue = this.RULE("passwordValue", () => {
-    this.OR([
-      { ALT: () => this.CONSUME(StringLiteral) },
-      { ALT: () => this.CONSUME(Null) },
-      { ALT: () => this.CONSUME(True) },
-      { ALT: () => this.CONSUME(False) },
-      { ALT: () => this.CONSUME(DurationLiteral) },
-      { ALT: () => this.CONSUME(LongLiteral) },
-      { ALT: () => this.CONSUME(DecimalLiteral) },
-      { ALT: () => this.CONSUME(FloatLiteral) },
-      { ALT: () => this.CONSUME(HexLiteral) },
-      { ALT: () => this.CONSUME(NumberLiteral) },
-      { ALT: () => this.SUBRULE(this.identifier) },
-    ])
+    this.OR({
+      // The specific alternatives come first; AnyKeyword (every keyword,
+      // reserved or not) overlaps them on purpose.
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        { ALT: () => this.CONSUME(StringLiteral) },
+        { ALT: () => this.CONSUME(Null) },
+        { ALT: () => this.CONSUME(True) },
+        { ALT: () => this.CONSUME(False) },
+        { ALT: () => this.CONSUME(DurationLiteral) },
+        { ALT: () => this.CONSUME(LongLiteral) },
+        { ALT: () => this.CONSUME(DecimalLiteral) },
+        { ALT: () => this.CONSUME(FloatLiteral) },
+        { ALT: () => this.CONSUME(HexLiteral) },
+        { ALT: () => this.CONSUME(NumberLiteral) },
+        { ALT: () => this.SUBRULE(this.identifier) },
+        { ALT: () => this.CONSUME(MalformedDurationLiteral) },
+        { ALT: () => this.CONSUME(AnyKeyword) },
+      ],
+    })
     // The server reads one whitespace-delimited token; this lexer may split
-    // it (`1G` = NumberLiteral + Identifier). Glue the pieces back together.
+    // it (`1G` = NumberLiteral + Identifier). Glue the unquoted pieces back
+    // together; a quoted value ends on its own (`'pw'OWNED BY g`).
     this.MANY({
       GATE: () => this.nextTokenIsGlued(),
       DEF: () => {
-        this.OR1([
-          { ALT: () => this.CONSUME1(NumberLiteral) },
-          { ALT: () => this.CONSUME1(DurationLiteral) },
-          { ALT: () => this.SUBRULE1(this.identifier) },
-        ])
+        this.OR1({
+          IGNORE_AMBIGUITIES: true,
+          DEF: [
+            { ALT: () => this.CONSUME1(NumberLiteral) },
+            { ALT: () => this.CONSUME1(DurationLiteral) },
+            { ALT: () => this.CONSUME1(MalformedDurationLiteral) },
+            { ALT: () => this.SUBRULE1(this.identifier) },
+            { ALT: () => this.CONSUME1(AnyKeyword) },
+          ],
+        })
       },
     })
   })
@@ -6320,7 +6342,9 @@ class QuestDBParser extends CstParser {
     return (
       prev !== undefined &&
       prev.endOffset !== undefined &&
-      next.startOffset === prev.endOffset + 1
+      next.startOffset === prev.endOffset + 1 &&
+      !QUOTED_TOKEN_NAMES.has(prev.tokenType.name) &&
+      !QUOTED_TOKEN_NAMES.has(next.tokenType.name)
     )
   }
 

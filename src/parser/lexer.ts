@@ -5,6 +5,7 @@ import { createToken, IToken, Lexer, TokenType } from "chevrotain"
 import {
   CLAUSE_IDENTIFIER_KEYWORD_NAMES,
   IdentifierKeyword,
+  AnyKeyword,
   keywordTokenArray,
   Abort,
   Begin,
@@ -376,7 +377,7 @@ import {
 } from "./tokens"
 
 // Re-export all keyword tokens for parser and external use
-export { IdentifierKeyword }
+export { IdentifierKeyword, AnyKeyword }
 export {
   Abort,
   Begin,
@@ -1188,6 +1189,8 @@ export const allTokens: TokenType[] = [
 
   // Token category for non-reserved keywords (used as identifiers)
   IdentifierKeyword,
+  // Token category for every keyword (password values only)
+  AnyKeyword,
 
   // All keyword tokens (auto-generated from grammar arrays)
   // Keywords use word boundaries so order doesn't matter among them
