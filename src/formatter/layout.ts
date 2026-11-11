@@ -25,6 +25,7 @@ import {
 } from "./phrases"
 import { gapBetween, isGluedWords, isOperand, isSign, Piece } from "./spacing"
 import { Statement } from "./statements"
+import { preservePasswordValues } from "./values"
 
 type Element = { leading: Doc; doc: Doc }
 
@@ -637,7 +638,9 @@ export const formatStatement = (
 ): string => {
   const kind = detectStatementKind(statement.tokens)
   const boundary = statement.verbatimFrom ?? statement.tokens.length
-  const { pieces, trailingGap } = toPieces(statement.tokens.slice(0, boundary))
+  const { pieces, trailingGap } = toPieces(
+    preservePasswordValues(statement.tokens.slice(0, boundary)),
+  )
   const builder = new StatementBuilder(pieces, kind, uppercaseOffsets)
   const parts: Doc[] = [builder.build()]
 
