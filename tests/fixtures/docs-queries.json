@@ -5330,13 +5330,19 @@
     "query": "ALTER TABLE trades DROP STORAGE POLICY;"
   },
   {
-    "query": "ALTER MATERIALIZED VIEW trades_hourly SET STORAGE POLICY(TO PARQUET 7 DAYS, TO REMOTE 14 DAYS, DROP LOCAL 1 MONTH)"
+    "query": "ALTER MATERIALIZED VIEW trades_hourly SET STORAGE POLICY(TO PARQUET 7 DAYS, TO REMOTE 14 DAYS, DROP LOCAL 1 MONTH)",
+    "skipAutocomplete": true,
+    "skipAutocompleteReason": "Storage policies are no longer supported on materialized views; omission is covered by mat-view-storage-completion.test.ts"
   },
   {
-    "query": "ALTER MATERIALIZED VIEW trades_hourly DISABLE STORAGE POLICY"
+    "query": "ALTER MATERIALIZED VIEW trades_hourly DISABLE STORAGE POLICY",
+    "skipAutocomplete": true,
+    "skipAutocompleteReason": "Storage policies are no longer supported on materialized views; omission is covered by mat-view-storage-completion.test.ts"
   },
   {
-    "query": "ALTER MATERIALIZED VIEW trades_hourly DROP STORAGE POLICY"
+    "query": "ALTER MATERIALIZED VIEW trades_hourly DROP STORAGE POLICY",
+    "skipAutocomplete": true,
+    "skipAutocompleteReason": "Storage policies are no longer supported on materialized views; omission is covered by mat-view-storage-completion.test.ts"
   },
   {
     "query": "CREATE TABLE trades (ts TIMESTAMP, symbol SYMBOL, price DOUBLE) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 3d, TO REMOTE 10d, DROP LOCAL 1M) WAL"
@@ -5348,10 +5354,14 @@
     "query": "CREATE TABLE trades (ts TIMESTAMP, k SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) WAL OWNED BY 'group1'"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW hourly_trades AS (SELECT ts, symbol, sum(price) total FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)"
+    "query": "CREATE MATERIALIZED VIEW hourly_trades AS (SELECT ts, symbol, sum(price) total FROM trades SAMPLE BY 1h) PARTITION BY DAY STORAGE POLICY(TO PARQUET 7d, TO REMOTE 14d)",
+    "skipAutocomplete": true,
+    "skipAutocompleteReason": "Storage policies are no longer supported on materialized views; omission is covered by mat-view-storage-completion.test.ts"
   },
   {
-    "query": "CREATE MATERIALIZED VIEW test WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) IN VOLUME vol1"
+    "query": "CREATE MATERIALIZED VIEW test WITH BASE trades AS (SELECT ts, k, avg(v) FROM trades SAMPLE BY 30s), INDEX (k CAPACITY 1024) PARTITION BY DAY STORAGE POLICY(TO PARQUET 10d, TO REMOTE 1M, DROP LOCAL 3M) IN VOLUME vol1",
+    "skipAutocomplete": true,
+    "skipAutocompleteReason": "Storage policies are no longer supported on materialized views; omission is covered by mat-view-storage-completion.test.ts"
   },
   {
     "query": "CREATE MATERIALIZED VIEW mv AS (SELECT ts, avg(x) FROM t SAMPLE BY 1h) PARTITION BY DAY TTL 10d"

@@ -15,7 +15,7 @@
  *    appears in the suggestion list
  *
  * Queries with skipAutocomplete: true are known edge cases (implicit SELECT,
- * SQL hints, semicolons, array slice colon syntax).
+ * SQL hints, semicolons, array slice colon syntax) or unsupported server syntax.
  *
  * Source of truth: tests/fixtures/docs-queries.json
  */

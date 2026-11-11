@@ -1167,6 +1167,21 @@ function isExpiryPredicatePath(ruleStack: string[]): boolean {
     )
 }
 
+/** Materialized-view storage policies are parsed for compatibility, but no longer supported. */
+function isMatViewStorageSuggestion(s: ContentAssistSuggestion): boolean {
+  const inAlter = s.ruleStack.includes("alterMaterializedViewAction")
+  if (!inAlter && !s.ruleStack.includes("createMaterializedViewBody"))
+    return false
+  if (s.ruleStack.includes("storagePolicy")) return true
+  // DROP / ENABLE / DISABLE STORAGE POLICY consume their tokens directly in
+  // the action rule. Table actions use a separate rule and stay unaffected.
+  return (
+    inAlter &&
+    s.ruleStack[s.ruleStack.length - 1] === "alterMaterializedViewAction" &&
+    ["Enable", "Disable", "Storage", "Policy"].includes(s.nextTokenType.name)
+  )
+}
+
 /**
  * Compute content assist suggestions, handling CTE context specially.
  *
@@ -1213,6 +1228,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       return true
     }
     return !(
+      isMatViewStorageSuggestion(s) ||
       (quiet && !QUIET_EXPRESSION_KEPT_TOKENS.has(s.nextTokenType.name)) ||
       (s.ruleStack[s.ruleStack.length - 1] === "timestampWithTimeZoneLiteral" &&
         (s.nextTokenType.name === "Timestamp" ||
