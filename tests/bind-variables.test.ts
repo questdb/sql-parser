@@ -86,8 +86,24 @@ describe("lexer", () => {
     "arr[@v:b]",
     "arr[offset:b]",
     'arr["i":j]',
+    // a non-reserved keyword used as a column, with whitespace before the colon
+    "arr[offset :b]",
+    "arr[timestamp :b]",
   ])("keeps the slice colon in %s", (sql) => {
     expect(tokenTypes(sql)).toContain("Colon::")
+  })
+
+  it("parses a slice whose start is a keyword-named column followed by whitespace", () => {
+    // PR #42 review: parsed on master, compiles on the server
+    const sql = "SELECT ARRAY[1.0,2.0][offset :n] FROM (SELECT 1 offset, 2 n)"
+    expect(parseToAst(sql).errors).toEqual([])
+    expect(parseToAst(sql).ast).toHaveLength(1)
+  })
+
+  it("still reads :name as a bind variable after a keyword outside brackets", () => {
+    expect(tokenTypes("ALIGN TO CALENDAR WITH OFFSET :off")).toContain(
+      "BindVariable::off",
+    )
   })
 
   it("does not glue a colon followed by whitespace", () => {

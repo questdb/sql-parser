@@ -882,16 +882,36 @@ const COMPLETED_OPERAND_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
  * except the value constants; a non-reserved keyword glued to the colon is a
  * column name (`arr[offset:n]`).
  */
-function endsOperand(prev: IToken, colonOffset: number): boolean {
+function endsOperand(
+  prev: IToken,
+  colonOffset: number,
+  insideBrackets: boolean,
+): boolean {
   const type = prev.tokenType
   if (COMPLETED_OPERAND_TOKEN_NAMES.has(type.name)) return true
   if (type.name.endsWith("Literal")) return true
+  // Inside `[...]` a non-reserved keyword before the colon is a column name
+  // (`arr[offset :n]`), with or without whitespace. Outside brackets it only
+  // counts when glued, so `WITH OFFSET :off` keeps its bind variable.
   return (
-    prev.endOffset !== undefined &&
-    prev.endOffset + 1 === colonOffset &&
+    (insideBrackets ||
+      (prev.endOffset !== undefined && prev.endOffset + 1 === colonOffset)) &&
     (type.CATEGORIES ?? []).includes(IdentifierKeyword) &&
     !CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(type.name)
   )
+}
+
+function isInsideBrackets(tokens: IToken[]): boolean {
+  let depth = 0
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const name = tokens[i].tokenType.name
+    if (name === "RBracket") depth++
+    else if (name === "LBracket") {
+      if (depth === 0) return true
+      depth--
+    } else if (name === "Semicolon") return false
+  }
+  return false
 }
 
 function matchBindVariable(
@@ -906,7 +926,7 @@ function matchBindVariable(
   }
   if (ch !== ":") return null
   const prev = tokens[tokens.length - 1]
-  if (prev && endsOperand(prev, offset)) return null
+  if (prev && endsOperand(prev, offset, isInsideBrackets(tokens))) return null
   NAMED_BIND_VARIABLE.lastIndex = offset
   return NAMED_BIND_VARIABLE.exec(text)
 }
