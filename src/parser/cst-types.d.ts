@@ -650,9 +650,22 @@ export type RollupOrCubeSpecCstChildren = {
   Rollup?: IToken[];
   Cube?: IToken[];
   LParen: IToken[];
-  columnRef: (ColumnRefCstNode)[];
+  groupingKey: (GroupingKeyCstNode)[];
   Comma?: IToken[];
   RParen: IToken[];
+};
+
+export interface GroupingKeyCstNode extends CstNode {
+  name: "groupingKey";
+  children: GroupingKeyCstChildren;
+}
+
+export type GroupingKeyCstChildren = {
+  LParen?: IToken[];
+  groupingKey?: GroupingKeyCstNode[];
+  RParen?: IToken[];
+  VariableReference?: IToken[];
+  columnRef?: ColumnRefCstNode[];
 };
 
 export interface ExplicitGroupingSetsCstNode extends CstNode {
@@ -676,7 +689,7 @@ export interface GroupingSetCstNode extends CstNode {
 
 export type GroupingSetCstChildren = {
   LParen: IToken[];
-  columnRef?: (ColumnRefCstNode)[];
+  groupingKey?: (GroupingKeyCstNode)[];
   Comma?: IToken[];
   RParen: IToken[];
 };
@@ -3472,6 +3485,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   groupByClause(children: GroupByClauseCstChildren, param?: IN): OUT;
   groupingSetsSpec(children: GroupingSetsSpecCstChildren, param?: IN): OUT;
   rollupOrCubeSpec(children: RollupOrCubeSpecCstChildren, param?: IN): OUT;
+  groupingKey(children: GroupingKeyCstChildren, param?: IN): OUT;
   explicitGroupingSets(children: ExplicitGroupingSetsCstChildren, param?: IN): OUT;
   groupingSet(children: GroupingSetCstChildren, param?: IN): OUT;
   orderByClause(children: OrderByClauseCstChildren, param?: IN): OUT;

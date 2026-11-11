@@ -1830,12 +1830,29 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Cube) },
     ])
     this.CONSUME(LParen)
-    this.SUBRULE(this.columnRef)
+    this.SUBRULE(this.groupingKey)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.columnRef)
+      this.SUBRULE1(this.groupingKey)
     })
     this.CONSUME(RParen)
+  })
+
+  // A grouping key: a column or a DECLARE variable, optionally parenthesized.
+  // The server parses an expression and then checks it resolves to a column
+  // (SqlParser.parseParenthesizedColumnList / parseExplicitGroupingSets).
+  private groupingKey = this.RULE("groupingKey", () => {
+    this.OR([
+      {
+        ALT: () => {
+          this.CONSUME(LParen)
+          this.SUBRULE(this.groupingKey)
+          this.CONSUME(RParen)
+        },
+      },
+      { ALT: () => this.CONSUME(VariableReference) },
+      { ALT: () => this.SUBRULE(this.columnRef) },
+    ])
   })
 
   // GROUPING SETS ((a, b), (a), ()): every set is parenthesised, `()` is the
@@ -1855,10 +1872,10 @@ class QuestDBParser extends CstParser {
   private groupingSet = this.RULE("groupingSet", () => {
     this.CONSUME(LParen)
     this.OPTION(() => {
-      this.SUBRULE(this.columnRef)
+      this.SUBRULE(this.groupingKey)
       this.MANY(() => {
         this.CONSUME(Comma)
-        this.SUBRULE1(this.columnRef)
+        this.SUBRULE1(this.groupingKey)
       })
     })
     this.CONSUME(RParen)

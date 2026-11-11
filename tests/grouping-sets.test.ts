@@ -305,3 +305,48 @@ describe("autocomplete", () => {
     expect(labels(sql)).toContain("side")
   })
 })
+
+// PR #42 review: the server parses each grouping key as an expression and
+// then checks it resolves to a column (SqlParser.parseParenthesizedColumnList,
+// parseExplicitGroupingSets), so parenthesized keys and DECLARE variables work.
+describe("grouping keys: parentheses and declared variables", () => {
+  it.each([
+    [
+      "SELECT x, count() FROM long_sequence(10) GROUP BY ROLLUP((x))",
+      "SELECT x, count() FROM long_sequence(10) GROUP BY ROLLUP(x)",
+    ],
+    [
+      "SELECT x, count() FROM long_sequence(10) GROUP BY CUBE((x))",
+      "SELECT x, count() FROM long_sequence(10) GROUP BY CUBE(x)",
+    ],
+    [
+      "SELECT x, count() FROM long_sequence(10) GROUP BY GROUPING SETS (((x)), ())",
+      "SELECT x, count() FROM long_sequence(10) GROUP BY GROUPING SETS ((x), ())",
+    ],
+    [
+      "DECLARE @k := x SELECT x, count() FROM long_sequence(10) GROUP BY ROLLUP(@k)",
+      "DECLARE @k := x SELECT x, count() FROM long_sequence(10) GROUP BY ROLLUP(@k)",
+    ],
+    [
+      "DECLARE @k := x SELECT x, count() FROM long_sequence(10) GROUP BY GROUPING SETS ((@k), ())",
+      "DECLARE @k := x SELECT x, count() FROM long_sequence(10) GROUP BY GROUPING SETS ((@k), ())",
+    ],
+  ])("%s", (sql, expected) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(toSql(result.ast)).toBe(expected)
+  })
+
+  it("keeps column completion after a parenthesized grouping clause", () => {
+    const provider = createAutocompleteProvider({
+      tables: [{ name: "t" }],
+      columns: { t: [{ name: "x", type: "LONG" }] },
+    })
+    const sql =
+      "SELECT x, count() FROM t GROUP BY GROUPING SETS (((x)), ()) ORDER BY "
+    expect(
+      provider.getSuggestions(sql, sql.length).map((s) => s.label),
+    ).toContain("x")
+  })
+})

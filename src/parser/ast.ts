@@ -1307,10 +1307,13 @@ export interface GroupingSets extends AstNode {
   type: "groupingSets"
   kind: "rollup" | "cube" | "groupingSets"
   /** ROLLUP / CUBE keys */
-  columns?: ColumnRef[]
+  columns?: GroupingKey[]
   /** GROUPING SETS: one entry per set, `[]` is the empty set `()` */
-  sets?: ColumnRef[][]
+  sets?: GroupingKey[][]
 }
+
+/** A grouping key: a column, or a DECLARE variable that names one */
+export type GroupingKey = ColumnRef | VariableRef
 
 export interface AlignToClause extends AstNode {
   type: "alignTo"

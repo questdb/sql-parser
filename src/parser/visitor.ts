@@ -107,6 +107,7 @@ import type {
   GrantTableTargetCstChildren,
   GroupByClauseCstChildren,
   GroupingSetCstChildren,
+  GroupingKeyCstChildren,
   GroupingSetsSpecCstChildren,
   ExplicitGroupingSetsCstChildren,
   RollupOrCubeSpecCstChildren,
@@ -1292,10 +1293,17 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "groupingSets",
       kind: ctx.Cube ? "cube" : "rollup",
-      columns: ctx.columnRef.map(
-        (c: CstNode) => this.visit(c) as AST.ColumnRef,
+      columns: ctx.groupingKey.map(
+        (c: CstNode) => this.visit(c) as AST.GroupingKey,
       ),
     }
+  }
+
+  groupingKey(ctx: GroupingKeyCstChildren): AST.GroupingKey {
+    if (ctx.groupingKey) return this.visit(ctx.groupingKey) as AST.GroupingKey
+    if (ctx.VariableReference)
+      return { type: "variable", name: ctx.VariableReference[0].image.slice(1) }
+    return this.visit(ctx.columnRef!) as AST.ColumnRef
   }
 
   explicitGroupingSets(ctx: ExplicitGroupingSetsCstChildren): AST.GroupingSets {
@@ -1303,14 +1311,14 @@ class QuestDBVisitor extends BaseVisitor {
       type: "groupingSets",
       kind: "groupingSets",
       sets: ctx.groupingSet.map(
-        (g: CstNode) => this.visit(g) as AST.ColumnRef[],
+        (g: CstNode) => this.visit(g) as AST.GroupingKey[],
       ),
     }
   }
 
-  groupingSet(ctx: GroupingSetCstChildren): AST.ColumnRef[] {
-    return (ctx.columnRef ?? []).map(
-      (c: CstNode) => this.visit(c) as AST.ColumnRef,
+  groupingSet(ctx: GroupingSetCstChildren): AST.GroupingKey[] {
+    return (ctx.groupingKey ?? []).map(
+      (c: CstNode) => this.visit(c) as AST.GroupingKey,
     )
   }
 

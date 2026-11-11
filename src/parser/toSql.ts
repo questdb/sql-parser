@@ -2369,7 +2369,7 @@ function qualifiedNameToSql(name: AST.QualifiedName): string {
 }
 
 function groupingSetsToSql(spec: AST.GroupingSets): string {
-  const keys = (cols: AST.ColumnRef[] | undefined) =>
+  const keys = (cols: AST.GroupingKey[] | undefined) =>
     (cols ?? []).map(expressionToSql).join(", ")
   if (spec.kind === "groupingSets") {
     const sets = (spec.sets ?? []).map((set) => `(${keys(set)})`)
