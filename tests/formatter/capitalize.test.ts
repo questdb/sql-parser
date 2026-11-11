@@ -162,3 +162,29 @@ describe("capitalize leaves unquoted password values alone", () => {
     expect(out).toMatch(/PASSWORD /)
   })
 })
+
+// PR #42 review: IS / ILIKE / DECLARE used as column names are names, not
+// syntax, and keep their spelling under capitalize.
+describe("capitalize keeps keyword-named columns as written", () => {
+  it("CREATE TABLE", () => {
+    expect(
+      format("create table names (is int, ilike int, declare int)", {
+        capitalize: true,
+      }),
+    ).toBe("CREATE TABLE names (\n  is INT,\n  ilike INT,\n  declare INT\n)")
+  })
+
+  it("ALTER TABLE ADD COLUMN", () => {
+    expect(
+      format("alter table t add column ilike int", { capitalize: true }),
+    ).toBe("ALTER TABLE t\nADD COLUMN ilike INT")
+  })
+
+  it("still capitalizes the real operators", () => {
+    expect(
+      format("select a from t where a is null and b ilike 'x'", {
+        capitalize: true,
+      }),
+    ).toContain("WHERE a IS NULL AND b ILIKE 'x'")
+  })
+})

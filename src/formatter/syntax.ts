@@ -10,6 +10,9 @@ const keywordNames = new Set(keywordTokenArray.map((token) => token.name))
  */
 const NAME_RULES: ReadonlySet<string> = new Set(["identifier", "passwordValue"])
 
+/** CST label of keywords consumed as names (columnDefinition: IS / ILIKE / DECLARE). */
+const NAME_LABEL = "keywordName"
+
 type CstNode = { name?: string; children?: Record<string, unknown[]> }
 type CstToken = { startOffset?: number; tokenType?: { name: string } }
 
@@ -31,8 +34,10 @@ const collect = (
   const rule = node as CstNode
   const namesSomething =
     insideName || (rule.name !== undefined && NAME_RULES.has(rule.name))
-  for (const children of Object.values(rule.children ?? {})) {
-    for (const child of children) collect(child, namesSomething, offsets)
+  for (const [label, children] of Object.entries(rule.children ?? {})) {
+    // `keywordName`: a keyword used as a column name (IS / ILIKE / DECLARE)
+    const isName = namesSomething || label === NAME_LABEL
+    for (const child of children) collect(child, isName, offsets)
   }
 }
 
