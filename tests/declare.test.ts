@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from "vitest"
 import type { CstNode } from "chevrotain"
-import { parse, parseToAst, getNextValidTokens } from "../src/index"
+import { format, parse, parseToAst, getNextValidTokens } from "../src/index"
 import { toSql } from "../src/parser/toSql"
 import type * as AST from "../src/parser/ast"
 
@@ -110,5 +110,49 @@ describe("DECLARE / WITH CST shape stays compatible", () => {
     expect(
       toSql(parseToAst("DECLARE @x := 1 trades WHERE price > @x").ast[0]),
     ).toContain("@x")
+  })
+})
+
+// The server lexer does not split on `@`, so a variable is `@` followed by
+// any identifier characters, including a leading digit or `$`
+// (`DECLARE @1 := 1 SELECT @1`). Before, `@1` lexed as `@` + `1` and the
+// formatter wrote `@ 1`, which the server rejects.
+describe("variable names with a leading digit or $", () => {
+  it.each([
+    ["DECLARE @1 := 1 SELECT @1", "DECLARE @1 := 1\nSELECT @1"],
+    [
+      "DECLARE @foo$bar := 1 SELECT @foo$bar",
+      "DECLARE @foo$bar := 1\nSELECT @foo$bar",
+    ],
+    [
+      "DECLARE @1a := 2 SELECT * FROM t WHERE x = @1a",
+      "DECLARE @1a := 2\nSELECT *\nFROM t\nWHERE x = @1a",
+    ],
+  ])("%s parses, round-trips and formats as one token", (sql, formatted) => {
+    const r = parseToAst(sql)
+    expect(r.errors).toEqual([])
+    expect(r.ast).toHaveLength(1)
+    const again = parseToAst(toSql(r.ast[0]))
+    expect(again.errors).toEqual([])
+    expect(format(sql)).toBe(formatted)
+  })
+
+  it("names the variable without the @", () => {
+    const stmt = parseToAst("DECLARE @1 := 1 SELECT @1")
+      .ast[0] as AST.SelectStatement
+    expect(stmt.declare?.assignments[0].name).toBe("1")
+  })
+
+  it("keeps passwords, binds and slices", () => {
+    for (const sql of [
+      "CREATE USER u WITH PASSWORD abc@123",
+      "CREATE USER u WITH PASSWORD @123",
+      "SELECT * FROM t WHERE x = $1 AND y = :sym",
+      "SELECT arr[1:2], arr[i:j] FROM t",
+    ]) {
+      expect(parseToAst(sql).errors, sql).toEqual([])
+      expect(format(sql), sql).not.toMatch(/@ \d/)
+    }
+    expect(format("CREATE USER u WITH PASSWORD abc@123")).toContain("abc@123")
   })
 })

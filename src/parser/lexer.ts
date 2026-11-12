@@ -841,9 +841,11 @@ export const DoubleColon = createToken({ name: "DoubleColon", pattern: /::/ })
 // Variable reference: @variableName — captured as a single token so that
 // keywords after @ (e.g., @select, @window, @limit) are never tokenized
 // as keyword tokens. DECLARE lets you use ANY word as a variable name.
+// The server lexer does not split on `@`, so the name is any run of identifier
+// characters, including a leading digit or `$`: `@1`, `@foo$bar`.
 export const VariableReference = createToken({
   name: "VariableReference",
-  pattern: /@[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_\u0080-\uFFFF]*/,
+  pattern: /@[a-zA-Z0-9_$\u0080-\uFFFF]+/,
 })
 
 // Bare @ sign (only matches when not followed by a word character)
