@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.22 - 2026.11.12
+### Added
+- Add `grouping()` and `grouping_id()` aggregate functions and grouping-set keywords. [#11](https://github.com/questdb/sql-parser/pull/11)
+- Support `ALTER TABLE FORCE REINDEX PARQUET` and `FORCE DROP PARTITION LIST`, including AST serialization and formatting. [#41](https://github.com/questdb/sql-parser/pull/41)
+- Expand QuestDB OSS and Enterprise SQL support and improve autocomplete, formatting and grammar word lists. [#42](https://github.com/questdb/sql-parser/pull/42)
+
 ## 0.1.21 - 2026.10.23
 ### Added
 - Add `percentile_cont`, `percentile_disc`, `quantile_cont` and `quantile_disc` aggregate functions [#39](https://github.com/questdb/sql-parser/pull/39)
