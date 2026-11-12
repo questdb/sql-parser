@@ -1100,7 +1100,6 @@ function contextKeywordSuggestions(
 const CAST_ONLY_TYPE_TOKENS: ReadonlySet<string> = new Set([
   "Regclass",
   "Regprocedure",
-  "Array",
 ])
 
 /** Key of the resource group option whose value is being typed (`key =`). */
@@ -1243,10 +1242,12 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       (s.ruleStack[s.ruleStack.length - 1] === "setStatement" &&
         (s.nextTokenType.name !== "To" ||
           tokens[tokens.length - 1]?.tokenType.name === "Set")) ||
-      // ARRAY[...] literals: not offered at every expression start (it was an
-      // identifier before); ARRAY stays suggested as a type name
+      // ARRAY is a constructor, not a bare type. Keep the lenient dataType
+      // grammar, but do not suggest it in casts or column definitions, or
+      // offer the constructor at every expression start.
       (s.nextTokenType.name === "Array" &&
-        s.ruleStack[s.ruleStack.length - 1] === "arrayLiteral") ||
+        (s.ruleStack.includes("dataType") ||
+          s.ruleStack[s.ruleStack.length - 1] === "arrayLiteral")) ||
       // IS / ILIKE / DECLARE are accepted as column names, not suggested
       (s.ruleStack[s.ruleStack.length - 1] === "columnDefinition" &&
         (s.nextTokenType.name === "Is" ||

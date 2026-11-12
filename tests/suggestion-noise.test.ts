@@ -1,7 +1,8 @@
 /**
  * Suggestions that the server would reject in their position (PR #42 audit).
- *  - REGCLASS / REGPROCEDURE / bare ARRAY are cast-only types: the server can
- *    not persist them as column types (SqlUtil.toPersistedType).
+ *  - REGCLASS / REGPROCEDURE are cast-only types: the server can not persist
+ *    them as column types (SqlUtil.toPersistedType).
+ *  - ARRAY is a constructor, not a bare column or cast-target type.
  *  - UNLIMITED is only a memory_limit value
  *    (EntSqlCompilerImpl resource group options).
  */
@@ -33,8 +34,22 @@ describe("column type positions offer only persistable types", () => {
     "casts still offer them: %s",
     (sql) => {
       expect(labels(sql)).toContain("REGCLASS")
+      expect(labels(sql)).toContain("REGPROCEDURE")
+      expect(labels(sql)).toContain("DOUBLE")
+      expect(labels(sql)).not.toContain("ARRAY")
     },
   )
+})
+
+it("still completes a schema column named array", () => {
+  const provider = createAutocompleteProvider({
+    tables: [{ name: "trades" }],
+    columns: { trades: [{ name: "array", type: "DOUBLE[]" }] },
+  })
+  const sql = "SELECT ar FROM trades"
+  expect(
+    provider.getSuggestions(sql, "SELECT ar".length).map((s) => s.label),
+  ).toContain("array")
 })
 
 describe("UNLIMITED only for memory limits", () => {

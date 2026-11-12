@@ -14,7 +14,7 @@
 //   The pg_-prefixed entries are gated at emission time by the suggestion-
 //   builder: they only surface when the user has typed a "pg" prefix, so the
 //   letter "p" alone doesn't bury real schema results in JOIN positions.
-//   `information_schema.*` is NOT gated — those names are SQL-standard.
+//   `information_schema.*` only surfaces for prefix or suffix name matches.
 //
 // Removed from earlier flat list: entries absent from QuestDB runtime AND
 // docs (e.g. `lcase`, `len`, `nvl`, `headers`, `show`,
@@ -389,6 +389,7 @@ export const tableValuedFunctions: string[] = [
   "query_activity",
   "reader_pool",
   "resource_groups",
+  "storage_policies",
   "table_columns",
   "table_storage",
   "table_writer_metrics",

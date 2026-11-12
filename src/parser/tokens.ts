@@ -472,8 +472,9 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Delta",
   "Ef",
   "ByteStreamSplit",
-  // PG type aliases (ColumnType.nameTypeMap); not reserved on the server
+  // ARRAY constructor; still usable as an identifier
   "Array",
+  // PG type aliases (ColumnType.nameTypeMap); not reserved on the server
   "Bigint",
   "Bytea",
   "Real",
@@ -580,6 +581,7 @@ export const All = getToken("All")
 export const Alter = getToken("Alter")
 export const And = getToken("And")
 export const Any = getToken("Any")
+export const ArrayType = getToken("Array")
 export const As = getToken("As")
 export const Asof = getToken("Asof")
 export const Assume = getToken("Assume")
@@ -859,7 +861,6 @@ export const Timestamp = getToken("Timestamp")
 export const TimestampNs = getToken("TimestampNs")
 export const Uuid = getToken("Uuid")
 export const Varchar = getToken("Varchar")
-export const ArrayType = getToken("Array")
 export const Bigint = getToken("Bigint")
 export const Bytea = getToken("Bytea")
 export const Real = getToken("Real")

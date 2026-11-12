@@ -5938,6 +5938,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Bytea) },
       { ALT: () => this.CONSUME(Regclass) },
       { ALT: () => this.CONSUME(Regprocedure) },
+      // Lenient compatibility; bare ARRAY is not suggested as a type.
       { ALT: () => this.CONSUME(ArrayType) },
       { ALT: () => this.CONSUME(Identifier) }, // For custom types
     ])

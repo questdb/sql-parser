@@ -30,6 +30,12 @@ import {
 } from "./token-classification"
 import type { AutocompleteProvider, SchemaInfo, Suggestion } from "./types"
 import { SuggestionKind, SuggestionPriority } from "./types"
+import {
+  scalarFunctions,
+  aggregateFunctions,
+  windowFunctions,
+  tableValuedFunctions,
+} from "../grammar/functions"
 
 const EXPRESSION_OPERATOR_LABELS = new Set(
   [...EXPRESSION_OPERATORS].map(tokenNameToKeyword),
@@ -248,6 +254,42 @@ export function createAutocompleteProvider(
         isMidWord && tokensBefore.length > 0
           ? tokensBefore[tokensBefore.length - 1].image.toLowerCase()
           : ""
+
+      const namespace = qualifiedTableRef?.toLowerCase()
+      const isColumnQualifier =
+        suggestColumns &&
+        namespace !== undefined &&
+        (effectiveSchema.columns[namespace] !== undefined ||
+          effectiveTablesInScope.some(
+            (ref) => ref.alias?.toLowerCase() === namespace,
+          ))
+      if (namespace && !isColumnQualifier) {
+        const prefix = namespace + "."
+        const candidates = [
+          ...(suggestScalarFunctions ? scalarFunctions : []),
+          ...(suggestAggregateFunctions ? aggregateFunctions : []),
+          ...(suggestWindowFunctions ? windowFunctions : []),
+          ...(suggestTableValuedFunctions ? tableValuedFunctions : []),
+        ].filter((name) => name.startsWith(prefix))
+        if (candidates.length > 0) {
+          return candidates
+            .filter((name) => {
+              if (namespace !== "information_schema" || !partialPrefix)
+                return true
+              const member = name.slice(prefix.length)
+              return (
+                member.startsWith(partialPrefix) ||
+                member.endsWith(partialPrefix)
+              )
+            })
+            .map((name) => ({
+              label: name,
+              kind: SuggestionKind.Function,
+              insertText: name,
+              priority: SuggestionPriority.Low,
+            }))
+        }
+      }
 
       // If parser returned valid next tokens, use grammar-based classification
       if (nextTokenTypes.length > 0) {

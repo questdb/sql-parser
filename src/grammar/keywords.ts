@@ -11,6 +11,7 @@ export const keywords: string[] = [
   "anchor",
   "and",
   "any",
+  "array",
   "as",
   "asof",
   "assume",

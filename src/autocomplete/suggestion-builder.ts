@@ -28,6 +28,8 @@ import {
 import type { TableRef } from "./content-assist"
 import { KEY_COLUMN_SCOPES } from "./content-assist"
 
+const INFORMATION_SCHEMA_PREFIX = "information_schema."
+
 /**
  * Column with table context for detailed suggestions
  */
@@ -326,6 +328,18 @@ export function buildSuggestions(
     if (isMidWord) {
       const emitFn = (name: string) => {
         if (seenKeywords.has(name.toUpperCase())) return
+        if (
+          name.startsWith(INFORMATION_SCHEMA_PREFIX) &&
+          (!partialPrefix ||
+            !(
+              name.startsWith(partialPrefix) ||
+              name
+                .slice(INFORMATION_SCHEMA_PREFIX.length)
+                .startsWith(partialPrefix) ||
+              name.endsWith(partialPrefix)
+            ))
+        )
+          return
         if (isPgCatalogName(name) && !showPgCatalog) return
         suggestions.push({
           label: name,

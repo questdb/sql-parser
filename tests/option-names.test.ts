@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest"
 import { parseToAst, getNextValidTokens } from "../src/index"
 import { toSql } from "../src/parser/toSql"
 import { dataTypes } from "../src/grammar/dataTypes"
+import { keywords } from "../src/grammar/keywords"
 
 const ok = (sql: string) => {
   const result = parseToAst(sql)
@@ -24,7 +25,6 @@ const ALIASES = [
   "bytea",
   "regclass",
   "regprocedure",
-  "array",
 ]
 
 describe("option names", () => {
@@ -46,7 +46,7 @@ describe("option names", () => {
 
   it("type aliases are data types and identifiers", () => {
     for (const t of ALIASES) expect(dataTypes).toContain(t)
-    for (const t of ALIASES.filter((a) => a !== "array")) {
+    for (const t of ALIASES) {
       expect(toSql(ok(`SELECT x::${t} FROM t`))).toBe(
         `SELECT x::${t.toUpperCase()} FROM t`,
       )
@@ -62,5 +62,13 @@ describe("option names", () => {
     ok("SELECT array, ARRAY[[1.0], [2.0]] FROM array")
     ok("SELECT x::text[] FROM t")
     expect(getNextValidTokens("SELECT CAST(x AS ")).toContain("Bigint")
+  })
+
+  it("classifies ARRAY as a constructor keyword rather than a data type", () => {
+    expect(dataTypes).not.toContain("array")
+    expect(keywords).toContain("array")
+    ok("SELECT CAST(ARRAY[1.0, 2.0] AS DOUBLE[])")
+    ok("SELECT ARRAY[[1.0], [2.0]]::DOUBLE[][]")
+    ok("CREATE TABLE array (array DOUBLE[])")
   })
 })

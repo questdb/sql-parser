@@ -1,5 +1,4 @@
 export const dataTypes: string[] = [
-  "array",
   "bigint",
   "binary",
   "boolean",
