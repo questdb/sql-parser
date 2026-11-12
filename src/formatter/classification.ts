@@ -1,4 +1,8 @@
-import { IdentifierKeyword, keywordTokenArray } from "../parser/tokens"
+import {
+  CLAUSE_IDENTIFIER_KEYWORD_NAMES,
+  IdentifierKeyword,
+  keywordTokenArray,
+} from "../parser/tokens"
 
 export type SignificantKind = "word" | "operator" | "delimiter"
 
@@ -47,11 +51,16 @@ const literalTokenNames = [
   "LongLiteral",
   "DecimalLiteral",
   "DurationLiteral",
+  "MalformedDurationLiteral",
   "NumberLiteral",
   "StringLiteral",
+  "HexLiteral",
+  "FloatLiteral",
+  "EscapeStringLiteral",
   "QuotedIdentifier",
   "Identifier",
   "VariableReference",
+  "BindVariable",
 ]
 
 export const wordTokenNames: ReadonlySet<string> = new Set([
@@ -60,7 +69,12 @@ export const wordTokenNames: ReadonlySet<string> = new Set([
 ])
 
 const nonReservedKeywordNames = keywordTokenArray
-  .filter((token) => token.CATEGORIES?.includes(IdentifierKeyword))
+  .filter(
+    (token) =>
+      token.CATEGORIES?.includes(IdentifierKeyword) &&
+      // `THEN -1`, `BY -x`: a sign after a clause word stays unary
+      !CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(token.name),
+  )
   .map((token) => token.name)
 
 export const operandTokenNames: ReadonlySet<string> = new Set([

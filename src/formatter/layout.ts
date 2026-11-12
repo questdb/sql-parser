@@ -25,6 +25,7 @@ import {
 } from "./phrases"
 import { gapBetween, isGluedWords, isOperand, isSign, Piece } from "./spacing"
 import { Statement } from "./statements"
+import { preservePasswordValues } from "./values"
 
 type Element = { leading: Doc; doc: Doc }
 
@@ -81,6 +82,10 @@ const startsQuery = (piece: Piece | undefined) =>
 const opensBlock = (next: Piece | undefined) => startsQuery(next)
 
 type Clause = { doc: Doc; headless: boolean }
+
+const timestampWithTimeZone: Phrase[] = [
+  { names: ["With", "Time", "Zone"], role: "clause" },
+]
 
 const alwaysBreaksList = (phrase: Phrase | null) =>
   phrase !== null && phrase.names[0] === "Declare"
@@ -213,7 +218,20 @@ class StatementBuilder {
     if (
       piece !== undefined &&
       this.previous !== null &&
-      isGluedWords(this.previous, piece)
+      (isGluedWords(this.previous, piece) ||
+        // `t.window`, `t.left`: a qualified name part, not a clause word
+        this.previous.token.tokenName === "Dot")
+    ) {
+      return null
+    }
+    // `timestamp[_ns] WITH TIME ZONE` is a type name, not a WITH clause
+    if (
+      piece !== undefined &&
+      piece.token.tokenName === "With" &&
+      this.previous !== null &&
+      (this.previous.token.tokenName === "Timestamp" ||
+        this.previous.token.tokenName === "TimestampNs") &&
+      matchPhrase(this.tokens, this.index, timestampWithTimeZone) !== null
     ) {
       return null
     }
@@ -620,7 +638,9 @@ export const formatStatement = (
 ): string => {
   const kind = detectStatementKind(statement.tokens)
   const boundary = statement.verbatimFrom ?? statement.tokens.length
-  const { pieces, trailingGap } = toPieces(statement.tokens.slice(0, boundary))
+  const { pieces, trailingGap } = toPieces(
+    preservePasswordValues(statement.tokens.slice(0, boundary)),
+  )
   const builder = new StatementBuilder(pieces, kind, uppercaseOffsets)
   const parts: Doc[] = [builder.build()]
 

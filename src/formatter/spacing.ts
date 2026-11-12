@@ -32,6 +32,9 @@ const isComment = (piece: Piece) =>
 
 const isNumber = (piece: Piece) => /^\d/.test(piece.token.image)
 
+const startsLikeBindVariableName = (piece: Piece) =>
+  /^[\w\u0080-\uFFFF:]/.test(piece.token.image)
+
 const isUncertain = (piece: Piece) =>
   piece.token.kind === "opaque" || piece.token.kind === "tolerant"
 
@@ -64,6 +67,11 @@ export const gapBetween = (previous: Piece | null, next: Piece): string => {
   if (nextName === "Dot" && isNumber(previous)) return " "
   if (previousName === "Dot" && isNumber(next)) return " "
   if (nextName !== null && noSpaceBefore.has(nextName)) return ""
+  // `arr[: 5]`, `: name`, `: :x`: gluing the colon to what follows would lex
+  // as a `:name` bind variable or `::`, so keep the gap.
+  if (previousName === "Colon" && startsLikeBindVariableName(next)) {
+    return preserved(next)
+  }
   if (previousName !== null && noSpaceAfter.has(previousName)) return ""
   if (nextName === "LParen" && previous.token.kind === "word") {
     return preserved(next)

@@ -1,6 +1,7 @@
 import {
   CstParser,
   type TokenType,
+  type IToken,
   NoViableAltException,
   EarlyExitException,
   tokenMatcher,
@@ -47,6 +48,7 @@ import {
   On,
   Partition,
   Limit,
+  Any,
   Order,
   Asc,
   Desc,
@@ -124,7 +126,9 @@ import {
   Nanosecond,
   Nanoseconds,
   Dedup,
+  Deduplicate,
   Upsert,
+  Skip,
   Keys,
   Add,
   Attach,
@@ -207,6 +211,14 @@ import {
   Native,
   Error,
   Abort,
+  Begin,
+  Close,
+  Commit,
+  Deallocate,
+  Discard,
+  Reset,
+  Rollback,
+  Unlisten,
   StatisticsEnabled,
   Stats,
   Primary,
@@ -229,9 +241,30 @@ import {
   Beginning,
   Now,
   Memory,
+  Resource,
+  Unset,
+  Audit,
+  Mapping,
+  Priority,
+  MemoryLimit,
+  CpuWeight,
+  MaxActiveQueries,
+  MaxQueuedQueries,
+  QueueTimeout,
   Daily,
   Expression,
   Posting,
+  ByteStreamSplit,
+  PostingDelta,
+  PostingEf,
+  ArrayType,
+  Bigint,
+  Bytea,
+  Real,
+  Regclass,
+  Regprocedure,
+  Smallint,
+  Text,
   Delta,
   Ef,
   Bitmap,
@@ -242,6 +275,8 @@ import {
   DataPageSize,
   ParquetVersion,
   Zone,
+  At,
+  Precision,
   Period,
   Length,
   Delay,
@@ -257,6 +292,7 @@ import {
   Lock,
   Exclusive,
   VariableReference,
+  BindVariable,
   ColonEquals,
   RegexMatch,
   RegexNotMatch,
@@ -328,6 +364,7 @@ import {
   BitOr,
   Within,
   Overridable,
+  Audited,
   LBracket,
   RBracket,
   Colon,
@@ -336,6 +373,12 @@ import {
   Include,
   GeohashBinaryLiteral,
   GeohashLiteral,
+  AtSign,
+  MalformedDurationLiteral,
+  AnyKeyword,
+  HexLiteral,
+  FloatLiteral,
+  EscapeStringLiteral,
   LongLiteral,
   DecimalLiteral,
   Window,
@@ -347,6 +390,7 @@ import {
   Exclude,
   Cumulative,
   Others,
+  Ties,
   Database,
   Backup,
   Prevailing,
@@ -371,11 +415,92 @@ import {
   // Storage policy tokens
   Storage,
   Subsample,
+  Cube,
+  Grouping,
+  Rollup,
+  Sets,
   Policy,
   Local,
   Remote,
   IdentifierKeyword,
 } from "./lexer"
+
+// Types the server accepts in a typed literal `<type> '<string>'`
+// (ExpressionParser.processPgTimestampCast + cannotCastTo): BOOLEAN..LONG256,
+// UUID, IPv4, VARCHAR, DECIMAL, plus nameTypeMap aliases.
+// Non-reserved words (server SqlKeywords.KEYWORDS does not list them) that
+// start a join, a clause or a statement: never taken as an implicit (no AS)
+// alias. Join/clause words mirror the server's tableAliasStop; the statement
+// starters keep `... FROM t\nSHOW TABLES` a statement boundary as before.
+export const ALIAS_STOP_STATEMENT_TOKENS: ReadonlySet<TokenType> =
+  new globalThis.Set([Show, Copy, Truncate, Vacuum, Grant, Revoke, Declare])
+const TABLE_ALIAS_STOP_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
+  ...ALIAS_STOP_STATEMENT_TOKENS,
+  Left,
+  Right,
+  Full,
+  Inner,
+  Cross,
+  Asof,
+  Lt,
+  Splice,
+  Horizon,
+  Window,
+  Group,
+  Pivot,
+])
+// Server columnAliasStop: FROM , OVER UNION EXCEPT INTERSECT ) ; FOR
+const COLUMN_ALIAS_STOP_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
+  ...ALIAS_STOP_STATEMENT_TOKENS,
+  For,
+])
+
+// Content assist ignores GATEs: the implicit-alias stops above, keyed by the
+// rule whose `identifier` subrule is the alias (tableRef / selectItem /
+// pivotAggregation only call `identifier` for aliases).
+export const IMPLICIT_ALIAS_STOP_TOKENS: ReadonlyMap<
+  string,
+  ReadonlySet<TokenType>
+> = new Map([
+  ["tableRef", TABLE_ALIAS_STOP_TOKENS],
+  ["unnestClause", TABLE_ALIAS_STOP_TOKENS],
+  ["selectItem", COLUMN_ALIAS_STOP_TOKENS],
+  ["pivotAggregation", COLUMN_ALIAS_STOP_TOKENS],
+])
+
+const TYPED_LITERAL_TYPE_TOKENS: ReadonlySet<TokenType> = new globalThis.Set([
+  Boolean,
+  Byte,
+  Short,
+  Char,
+  Int,
+  Integer,
+  Long,
+  Date,
+  Timestamp,
+  TimestampNs,
+  Float,
+  Double,
+  String,
+  Symbol,
+  Long256,
+  Uuid,
+  Ipv4,
+  Varchar,
+  Decimal,
+  Text,
+  Smallint,
+  Bigint,
+  Real,
+  Bytea,
+])
+
+// Quoted tokens end on their own (no gluing across them).
+const QUOTED_TOKEN_NAMES: ReadonlySet<string> = new globalThis.Set([
+  "StringLiteral",
+  "QuotedIdentifier",
+  "EscapeStringLiteral",
+])
 
 class QuestDBParser extends CstParser {
   constructor(config?: { skipValidations?: boolean }) {
@@ -395,6 +520,63 @@ class QuestDBParser extends CstParser {
   // own OR (no tokens consumed) vs. a cascade from inside a matched subrule.
   private _semicolonBoundedRecovery = false
   private _statementStartIdx = -1
+
+  // True while parsing an EXPIRE ROWS WHEN predicate (see expireRowsClause).
+  private inExpireRowsPredicate = false
+
+  // `name [. name]* (` ahead: a (schema-qualified) table function call
+  private isTableFunctionCallAhead(): boolean {
+    let i = 1
+    for (;;) {
+      const tok = this.LA(i)
+      const t = tok.tokenType
+      const isName =
+        t === Identifier ||
+        t === QuotedIdentifier ||
+        t === StringLiteral ||
+        tokenMatcher(tok, IdentifierKeyword)
+      if (!isName) return false
+      const next = this.LA(i + 1).tokenType
+      if (next === LParen) return true
+      if (next !== Dot) return false
+      i += 2
+    }
+  }
+
+  // Implicit PIVOT alias: as for tables, but a word followed by PIVOT /
+  // WHERE is the next (implicit) statement, `t PIVOT (...)\nu PIVOT (...)`.
+  private pivotAliasAllowed(): boolean {
+    if (this.LA(1).tokenType === As) return true
+    const la2 = this.LA(2).tokenType
+    return la2 !== Pivot && la2 !== Where && this.implicitTableAliasAllowed()
+  }
+
+  // Implicit (no AS) table alias allowed at LA(1)? Mirrors the server's
+  // tableAliasStop for the words that are identifiers here.
+  private implicitTableAliasAllowed(): boolean {
+    const la1 = this.LA(1).tokenType
+    // Don't consume LATEST as alias when followed by ON or BY (latestOnClause)
+    if (la1 === Latest) {
+      const la2 = this.LA(2).tokenType
+      return la2 !== On && la2 !== By
+    }
+    // Don't consume OWNED as alias when followed by BY (OWNED BY clause)
+    if (la1 === Owned) return this.LA(2).tokenType !== By
+    // If next token is AS, always allow (explicit alias)
+    if (la1 === As) return true
+    if (TABLE_ALIAS_STOP_TOKENS.has(la1)) return false
+    // Join clause words (server tableAliasStop): `ASOF JOIN t TOLERANCE 2s`,
+    // `WINDOW JOIN t RANGE BETWEEN ...`, `... EXCLUDE PREVAILING`
+    if (la1 === Tolerance || la1 === Range) return false
+    if (
+      (la1 === Exclude || la1 === Include) &&
+      this.LA(2).tokenType === Prevailing
+    )
+      return false
+    // Don't consume identifier as alias if followed by LParen —
+    // it's a function call starting a new statement, not an alias
+    return this.LA(2).tokenType !== LParen
+  }
 
   findReSyncTokenType(): TokenType {
     if (this._semicolonBoundedRecovery) {
@@ -476,6 +658,23 @@ class QuestDBParser extends CstParser {
     )
   }
 
+  // ROLLUP( / CUBE( at LA(offset): SqlParser.hasGroupingSyntaxLookahead.
+  private isRollupOrCubeStart(offset: number): boolean {
+    const t = this.LA(offset).tokenType
+    return (
+      (t === Rollup || t === Cube) && this.LA(offset + 1).tokenType === LParen
+    )
+  }
+
+  // ROLLUP( / CUBE( / GROUPING SETS at LA(offset).
+  private isGroupingSetsStart(offset: number): boolean {
+    return (
+      this.isRollupOrCubeStart(offset) ||
+      (this.LA(offset).tokenType === Grouping &&
+        this.LA(offset + 1).tokenType === Sets)
+    )
+  }
+
   // QuestDB accepts these case-sensitively. See SqlParser.isValidSampleByPeriodLetter.
   private isSampleByPeriodLetter(image: string): boolean {
     return image.length === 1 && "nUTsmhdwMy".includes(image)
@@ -485,15 +684,18 @@ class QuestDBParser extends CstParser {
   // Entry point
   // ==========================================================================
 
+  // Empty statements (`;;`, a leading `;`) are skipped, as in
+  // SqlCompilerImpl.compileBatch (getNextValidTokenPosition).
   public statements = this.RULE("statements", () => {
-    this.MANY(() => {
+    this.MANY(() => this.CONSUME(Semicolon))
+    this.MANY2(() => {
       this._semicolonBoundedRecovery = true
       try {
         this.SUBRULE(this.statement)
       } finally {
         this._semicolonBoundedRecovery = false
       }
-      this.OPTION(() => this.CONSUME(Semicolon))
+      this.MANY3(() => this.CONSUME2(Semicolon))
     })
   })
 
@@ -547,7 +749,16 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.revokeStatement) },
       { ALT: () => this.SUBRULE(this.vacuumTableStatement) },
       { ALT: () => this.SUBRULE(this.resumeWalStatement) },
-      { ALT: () => this.SUBRULE(this.setTypeStatement) },
+      {
+        GATE: () =>
+          this.LA(2).tokenType === Type &&
+          (this.LA(3).tokenType === Bypass || this.LA(3).tokenType === Wal),
+        ALT: () => this.SUBRULE(this.setTypeStatement),
+      },
+      { ALT: () => this.SUBRULE(this.setStatement) },
+      { ALT: () => this.SUBRULE(this.transactionStatement) },
+      { ALT: () => this.SUBRULE(this.deallocateStatement) },
+      { ALT: () => this.SUBRULE(this.pgNoOpStatement) },
       { ALT: () => this.SUBRULE(this.reindexTableStatement) },
       { ALT: () => this.SUBRULE(this.refreshMaterializedViewStatement) },
       {
@@ -561,7 +772,12 @@ class QuestDBParser extends CstParser {
           this.LA(1).tokenType === Compile && this.LA(2).tokenType === View,
         ALT: () => this.SUBRULE(this.compileViewStatement),
       },
-      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+      {
+        // SHOW / COPY / GRANT ... at statement start are statement keywords
+        // on the server, never the table of an implicit SELECT
+        GATE: () => !ALIAS_STOP_STATEMENT_TOKENS.has(this.LA(1).tokenType),
+        ALT: () => this.SUBRULE(this.implicitSelectStatement),
+      },
     ])
   })
 
@@ -589,6 +805,8 @@ class QuestDBParser extends CstParser {
         // SELECT after WITH: no DECLARE/WITH prefixes allowed here
         ALT: () => this.SUBRULE(this.selectBody),
       },
+      // implicit select after WITH: `WITH c AS (...) c WHERE ...`
+      { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
     ])
   })
 
@@ -596,10 +814,36 @@ class QuestDBParser extends CstParser {
   // SELECT Statement
   // ==========================================================================
 
+  // After a DECLARE or WITH prefix the query may also be an implicit select
+  // (`DECLARE @x := 1 (SELECT @x)`, `DECLARE @lim := 1 t WHERE x > @lim`,
+  // `(WITH c AS (...) c)`), as in the server's parseQuery. Without a prefix
+  // a plain SELECT is required (the implicit form is its own statement).
+  // The body stays a direct child (`selectStatement.children.selectBody`):
+  // the web console walks that CST shape (notebook DECLARE injection).
   private selectStatement = this.RULE("selectStatement", () => {
-    this.OPTION(() => this.SUBRULE(this.declareClause))
-    this.OPTION2(() => this.SUBRULE(this.withClause))
-    this.SUBRULE(this.selectBody)
+    this.OR([
+      {
+        ALT: () => {
+          this.OR1([
+            {
+              ALT: () => {
+                this.SUBRULE(this.declareClause)
+                this.OPTION(() => this.SUBRULE(this.withClause))
+              },
+            },
+            { ALT: () => this.SUBRULE1(this.withClause) },
+          ])
+          this.OR2([
+            {
+              GATE: () => this.LA(1).tokenType === Select,
+              ALT: () => this.SUBRULE1(this.selectBody),
+            },
+            { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+          ])
+        },
+      },
+      { ALT: () => this.SUBRULE(this.selectBody) },
+    ])
   })
 
   private selectBody = this.RULE("selectBody", () => {
@@ -642,17 +886,8 @@ class QuestDBParser extends CstParser {
     this.OPTION1(() => {
       this.CONSUME(From)
       this.SUBRULE(this.fromClause)
-      this.OPTION2(() => this.SUBRULE(this.whereClause))
-      this.OPTION3(() => this.SUBRULE(this.sampleByClause))
-      this.OPTION4(() => this.SUBRULE(this.latestOnClause))
-      this.OPTION5(() => this.SUBRULE(this.groupByClause))
-      // PIVOT clause: SELECT * FROM t PIVOT (agg FOR col IN (...))
-      this.OPTION9(() => {
-        this.CONSUME(Pivot)
-        this.CONSUME(LParen)
-        this.SUBRULE(this.pivotBody)
-        this.CONSUME(RParen)
-      })
+      // WHERE / LATEST / PIVOT / SAMPLE BY / GROUP BY
+      this.selectClauseChain()
       // Named window clause: WINDOW w AS (...) [, w2 AS (...)]
       // Standard SQL places WINDOW between HAVING/GROUP BY and ORDER BY.
       // GATE: disambiguate from WINDOW JOIN (which lives inside fromClause,
@@ -670,16 +905,144 @@ class QuestDBParser extends CstParser {
     })
   })
 
+  // WHERE / LATEST ON|BY / PIVOT / SAMPLE BY / GROUP BY of simpleSelect and
+  // implicitSelectBody (inlined into the calling rule, so the CST children
+  // stay on that rule). Server order (SqlParser.parseFromClause):
+  //   [LATEST BY (deprecated)] WHERE, LATEST ON, PIVOT, SAMPLE BY, GROUP BY
+  // The orders accepted before are kept: SAMPLE BY -> LATEST and
+  // GROUP BY -> PIVOT. Written as alternatives (not a run of OPTIONs) so that
+  // autocomplete never offers a clause that was already used.
+  // Indexes start at 20 to stay clear of the calling rules' own indexes.
+  private selectClauseChain(): void {
+    // Every call site needs its own fixed occurrence index (the same at
+    // recording time and at parse time), hence the explicit numbers.
+    const latest = (i: number) => this.subrule(i, this.latestOnClause)
+    const where = (i: number) => this.subrule(i, this.whereClause)
+    const sample = (i: number) => this.subrule(i, this.sampleByClause)
+    const group = (i: number) => this.subrule(i, this.groupByClause)
+    // PIVOT (...) [[AS] alias] (parsePivot -> setModelAliasAndGetOptTok)
+    const pivot = (i: number) => {
+      this.consume(i, Pivot)
+      this.consume(i, LParen)
+      this.subrule(i, this.pivotBody)
+      this.consume(i, RParen)
+      this.option(i + 5, {
+        GATE: () => this.pivotAliasAllowed(),
+        DEF: () => {
+          this.option(i + 6, () => this.consume(i, As))
+          this.subrule(i, this.identifier, { LABEL: "pivotAlias" })
+        },
+      })
+    }
+    // Each helper call gets its own base `b` (spaced by 10) and uses each
+    // subrule at most once with index b, and option indexes b..b+2.
+    // PIVOT [SAMPLE BY] [GROUP BY]
+    const fromPivot = (b: number) => {
+      pivot(b)
+      this.option(b, () => sample(b))
+      this.option(b + 1, () => group(b))
+    }
+    // SAMPLE BY [LATEST] [GROUP BY] [PIVOT]
+    const fromSample = (b: number) => {
+      sample(b)
+      this.option(b, () => latest(b))
+      this.option(b + 1, () => group(b))
+      this.option(b + 2, () => pivot(b))
+    }
+    // GROUP BY [PIVOT]
+    const fromGroup = (b: number) => {
+      group(b)
+      this.option(b, () => pivot(b))
+    }
+    // after LATEST: PIVOT [SAMPLE BY] [GROUP BY] | SAMPLE BY [GROUP BY]
+    //               | GROUP BY [PIVOT]
+    const afterLatest = (b: number): void => {
+      this.option(b, () => {
+        this.or(b, [
+          { ALT: () => fromPivot(b + 10) },
+          {
+            ALT: () => {
+              sample(b + 20)
+              this.option(b + 20, () => group(b + 20))
+            },
+          },
+          { ALT: () => fromGroup(b + 30) },
+        ])
+      })
+    }
+    const withoutLatest = (b: number): void => {
+      this.or(b, [
+        { ALT: () => fromPivot(b + 10) },
+        { ALT: () => fromSample(b + 20) },
+        { ALT: () => fromGroup(b + 30) },
+      ])
+    }
+    this.option(20, () => {
+      this.or(20, [
+        {
+          // LATEST BY|ON [WHERE] ... (LATEST BY right after the table)
+          ALT: () => {
+            latest(20)
+            this.option(21, () => where(20))
+            afterLatest(30)
+          },
+        },
+        {
+          ALT: () => {
+            where(21)
+            this.option(22, () => {
+              this.or(21, [
+                {
+                  ALT: () => {
+                    latest(21)
+                    afterLatest(70)
+                  },
+                },
+                { ALT: () => withoutLatest(110) },
+              ])
+            })
+          },
+        },
+        { ALT: () => withoutLatest(150) },
+      ])
+    })
+  }
+
   private setOperation = this.RULE("setOperation", () => {
     this.OR([
-      { ALT: () => this.CONSUME(Union) },
-      { ALT: () => this.CONSUME(Except) },
-      { ALT: () => this.CONSUME(Intersect) },
+      {
+        ALT: () => {
+          this.CONSUME(Union)
+          // UNION DISTINCT is plain UNION on the server (parseDml)
+          this.OPTION1(() => {
+            this.OR2([
+              { ALT: () => this.CONSUME(All) },
+              { ALT: () => this.CONSUME(Distinct) },
+            ])
+          })
+        },
+      },
+      {
+        ALT: () => {
+          this.OR3([
+            { ALT: () => this.CONSUME(Except) },
+            { ALT: () => this.CONSUME(Intersect) },
+          ])
+          this.OPTION(() => this.CONSUME1(All))
+        },
+      },
     ])
-    this.OPTION(() => this.CONSUME(All))
-    // Right operand: full SELECT or bare table/implicit form
+    // Right operand: full SELECT or bare table/implicit form; a branch may
+    // start with its own WITH or DECLARE (WithClauseTest, DeclareTest)
     this.OR1([
       { ALT: () => this.SUBRULE(this.simpleSelect) },
+      {
+        GATE: () => {
+          const t = this.LA(1).tokenType
+          return t === With || t === Declare
+        },
+        ALT: () => this.SUBRULE(this.selectStatement),
+      },
       { ALT: () => this.SUBRULE(this.implicitSelectBody) },
     ])
   })
@@ -728,6 +1091,7 @@ class QuestDBParser extends CstParser {
       GATE: () => {
         // If next token is AS, always allow (explicit alias)
         if (this.LA(1).tokenType === As) return true
+        if (COLUMN_ALIAS_STOP_TOKENS.has(this.LA(1).tokenType)) return false
         // Don't consume identifier as alias if followed by LParen —
         // it's a function call starting a new statement, not an alias
         return this.LA(2).tokenType !== LParen
@@ -830,27 +1194,37 @@ class QuestDBParser extends CstParser {
       this.CONSUME(With)
       this.CONSUME(Ordinality)
     })
-    // Optional alias + column aliases
-    this.OPTION1(() => {
-      this.OR([
-        {
-          ALT: () => {
-            this.CONSUME(As)
-            this.SUBRULE(this.identifier)
+    // Optional alias + column aliases; the column alias list may also come
+    // without a table alias: UNNEST(...) (v) (server parseUnnest0)
+    this.OPTION1({
+      // Implicit alias: not a join / clause / statement word (server
+      // tableAliasStop), so `UNNEST(..) LEFT JOIN y` and
+      // `UNNEST(..) WINDOW w AS (..)` keep their meaning.
+      GATE: () =>
+        this.LA(1).tokenType === As ||
+        !TABLE_ALIAS_STOP_TOKENS.has(this.LA(1).tokenType),
+      DEF: () =>
+        this.OR([
+          {
+            ALT: () => {
+              this.CONSUME(As)
+              this.SUBRULE(this.identifier, { LABEL: "unnestAlias" })
+            },
           },
-        },
-        { ALT: () => this.SUBRULE1(this.identifier) },
-      ])
-      // Optional column alias list: (col1, col2, ...)
-      this.OPTION2(() => {
-        this.CONSUME1(LParen)
-        this.SUBRULE2(this.identifier)
-        this.MANY1(() => {
-          this.CONSUME1(Comma)
-          this.SUBRULE3(this.identifier)
-        })
-        this.CONSUME1(RParen)
+          {
+            ALT: () => this.SUBRULE1(this.identifier, { LABEL: "unnestAlias" }),
+          },
+        ]),
+    })
+    // Optional column alias list: (col1, col2, ...)
+    this.OPTION2(() => {
+      this.CONSUME1(LParen)
+      this.SUBRULE2(this.identifier)
+      this.MANY1(() => {
+        this.CONSUME1(Comma)
+        this.SUBRULE3(this.identifier)
       })
+      this.CONSUME1(RParen)
     })
   })
 
@@ -859,10 +1233,8 @@ class QuestDBParser extends CstParser {
   // QuestDB treats these as implicit SELECT * FROM ...
   private implicitSelectBody = this.RULE("implicitSelectBody", () => {
     this.SUBRULE(this.fromClause)
-    this.OPTION(() => this.SUBRULE(this.whereClause))
-    this.OPTION1(() => this.SUBRULE(this.sampleByClause))
-    this.OPTION2(() => this.SUBRULE(this.latestOnClause))
-    this.OPTION3(() => this.SUBRULE(this.groupByClause))
+    // WHERE / LATEST / PIVOT / SAMPLE BY / GROUP BY, as in simpleSelect
+    this.selectClauseChain()
     this.OPTION6(() => this.SUBRULE(this.subsampleClause))
     this.OPTION4(() => this.SUBRULE(this.orderByClause))
     this.OPTION5(() => this.SUBRULE(this.limitClause))
@@ -878,6 +1250,7 @@ class QuestDBParser extends CstParser {
   })
 
   private tableRef = this.RULE("tableRef", () => {
+    const isTableFunctionCall = this.BACKTRACK(this.tableFunctionCall)
     this.OR([
       {
         // Standard subquery: (SELECT ...), (WITH ...), (DECLARE ...)
@@ -909,15 +1282,22 @@ class QuestDBParser extends CstParser {
         },
       },
       {
-        GATE: this.BACKTRACK(this.tableFunctionCall),
-        ALT: () => this.SUBRULE(this.tableFunctionCall),
-      },
-      {
         // @variable reference as table source (DECLARE @subquery := (...); SELECT * FROM @subquery)
         ALT: () => this.CONSUME(VariableReference),
       },
       { ALT: () => this.CONSUME(StringLiteral) },
-      { ALT: () => this.SUBRULE(this.tableName) },
+      // tableName before tableFunctionCall: content assist ignores GATEs and
+      // prunes later alternatives once one path consumes the input, so the
+      // table path must come first or `FROM s.t ` would only offer `(`.
+      {
+        GATE: () =>
+          !this.isTableFunctionCallAhead() || !isTableFunctionCall.call(this),
+        ALT: () => this.SUBRULE(this.tableName),
+      },
+      {
+        GATE: isTableFunctionCall,
+        ALT: () => this.SUBRULE(this.tableFunctionCall),
+      },
     ])
     // Optional TIMESTAMP designation on subquery/table results
     this.OPTION2(() => {
@@ -929,21 +1309,7 @@ class QuestDBParser extends CstParser {
     // Optional alias — but NOT if the next token starts a clause
     // (e.g., LATEST ON/BY should not be consumed as alias)
     this.OPTION({
-      GATE: () => {
-        const la1 = this.LA(1).tokenType
-        // Don't consume LATEST as alias when followed by ON or BY (latestOnClause)
-        if (la1 === Latest) {
-          const la2 = this.LA(2).tokenType
-          return la2 !== On && la2 !== By
-        }
-        // Don't consume OWNED as alias when followed by BY (OWNED BY clause)
-        if (la1 === Owned) return this.LA(2).tokenType !== By
-        // If next token is AS, always allow (explicit alias)
-        if (la1 === As) return true
-        // Don't consume identifier as alias if followed by LParen —
-        // it's a function call starting a new statement, not an alias
-        return this.LA(2).tokenType !== LParen
-      },
+      GATE: () => this.implicitTableAliasAllowed(),
       DEF: () => {
         this.OR1([
           {
@@ -985,8 +1351,13 @@ class QuestDBParser extends CstParser {
     this.CONSUME(RParen)
   })
 
+  // Optionally schema-qualified: pg_catalog.pg_class(), information_schema.tables()
   private tableFunctionName = this.RULE("tableFunctionName", () => {
     this.SUBRULE(this.identifier)
+    this.MANY(() => {
+      this.CONSUME(Dot)
+      this.SUBRULE1(this.identifier)
+    })
   })
 
   // ---- Join clause: dispatches to type-specific sub-rules so that each
@@ -1058,26 +1429,15 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // HORIZON JOIN: tableName alias [ON expr] (RANGE FROM/TO/STEP | LIST (...)) AS alias
-  // Uses tableName + custom alias instead of tableRef to avoid ambiguity
-  // between implicit keyword aliases and RANGE/LIST/ON keywords.
+  // HORIZON JOIN: tableRef [ON expr] (RANGE FROM/TO/STEP | LIST (...)) AS alias
+  // The target is a table or a parenthesised sub-query with an optional alias
+  // (server parseJoin: expectTableNameOrSubQuery + setModelAliasAndGetOptTok).
+  // tableRef's alias gate refuses RANGE; `LIST (` is refused by its LParen
+  // check.
   private horizonJoin = this.RULE("horizonJoin", () => {
     this.CONSUME(Horizon)
     this.CONSUME(Join)
-    this.SUBRULE(this.tableName)
-    // Table alias (mandatory): explicit (AS <id>) or implicit (bare Identifier only, not keywords)
-    this.OR1([
-      {
-        ALT: () => {
-          this.CONSUME(As)
-          this.SUBRULE(this.identifier)
-        },
-      },
-      {
-        // Implicit alias: only base Identifier, never keywords like RANGE/LIST
-        ALT: () => this.CONSUME(Identifier),
-      },
-    ])
+    this.SUBRULE(this.tableRef)
     this.OPTION(() => {
       this.CONSUME(On)
       this.SUBRULE(this.expression)
@@ -1119,9 +1479,15 @@ class QuestDBParser extends CstParser {
     })
   })
 
-  // Horizon offset value: optional minus sign + DurationLiteral | NumberLiteral
+  // Horizon offset value: optional sign + DurationLiteral | NumberLiteral
+  // (server expectIntervalLiteral accepts `-` and `+`)
   private horizonOffset = this.RULE("horizonOffset", () => {
-    this.OPTION(() => this.CONSUME(Minus))
+    this.OPTION(() => {
+      this.OR1([
+        { ALT: () => this.CONSUME(Minus) },
+        { ALT: () => this.CONSUME(Plus) },
+      ])
+    })
     this.OR([
       { ALT: () => this.CONSUME(DurationLiteral) },
       { ALT: () => this.CONSUME(NumberLiteral) },
@@ -1245,16 +1611,34 @@ class QuestDBParser extends CstParser {
     this.CONSUME(Sample)
     this.CONSUME(By)
     this.OR([
-      { ALT: () => this.CONSUME(DurationLiteral) },
-      { ALT: () => this.CONSUME(VariableReference) },
       // Bare single-letter period unit with no leading digit, e.g. `SAMPLE BY w`
       // (equivalent to `SAMPLE BY 1w`). Lexes as an Identifier; the GATE keeps
       // this alternative restricted to valid unit letters.
       {
-        GATE: () => this.isSampleByPeriodLetter(this.LA(1).image),
+        GATE: () =>
+          this.LA(1).tokenType === Identifier &&
+          this.isSampleByPeriodLetter(this.LA(1).image),
         ALT: () => this.CONSUME(Identifier),
       },
+      {
+        // SAMPLE BY <expr> [unit letter] (SqlParser.expectSample): a full
+        // period (`1h`, `@unit`) or an expression followed by a one-letter
+        // unit: `@q h`, `2 h`, `(10+20)m`, `$1 d`. The unit is optional here
+        // (the server requires it unless the expression is a full period).
+        ALT: () => {
+          this.SUBRULE(this.expression, { LABEL: "sampleByExpression" })
+          this.OPTION4({
+            GATE: () =>
+              this.LA(1).tokenType === Identifier &&
+              this.isSampleByPeriodLetter(this.LA(1).image),
+            DEF: () => this.CONSUME1(Identifier, { LABEL: "sampleByUnit" }),
+          })
+        },
+      },
     ])
+    // SAMPLE BY 1h ROLLUP(a) | CUBE(a) | GROUPING SETS ((a), ()): right after
+    // the interval, without a plain-key prefix (questdb#6853).
+    this.OPTION3(() => this.SUBRULE(this.groupingSetsSpec))
     // Java order: FROM/TO → FILL → ALIGN TO
     this.OPTION(() => this.SUBRULE(this.fromToClause))
     this.OPTION1(() => this.SUBRULE(this.fillClause))
@@ -1273,13 +1657,13 @@ class QuestDBParser extends CstParser {
         GATE: () => this.LA(1).tokenType === On,
         ALT: () => {
           this.CONSUME(On)
-          this.SUBRULE(this.columnRef)
+          this.SUBRULE(this.latestOnColumn)
           this.CONSUME(Partition)
           this.CONSUME(By)
-          this.SUBRULE1(this.columnRef)
+          this.SUBRULE1(this.latestOnColumn)
           this.MANY(() => {
             this.CONSUME(Comma)
-            this.SUBRULE2(this.columnRef)
+            this.SUBRULE2(this.latestOnColumn)
           })
         },
       },
@@ -1287,13 +1671,21 @@ class QuestDBParser extends CstParser {
         // LATEST BY col [, col...]
         ALT: () => {
           this.CONSUME1(By)
-          this.SUBRULE3(this.columnRef)
+          this.SUBRULE3(this.latestOnColumn)
           this.MANY1(() => {
             this.CONSUME1(Comma)
-            this.SUBRULE4(this.columnRef)
+            this.SUBRULE4(this.latestOnColumn)
           })
         },
       },
+    ])
+  })
+
+  // LATEST ON/BY operand: column or @variable (expectLiteral with decls)
+  private latestOnColumn = this.RULE("latestOnColumn", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(VariableReference) },
+      { ALT: () => this.SUBRULE(this.columnRef) },
     ])
   })
 
@@ -1325,21 +1717,10 @@ class QuestDBParser extends CstParser {
     this.CONSUME(RParen)
   })
 
+  // FILL values are expressions on the server (NULL, PREV, LINEAR, NONE,
+  // PREV(col), -1, @var, 1+2, '5', ...).
   private fillValue = this.RULE("fillValue", () => {
-    this.OR([
-      { ALT: () => this.CONSUME(Null) },
-      { ALT: () => this.CONSUME(NumberLiteral) },
-      {
-        ALT: () => {
-          this.SUBRULE(this.identifier)
-          this.OPTION(() => {
-            this.CONSUME(LParen)
-            this.SUBRULE1(this.identifier)
-            this.CONSUME(RParen)
-          })
-        },
-      },
-    ])
+    this.SUBRULE(this.expression)
   })
 
   private alignToClause = this.RULE("alignToClause", () => {
@@ -1355,17 +1736,17 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(Calendar)
-          // Optional TIME ZONE clause
+          // Optional TIME ZONE <expr> (string, @var, $1, function call, ...)
           this.OPTION(() => {
             this.CONSUME(Time)
             this.CONSUME(Zone)
-            this.SUBRULE(this.timeZoneValue)
+            this.SUBRULE(this.expression, { LABEL: "timeZoneExpression" })
           })
-          // Optional WITH OFFSET clause (can appear with or without TIME ZONE)
+          // Optional WITH OFFSET <expr> (with or without TIME ZONE)
           this.OPTION1(() => {
             this.CONSUME(With)
             this.CONSUME(Offset)
-            this.SUBRULE(this.stringOrIdentifier)
+            this.SUBRULE1(this.expression, { LABEL: "offsetExpression" })
           })
         },
       },
@@ -1397,14 +1778,107 @@ class QuestDBParser extends CstParser {
   // GROUP BY, HAVING, ORDER BY, LIMIT
   // ==========================================================================
 
+  // GROUP BY keys (SqlParser.parseGroupByColumns, questdb#6853):
+  //   GROUP BY ROLLUP(a, ...) | CUBE(a, ...) | GROUPING SETS ((a, b), (a), ())
+  //   GROUP BY expr, ... [, ROLLUP(...) | CUBE(...)]
+  // ROLLUP/CUBE must be the last item and GROUPING SETS the only one. The
+  // words are not reserved: they are grouping syntax only when `(` (ROLLUP,
+  // CUBE) or SETS (GROUPING) follows, otherwise plain keys (`GROUP BY rollup`,
+  // `GROUP BY grouping(x)`), hence the LA(2) gates.
   private groupByClause = this.RULE("groupByClause", () => {
     this.CONSUME(Group)
     this.CONSUME(By)
-    this.SUBRULE(this.expression)
+    this.OR([
+      {
+        GATE: () => this.isGroupingSetsStart(1),
+        ALT: () => this.SUBRULE(this.groupingSetsSpec),
+      },
+      {
+        ALT: () => {
+          this.SUBRULE(this.expression)
+          // Stop before `, ROLLUP(` / `, CUBE(` (taken below) and before
+          // `, GROUPING SETS`, which the server rejects after plain keys.
+          this.MANY({
+            GATE: () => !this.isGroupingSetsStart(2),
+            DEF: () => {
+              this.CONSUME(Comma)
+              this.SUBRULE1(this.expression)
+            },
+          })
+          this.OPTION(() => {
+            this.CONSUME1(Comma)
+            this.SUBRULE(this.rollupOrCubeSpec)
+          })
+        },
+      },
+    ])
+  })
+
+  // ROLLUP(...) | CUBE(...) | GROUPING SETS (...)
+  private groupingSetsSpec = this.RULE("groupingSetsSpec", () => {
+    this.OR([
+      { ALT: () => this.SUBRULE(this.rollupOrCubeSpec) },
+      { ALT: () => this.SUBRULE(this.explicitGroupingSets) },
+    ])
+  })
+
+  // ROLLUP(col, ...) | CUBE(col, ...): at least one key, column references
+  // only (SqlParser.parseParenthesizedColumnList + ensureColumnReferences).
+  private rollupOrCubeSpec = this.RULE("rollupOrCubeSpec", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Rollup) },
+      { ALT: () => this.CONSUME(Cube) },
+    ])
+    this.CONSUME(LParen)
+    this.SUBRULE(this.groupingKey)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.expression)
+      this.SUBRULE1(this.groupingKey)
     })
+    this.CONSUME(RParen)
+  })
+
+  // A grouping key: a column or a DECLARE variable, optionally parenthesized.
+  // The server parses an expression and then checks it resolves to a column
+  // (SqlParser.parseParenthesizedColumnList / parseExplicitGroupingSets).
+  private groupingKey = this.RULE("groupingKey", () => {
+    this.OR([
+      {
+        ALT: () => {
+          this.CONSUME(LParen)
+          this.SUBRULE(this.groupingKey)
+          this.CONSUME(RParen)
+        },
+      },
+      { ALT: () => this.CONSUME(VariableReference) },
+      { ALT: () => this.SUBRULE(this.columnRef) },
+    ])
+  })
+
+  // GROUPING SETS ((a, b), (a), ()): every set is parenthesised, `()` is the
+  // empty set (SqlParser.parseExplicitGroupingSets).
+  private explicitGroupingSets = this.RULE("explicitGroupingSets", () => {
+    this.CONSUME(Grouping)
+    this.CONSUME(Sets)
+    this.CONSUME(LParen)
+    this.SUBRULE(this.groupingSet)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.groupingSet)
+    })
+    this.CONSUME(RParen)
+  })
+
+  private groupingSet = this.RULE("groupingSet", () => {
+    this.CONSUME(LParen)
+    this.OPTION(() => {
+      this.SUBRULE(this.groupingKey)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE1(this.groupingKey)
+      })
+    })
+    this.CONSUME(RParen)
   })
 
   private orderByClause = this.RULE("orderByClause", () => {
@@ -1429,11 +1903,24 @@ class QuestDBParser extends CstParser {
 
   private limitClause = this.RULE("limitClause", () => {
     this.CONSUME(Limit)
-    this.SUBRULE(this.expression)
-    this.OPTION(() => {
-      this.CONSUME(Comma)
-      this.SUBRULE1(this.expression)
-    })
+    // Open-ended limits `LIMIT 5,` and `LIMIT ,5` are accepted by the server
+    this.OR([
+      {
+        ALT: () => {
+          this.CONSUME1(Comma, { LABEL: "openLowerBound" })
+          this.SUBRULE2(this.expression)
+        },
+      },
+      {
+        ALT: () => {
+          this.SUBRULE(this.expression)
+          this.OPTION(() => {
+            this.CONSUME(Comma)
+            this.OPTION1(() => this.SUBRULE1(this.expression))
+          })
+        },
+      },
+    ])
   })
 
   // ==========================================================================
@@ -1495,8 +1982,11 @@ class QuestDBParser extends CstParser {
   private updateStatement = this.RULE("updateStatement", () => {
     this.CONSUME(Update)
     this.SUBRULE(this.tableName)
-    // Optional alias
-    this.OPTION2(() => this.SUBRULE(this.identifier))
+    // Optional alias, with optional AS (SqlParser.parseUpdate)
+    this.OPTION2(() => {
+      this.OPTION3(() => this.CONSUME(As))
+      this.SUBRULE(this.identifier)
+    })
     this.CONSUME(Set)
     this.SUBRULE(this.setClause)
     this.MANY(() => {
@@ -1528,12 +2018,37 @@ class QuestDBParser extends CstParser {
     this.SUBRULE(this.declareAssignment)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.declareAssignment)
+      // A trailing comma may end the block: `DECLARE @lim := 1, t WHERE ...`
+      this.OPTION({
+        GATE: () => this.isDeclarationAhead(),
+        DEF: () => this.SUBRULE1(this.declareAssignment),
+      })
     })
   })
 
+  // `[AUDITED|OVERRIDABLE]* @var` ahead? The markers are also valid table
+  // names (`DECLARE @lim := 1, audited WHERE ...`); SqlParser
+  // isMarkedDeclarationAhead treats them as markers only before a variable
+  // (or SELECT / := for its error messages).
+  private isDeclarationAhead(): boolean {
+    let i = 1
+    while (
+      this.LA(i).tokenType === Audited ||
+      this.LA(i).tokenType === Overridable
+    ) {
+      i++
+    }
+    return this.LA(i).tokenType === VariableReference
+  }
+
   private declareAssignment = this.RULE("declareAssignment", () => {
-    this.OPTION(() => this.CONSUME(Overridable))
+    // DECLARE [OVERRIDABLE] [AUDITED] @x, markers in any order
+    this.MANY(() => {
+      this.OR([
+        { ALT: () => this.CONSUME(Overridable) },
+        { ALT: () => this.CONSUME(Audited) },
+      ])
+    })
     this.CONSUME(VariableReference)
     this.CONSUME(ColonEquals)
     this.SUBRULE(this.expression)
@@ -1553,6 +2068,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.createUserStatement) },
       { ALT: () => this.SUBRULE(this.createGroupStatement) },
       { ALT: () => this.SUBRULE(this.createServiceAccountStatement) },
+      { ALT: () => this.SUBRULE(this.createResourceGroupStatement) },
     ])
   })
 
@@ -1582,19 +2098,43 @@ class QuestDBParser extends CstParser {
         },
       },
       {
+        // (t [WHERE ...] [UNION ...]) — server parseDml implicit select
         ALT: () => {
           this.CONSUME1(LParen)
-          this.SUBRULE(this.implicitSelectBody)
+          this.SUBRULE(this.implicitSelectStatement)
           this.CONSUME1(RParen)
         },
       },
       { ALT: () => this.SUBRULE1(this.selectStatement) },
+      {
+        // Unparenthesised implicit select: CREATE VIEW v AS t WHERE ...
+        GATE: () => this.LA(1).tokenType !== LParen,
+        ALT: () => this.SUBRULE1(this.implicitSelectStatement),
+      },
     ])
-    // Optional OWNED BY
-    this.OPTION2(() => {
-      this.CONSUME(Owned)
-      this.CONSUME(By)
-      this.SUBRULE(this.stringOrIdentifier)
+    // Trailing WITH AUDIT / OWNED BY in either order (Enterprise
+    // EntSqlCompilerImpl.parseCreateViewExt)
+    this.MANY({
+      // WITH not followed by AUDIT starts a new (CTE) statement
+      GATE: () =>
+        this.LA(1).tokenType !== With || this.LA(2).tokenType === Audit,
+      DEF: () => {
+        this.OR1([
+          {
+            ALT: () => {
+              this.CONSUME(With)
+              this.CONSUME(Audit)
+            },
+          },
+          {
+            ALT: () => {
+              this.CONSUME(Owned)
+              this.CONSUME(By)
+              this.SUBRULE(this.stringOrIdentifier)
+            },
+          },
+        ])
+      },
     })
   })
 
@@ -1616,20 +2156,30 @@ class QuestDBParser extends CstParser {
     this.SUBRULE(this.stringOrQualifiedName)
 
     this.OR1([
-      // CREATE TABLE AS (SELECT ...)
+      // CREATE TABLE AS (SELECT ...) | (t [WHERE ...] [UNION ...])
       {
         ALT: () => {
           this.CONSUME(As)
           this.CONSUME(LParen)
-          this.SUBRULE(this.selectStatement)
+          this.OR7([
+            {
+              GATE: () => {
+                const la1 = this.LA(1).tokenType
+                return la1 === Select || la1 === With || la1 === Declare
+              },
+              ALT: () => this.SUBRULE(this.selectStatement),
+            },
+            { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+          ])
           this.CONSUME(RParen)
+          // `, CAST(...)` and `, INDEX(...)` in any order (server
+          // SqlParser.parseCreateTable loops over both)
           this.MANY2(() => {
             this.CONSUME(Comma)
-            this.SUBRULE(this.castDefinition)
-          })
-          this.MANY3(() => {
-            this.CONSUME1(Comma)
-            this.SUBRULE(this.indexDefinition)
+            this.OR8([
+              { ALT: () => this.SUBRULE(this.castDefinition) },
+              { ALT: () => this.SUBRULE(this.indexDefinition) },
+            ])
           })
         },
       },
@@ -1637,10 +2187,10 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME1(LParen)
-          this.SUBRULE(this.columnDefinition)
+          this.SUBRULE(this.columnDefinition, { ARGS: [true] })
           this.MANY(() => {
             this.CONSUME2(Comma)
-            this.SUBRULE1(this.columnDefinition)
+            this.SUBRULE1(this.columnDefinition, { ARGS: [true] })
           })
           this.CONSUME1(RParen)
           // Optional INDEX clause(s) after column list
@@ -1677,29 +2227,7 @@ class QuestDBParser extends CstParser {
     })
 
     // Optional TTL (must come before WAL per Java order)
-    this.OPTION4(() => {
-      this.CONSUME(Ttl)
-      this.OR2([
-        { ALT: () => this.CONSUME1(DurationLiteral) },
-        {
-          ALT: () => {
-            this.CONSUME1(NumberLiteral)
-            this.OR5([
-              { ALT: () => this.CONSUME(Hours) },
-              { ALT: () => this.CONSUME(Days) },
-              { ALT: () => this.CONSUME(Weeks) },
-              { ALT: () => this.CONSUME(Months) },
-              { ALT: () => this.CONSUME(Years) },
-              { ALT: () => this.CONSUME1(Hour) },
-              { ALT: () => this.CONSUME1(Day) },
-              { ALT: () => this.CONSUME1(Week) },
-              { ALT: () => this.CONSUME1(Month) },
-              { ALT: () => this.CONSUME1(Year) },
-            ])
-          },
-        },
-      ])
-    })
+    this.OPTION4(() => this.SUBRULE(this.ttlClause))
 
     this.SUBRULE(this.optionalStoragePolicy)
 
@@ -1767,12 +2295,12 @@ class QuestDBParser extends CstParser {
       ])
     })
 
-    // Optional DEDUP UPSERT KEYS
+    // Optional DEDUP | DEDUPLICATE  UPSERT | SKIP  KEYS(...)
     this.OPTION8(() => {
       this.SUBRULE(this.dedupClause)
     })
 
-    // Optional FORMAT { PARQUET | NATIVE } (after DEDUP UPSERT KEYS)
+    // Optional FORMAT { PARQUET | NATIVE } (after DEDUP UPSERT|SKIP KEYS)
     this.SUBRULE2(this.optionalTableFormat)
 
     // Optional OWNED BY
@@ -1812,17 +2340,41 @@ class QuestDBParser extends CstParser {
     })
   })
 
+  // CREATE TABLE ... (DEDUP | DEDUPLICATE) (UPSERT | SKIP) KEYS(col, ...)
   private dedupClause = this.RULE("dedupClause", () => {
-    this.CONSUME(Dedup)
-    this.CONSUME(Upsert)
+    this.SUBRULE(this.dedupKeyword)
+    this.SUBRULE(this.dedupModeKeys)
+  })
+
+  // DEDUPLICATE is a server synonym of DEDUP (SqlKeywords.isDeduplicateKeyword)
+  private dedupKeyword = this.RULE("dedupKeyword", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Dedup) },
+      { ALT: () => this.CONSUME(Deduplicate) },
+    ])
+  })
+
+  // (UPSERT | SKIP) KEYS(col, ...) — shared by CREATE TABLE and ALTER TABLE
+  private dedupModeKeys = this.RULE("dedupModeKeys", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Upsert) },
+      { ALT: () => this.CONSUME(Skip) },
+    ])
     this.CONSUME(Keys)
     this.CONSUME(LParen)
-    this.SUBRULE(this.identifier)
+    this.SUBRULE(this.keyColumn)
     this.MANY(() => {
       this.CONSUME(Comma)
-      this.SUBRULE1(this.identifier)
+      this.SUBRULE1(this.keyColumn)
     })
     this.CONSUME(RParen)
+  })
+
+  // A column of the table / view being defined or altered (DEDUP KEYS,
+  // EXPIRE ROWS KEEP ... ON / PARTITION BY). Same as identifier, but its own
+  // rule so autocomplete offers the columns in scope there.
+  private keyColumn = this.RULE("keyColumn", () => {
+    this.SUBRULE(this.identifier)
   })
 
   private createUserStatement = this.RULE("createUserStatement", () => {
@@ -1845,10 +2397,7 @@ class QuestDBParser extends CstParser {
         {
           ALT: () => {
             this.CONSUME1(Password)
-            this.OR1([
-              { ALT: () => this.CONSUME(StringLiteral) },
-              { ALT: () => this.SUBRULE1(this.identifier) },
-            ])
+            this.SUBRULE1(this.passwordValue)
           },
         },
       ])
@@ -1868,7 +2417,7 @@ class QuestDBParser extends CstParser {
       this.CONSUME(With)
       this.CONSUME(External)
       this.CONSUME(Alias)
-      this.CONSUME(StringLiteral)
+      this.SUBRULE(this.stringOrIdentifier)
     })
   })
 
@@ -1889,10 +2438,7 @@ class QuestDBParser extends CstParser {
           {
             ALT: () => {
               this.CONSUME(Password)
-              this.OR1([
-                { ALT: () => this.CONSUME(StringLiteral) },
-                { ALT: () => this.SUBRULE1(this.identifier) },
-              ])
+              this.SUBRULE1(this.passwordValue)
             },
           },
           {
@@ -1927,23 +2473,43 @@ class QuestDBParser extends CstParser {
         this.CONSUME(Base)
         this.SUBRULE1(this.stringOrQualifiedName)
       })
+      // REFRESH [mode] [DEFERRED] [PERIOD(...)] — mode is optional
+      // (SqlParser.parseCreateMatView); PERIOD is matched by OPTION3.
       this.OPTION2(() => {
         this.CONSUME(Refresh)
-        this.OR1([
-          {
-            GATE: () => this.LA(1).tokenType === Period,
-            ALT: () => this.SUBRULE(this.materializedViewPeriod),
-          },
-          { ALT: () => this.SUBRULE(this.materializedViewRefresh) },
-        ])
+        this.OPTION5(() => this.SUBRULE(this.materializedViewRefresh))
       })
       this.OPTION3(() => {
         this.SUBRULE1(this.materializedViewPeriod)
       })
       this.CONSUME(As)
-      this.OPTION4(() => this.CONSUME(LParen))
-      this.SUBRULE(this.selectStatement)
-      this.OPTION5(() => this.CONSUME(RParen))
+      // Body: (SELECT ...) | SELECT ... | (t [WHERE ...]) | t — server
+      // parseDml reads a bare table as an implicit SELECT (OSS #7263).
+      this.OR3([
+        {
+          GATE: () => {
+            const la2 = this.LA(2).tokenType
+            return la2 === Select || la2 === With || la2 === Declare
+          },
+          ALT: () => {
+            this.CONSUME(LParen)
+            this.SUBRULE(this.selectStatement)
+            this.CONSUME(RParen)
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME2(LParen)
+            this.SUBRULE(this.implicitSelectStatement)
+            this.CONSUME2(RParen)
+          },
+        },
+        { ALT: () => this.SUBRULE1(this.selectStatement) },
+        {
+          GATE: () => this.LA(1).tokenType !== LParen,
+          ALT: () => this.SUBRULE1(this.implicitSelectStatement),
+        },
+      ])
       // Optional `, INDEX(col [CAPACITY n])` clauses (mat-view symbol indexes)
       this.MANY(() => {
         this.CONSUME(Comma)
@@ -1958,6 +2524,8 @@ class QuestDBParser extends CstParser {
       this.OPTION7(() => {
         this.SUBRULE(this.materializedViewPartition)
       })
+      // TTL does not require PARTITION BY (SqlParserCallback.parseTtlSettings)
+      this.OPTION4(() => this.SUBRULE(this.ttlClause))
       this.SUBRULE(this.optionalStoragePolicy)
       this.SUBRULE(this.optionalExpireRows)
       this.OPTION8(() => {
@@ -1979,8 +2547,9 @@ class QuestDBParser extends CstParser {
   // EXPIRE ROWS row-retention clause (materialized views):
   //   EXPIRE ROWS WHEN <predicate>
   //   EXPIRE ROWS KEEP LATEST [ON <ts>] PARTITION BY <cols>
-  //   EXPIRE ROWS KEEP [<N>] (HIGHEST|LOWEST) <col> [PARTITION BY <cols>]
+  //   EXPIRE ROWS KEEP [<N>] (HIGHEST|LOWEST) ON <col> [PARTITION BY <cols>]
   //   [ CLEANUP EVERY <duration> ]
+  // (server: SqlParser.parseExpireRowsClause; ON is required after HIGHEST|LOWEST)
   private expireRowsClause = this.RULE("expireRowsClause", () => {
     this.CONSUME(Expire)
     this.CONSUME(Rows)
@@ -1989,7 +2558,15 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => {
           this.CONSUME(When)
-          this.SUBRULE(this.expression)
+          // The predicate ends before `IN VOLUME` (server
+          // expireRowsClauseBoundary); setExpression reads this flag.
+          const outer = this.inExpireRowsPredicate
+          this.inExpireRowsPredicate = true
+          try {
+            this.SUBRULE(this.expression)
+          } finally {
+            this.inExpireRowsPredicate = outer
+          }
         },
       },
       // KEEP ...
@@ -2003,18 +2580,18 @@ class QuestDBParser extends CstParser {
                 this.CONSUME(Latest)
                 this.OPTION(() => {
                   this.CONSUME(On)
-                  this.SUBRULE(this.identifier)
+                  this.SUBRULE(this.keyColumn)
                 })
                 this.CONSUME(Partition)
                 this.CONSUME(By)
-                this.SUBRULE1(this.identifier)
+                this.SUBRULE1(this.keyColumn)
                 this.MANY(() => {
                   this.CONSUME(Comma)
-                  this.SUBRULE2(this.identifier)
+                  this.SUBRULE2(this.keyColumn)
                 })
               },
             },
-            // KEEP [<N>] HIGHEST|LOWEST <col> [PARTITION BY <cols>]
+            // KEEP [<N>] HIGHEST|LOWEST ON <col> [PARTITION BY <cols>]
             {
               ALT: () => {
                 this.OPTION1(() => this.CONSUME(NumberLiteral))
@@ -2022,14 +2599,15 @@ class QuestDBParser extends CstParser {
                   { ALT: () => this.CONSUME(Highest) },
                   { ALT: () => this.CONSUME(Lowest) },
                 ])
-                this.SUBRULE3(this.identifier)
+                this.CONSUME1(On)
+                this.SUBRULE3(this.keyColumn)
                 this.OPTION2(() => {
                   this.CONSUME1(Partition)
                   this.CONSUME1(By)
-                  this.SUBRULE4(this.identifier)
+                  this.SUBRULE4(this.keyColumn)
                   this.MANY1(() => {
                     this.CONSUME1(Comma)
-                    this.SUBRULE5(this.identifier)
+                    this.SUBRULE5(this.keyColumn)
                   })
                 })
               },
@@ -2059,10 +2637,14 @@ class QuestDBParser extends CstParser {
           this.OR1([
             { ALT: () => this.CONSUME(Immediate) },
             { ALT: () => this.CONSUME(Manual) },
+            // obsolete synonym of IMMEDIATE (not suggested)
+            { ALT: () => this.CONSUME(Incremental) },
           ])
           this.OPTION(() => this.CONSUME(Deferred))
         },
       },
+      // REFRESH DEFERRED (mode defaults to IMMEDIATE)
+      { ALT: () => this.CONSUME2(Deferred) },
       {
         ALT: () => {
           this.CONSUME(Every)
@@ -2118,53 +2700,93 @@ class QuestDBParser extends CstParser {
       this.CONSUME(Partition)
       this.CONSUME(By)
       this.SUBRULE(this.partitionPeriod)
-      this.OPTION(() => {
-        this.CONSUME(Ttl)
-        this.OR1([
-          { ALT: () => this.CONSUME(DurationLiteral) },
-          {
-            ALT: () => {
-              this.CONSUME(NumberLiteral)
-              this.OR2([
-                { ALT: () => this.CONSUME(Hours) },
-                { ALT: () => this.CONSUME(Days) },
-                { ALT: () => this.CONSUME(Weeks) },
-                { ALT: () => this.CONSUME(Months) },
-                { ALT: () => this.CONSUME(Years) },
-                { ALT: () => this.CONSUME(Hour) },
-                { ALT: () => this.CONSUME(Day) },
-                { ALT: () => this.CONSUME(Week) },
-                { ALT: () => this.CONSUME(Month) },
-                { ALT: () => this.CONSUME(Year) },
-              ])
-            },
-          },
-        ])
-      })
     },
   )
 
-  private columnDefinition = this.RULE("columnDefinition", () => {
-    this.SUBRULE(this.identifier)
-    this.SUBRULE(this.dataType)
-    // SYMBOL column options: CAPACITY n, CACHE|NOCACHE, INDEX [CAPACITY n]
-    this.OPTION(() => {
-      this.CONSUME(Capacity)
-      this.CONSUME(NumberLiteral)
-    })
-    this.OPTION1(() => {
-      this.OR([
-        { ALT: () => this.CONSUME(Cache) },
-        { ALT: () => this.CONSUME(Nocache) },
-      ])
-    })
-    this.OPTION2(() => {
-      this.CONSUME(Index)
-      this.SUBRULE(this.indexTypeOptions)
-    })
-    // Optional PARQUET config
-    this.OPTION4(() => this.SUBRULE(this.parquetConfig))
+  // TTL <n><unit> | TTL <n> <unit> where unit is HOUR(S)/DAY(S)/WEEK(S)/
+  // MONTH(S)/YEAR(S) or a single letter h/d/w/m/y
+  // (SqlParser.parseTtlHoursOrMonths, PartitionBy.ttlUnitFromString).
+  private ttlClause = this.RULE("ttlClause", () => {
+    this.CONSUME(Ttl)
+    this.OR([
+      { ALT: () => this.CONSUME(DurationLiteral) },
+      {
+        ALT: () => {
+          this.CONSUME(NumberLiteral)
+          this.OR1([
+            { ALT: () => this.SUBRULE(this.storagePolicyTimeUnit) },
+            {
+              GATE: () => /^[hdwmy]$/i.test(this.LA(1).image),
+              ALT: () => this.CONSUME(Identifier),
+            },
+          ])
+        },
+      },
+    ])
   })
+
+  // allowDoublePrecision: CREATE TABLE columns (SqlParser.toColumnType skips
+  // PRECISION after DOUBLE). ALTER TABLE ADD COLUMN does not
+  // (SqlCompilerImpl.addColumnWithType); autocomplete drops PRECISION there.
+  private columnDefinition = this.RULE(
+    "columnDefinition",
+    (allowDoublePrecision?: boolean) => {
+      // IS / ILIKE / DECLARE are reserved in expressions here but valid
+      // column names on the server (not in SqlKeywords.KEYWORDS)
+      this.OR6([
+        { ALT: () => this.SUBRULE(this.identifier) },
+        { ALT: () => this.CONSUME(Is, { LABEL: "keywordName" }) },
+        { ALT: () => this.CONSUME(Ilike, { LABEL: "keywordName" }) },
+        { ALT: () => this.CONSUME(Declare, { LABEL: "keywordName" }) },
+      ])
+      this.OR5({
+        IGNORE_AMBIGUITIES: true,
+        DEF: [
+          {
+            GATE: () => !!allowDoublePrecision && this.isDoublePrecision(),
+            ALT: () => this.SUBRULE(this.doublePrecisionType),
+          },
+          { ALT: () => this.SUBRULE(this.dataType) },
+        ],
+      })
+      // SYMBOL column options: CAPACITY n, CACHE|NOCACHE, INDEX [CAPACITY n]
+      this.OPTION(() => {
+        this.CONSUME(Capacity)
+        this.CONSUME(NumberLiteral)
+      })
+      this.OPTION1(() => {
+        this.OR([
+          { ALT: () => this.CONSUME(Cache) },
+          { ALT: () => this.CONSUME(Nocache) },
+        ])
+      })
+      this.OPTION2(() => {
+        this.CONSUME(Index)
+        this.SUBRULE(this.indexTypeOptions)
+      })
+      // Optional PARQUET config
+      this.OPTION4(() => this.SUBRULE(this.parquetConfig))
+      this.SUBRULE(this.columnNullModifier, { ARGS: [allowDoublePrecision] })
+    },
+  )
+
+  // `[PRECISION] [NOT] NULL` after a column type: parsed and ignored by the
+  // server (SqlParser.parseCreateTableColumns, SqlCompilerImpl.addColumnWithType).
+  // May match nothing. PRECISION only in CREATE TABLE (allowPrecision);
+  // autocomplete drops PRECISION here (only offered after DOUBLE).
+  private columnNullModifier = this.RULE(
+    "columnNullModifier",
+    (allowPrecision?: boolean) => {
+      this.OPTION({
+        GATE: () => !!allowPrecision,
+        DEF: () => this.CONSUME(Precision),
+      })
+      this.OPTION1(() => {
+        this.OPTION2(() => this.CONSUME(Not))
+        this.CONSUME(Null)
+      })
+    },
+  )
 
   // PARQUET( BLOOM_FILTER | encoding [, compression[(level)]] [, BLOOM_FILTER] )
   private parquetConfig = this.RULE("parquetConfig", () => {
@@ -2219,6 +2841,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(RleDictionary) },
       { ALT: () => this.CONSUME(DeltaBinaryPacked) },
       { ALT: () => this.CONSUME(DeltaLengthByteArray) },
+      { ALT: () => this.CONSUME(ByteStreamSplit) },
       { ALT: () => this.CONSUME(Default) },
     ])
   })
@@ -2231,6 +2854,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Brotli) },
       { ALT: () => this.CONSUME(Zstd) },
       { ALT: () => this.CONSUME(Lz4Raw) },
+      { ALT: () => this.CONSUME(Default) },
     ])
   })
 
@@ -2316,7 +2940,28 @@ class QuestDBParser extends CstParser {
     this.CONSUME(LParen)
     this.SUBRULE(this.columnRef)
     this.CONSUME(As)
-    this.SUBRULE(this.dataType)
+    // SqlParser.toColumnType: DOUBLE PRECISION is DOUBLE
+    this.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        {
+          GATE: () => this.isDoublePrecision(),
+          ALT: () => this.SUBRULE(this.doublePrecisionType),
+        },
+        { ALT: () => this.SUBRULE(this.dataType) },
+      ],
+    })
+    // SYMBOL options (SqlParser.parseCreateTableCastDef)
+    this.OPTION(() => {
+      this.CONSUME(Capacity)
+      this.CONSUME(NumberLiteral)
+    })
+    this.OPTION1(() => {
+      this.OR1([
+        { ALT: () => this.CONSUME(Cache) },
+        { ALT: () => this.CONSUME(Nocache) },
+      ])
+    })
     this.CONSUME(RParen)
   })
 
@@ -2338,6 +2983,9 @@ class QuestDBParser extends CstParser {
             )
           },
         },
+        // IndexType.valueOf also takes POSTING_DELTA / POSTING_EF
+        { ALT: () => this.CONSUME(PostingDelta) },
+        { ALT: () => this.CONSUME(PostingEf) },
         { ALT: () => this.CONSUME(Bitmap) },
         { ALT: () => this.CONSUME(None) },
       ])
@@ -2570,6 +3218,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.alterUserStatement) },
       { ALT: () => this.SUBRULE(this.alterServiceAccountStatement) },
       { ALT: () => this.SUBRULE(this.alterGroupStatement) },
+      { ALT: () => this.SUBRULE(this.alterResourceGroupStatement) },
     ])
   })
 
@@ -2582,7 +3231,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME(With)
           this.CONSUME(External)
           this.CONSUME(Alias)
-          this.CONSUME(StringLiteral)
+          this.SUBRULE(this.stringOrIdentifier)
         },
       },
       {
@@ -2590,7 +3239,7 @@ class QuestDBParser extends CstParser {
           this.CONSUME(Drop)
           this.CONSUME1(External)
           this.CONSUME1(Alias)
-          this.CONSUME1(StringLiteral)
+          this.SUBRULE1(this.stringOrIdentifier)
         },
       },
       {
@@ -2601,6 +3250,7 @@ class QuestDBParser extends CstParser {
           this.SUBRULE(this.memoryLimit)
         },
       },
+      { ALT: () => this.SUBRULE(this.principalResourceGroupAction) },
     ])
   })
 
@@ -2608,15 +3258,31 @@ class QuestDBParser extends CstParser {
     this.CONSUME(View)
     this.SUBRULE(this.stringOrQualifiedName)
     this.CONSUME(As)
+    // Same body forms as CREATE VIEW (server parseViewSql → parseDml)
     this.OR([
       {
+        GATE: () => {
+          const la2 = this.LA(2).tokenType
+          return la2 === Select || la2 === With || la2 === Declare
+        },
         ALT: () => {
           this.CONSUME(LParen)
           this.SUBRULE(this.selectStatement)
           this.CONSUME(RParen)
         },
       },
+      {
+        ALT: () => {
+          this.CONSUME1(LParen)
+          this.SUBRULE(this.implicitSelectStatement)
+          this.CONSUME1(RParen)
+        },
+      },
       { ALT: () => this.SUBRULE1(this.selectStatement) },
+      {
+        GATE: () => this.LA(1).tokenType !== LParen,
+        ALT: () => this.SUBRULE1(this.implicitSelectStatement),
+      },
     ])
   })
 
@@ -2638,6 +3304,7 @@ class QuestDBParser extends CstParser {
 
   private alterUserAction = this.RULE("alterUserAction", () => {
     this.OR([
+      { ALT: () => this.SUBRULE(this.principalResourceGroupAction) },
       { ALT: () => this.CONSUME(Enable) },
       { ALT: () => this.CONSUME(Disable) },
       {
@@ -2661,7 +3328,7 @@ class QuestDBParser extends CstParser {
             {
               ALT: () => {
                 this.CONSUME1(Password)
-                this.CONSUME(StringLiteral)
+                this.SUBRULE(this.passwordValue)
               },
             },
           ])
@@ -2697,9 +3364,15 @@ class QuestDBParser extends CstParser {
                     { ALT: () => this.CONSUME(DurationLiteral) },
                     { ALT: () => this.CONSUME2(StringLiteral) },
                   ])
-                  this.OPTION1(() => this.CONSUME(Refresh))
                 })
-                this.OPTION4(() => this.CONSUME(Transient))
+                // REFRESH / TRANSIENT in any order (EntSqlCompilerImpl
+                // CREATE TOKEN TYPE REST loop)
+                this.MANY(() => {
+                  this.OR7([
+                    { ALT: () => this.CONSUME(Refresh) },
+                    { ALT: () => this.CONSUME(Transient) },
+                  ])
+                })
               },
             },
           ])
@@ -2731,6 +3404,8 @@ class QuestDBParser extends CstParser {
 
   private memoryLimit = this.RULE("memoryLimit", () => {
     this.OR([
+      // quoted form: '64M', 'UNLIMITED' (parseMemoryLimit unquotes)
+      { ALT: () => this.CONSUME(StringLiteral) },
       { ALT: () => this.CONSUME(Unlimited) },
       { ALT: () => this.CONSUME(DurationLiteral) },
       {
@@ -2750,21 +3425,11 @@ class QuestDBParser extends CstParser {
 
   private alterTableAction = this.RULE("alterTableAction", () => {
     this.OR([
-      // ADD COLUMN
+      // ADD [COLUMN] [IF NOT EXISTS] col type [, [IF NOT EXISTS] col type ...]
       {
         ALT: () => {
           this.CONSUME(Add)
-          this.CONSUME(Column)
-          this.OPTION(() => {
-            this.CONSUME(If)
-            this.CONSUME(Not)
-            this.CONSUME(Exists)
-          })
-          this.SUBRULE(this.columnDefinition)
-          this.MANY(() => {
-            this.CONSUME(Comma)
-            this.SUBRULE1(this.columnDefinition)
-          })
+          this.SUBRULE(this.alterTableAddColumns)
         },
       },
       // DROP (COLUMN ... | PARTITION ... | STORAGE POLICY)
@@ -2825,6 +3490,13 @@ class QuestDBParser extends CstParser {
           this.SUBRULE2(this.columnRef)
           this.CONSUME(To)
           this.SUBRULE3(this.identifier)
+          // `, old TO new` pairs (SqlCompilerImpl.alterTableRenameColumn)
+          this.MANY6(() => {
+            this.CONSUME6(Comma)
+            this.SUBRULE4(this.columnRef)
+            this.CONSUME1(To)
+            this.SUBRULE4(this.identifier)
+          })
         },
       },
       // ALTER COLUMN (for TYPE, ADD INDEX, CACHE/NOCACHE)
@@ -2846,6 +3518,8 @@ class QuestDBParser extends CstParser {
                 // Optional CACHE/NOCACHE
                 this.OPTION5(() => this.CONSUME1(Cache))
                 this.OPTION6(() => this.CONSUME1(Nocache))
+                this.SUBRULE(this.alterColumnTypeIndex)
+                this.SUBRULE(this.columnNullModifier)
               },
             },
             {
@@ -2976,24 +3650,18 @@ class QuestDBParser extends CstParser {
           ])
         },
       },
-      // DEDUP (DISABLE | ENABLE UPSERT KEYS (...))
+      // (DEDUP | DEDUPLICATE) (DISABLE | [ENABLE] (UPSERT | SKIP) KEYS (...))
+      // ENABLE is optional on the server since v7.3
+      // (SqlCompilerImpl.alterTableDedupEnable).
       {
         ALT: () => {
-          this.CONSUME(Dedup)
+          this.SUBRULE(this.dedupKeyword)
           this.OR6([
             { ALT: () => this.CONSUME(Disable) },
             {
               ALT: () => {
-                this.CONSUME(Enable)
-                this.CONSUME(Upsert)
-                this.CONSUME(Keys)
-                this.CONSUME(LParen)
-                this.SUBRULE5(this.identifier)
-                this.MANY6(() => {
-                  this.CONSUME6(Comma)
-                  this.SUBRULE6(this.identifier)
-                })
-                this.CONSUME(RParen)
+                this.OPTION2(() => this.CONSUME(Enable))
+                this.SUBRULE(this.dedupModeKeys)
               },
             },
           ])
@@ -3068,6 +3736,41 @@ class QuestDBParser extends CstParser {
     ])
   })
 
+  // ALTER TABLE ADD [COLUMN] [IF NOT EXISTS] col type [, [IF NOT EXISTS] col type]
+  // (SqlCompilerImpl.alterTableAddColumn: COLUMN optional, IF NOT EXISTS per column)
+  private alterTableAddColumns = this.RULE("alterTableAddColumns", () => {
+    this.OPTION(() => this.CONSUME(Column))
+    this.SUBRULE(this.addColumnItem)
+    this.MANY(() => {
+      this.CONSUME(Comma)
+      this.SUBRULE1(this.addColumnItem)
+    })
+    // Enterprise addColumnSuffix: OWNED BY user|group
+    this.OPTION1(() => {
+      this.CONSUME(Owned)
+      this.CONSUME(By)
+      this.SUBRULE(this.stringOrIdentifier)
+    })
+  })
+
+  private addColumnItem = this.RULE("addColumnItem", () => {
+    this.OPTION(() => {
+      this.CONSUME(If)
+      this.CONSUME(Not)
+      this.CONSUME(Exists)
+    })
+    this.SUBRULE(this.columnDefinition)
+  })
+
+  // ALTER COLUMN .. TYPE SYMBOL .. [INDEX [TYPE ..] [CAPACITY n]]
+  // (SqlCompilerImpl.addColumnWithType). May match nothing.
+  private alterColumnTypeIndex = this.RULE("alterColumnTypeIndex", () => {
+    this.OPTION(() => {
+      this.CONSUME(Index)
+      this.SUBRULE(this.indexTypeOptions)
+    })
+  })
+
   // FORCE DROP PARTITION LIST '<p>' [, ...]
   // FORCE REINDEX PARQUET [COLUMN <col>] [PARTITION LIST '<p>' [, ...]]
   private alterTableForceAction = this.RULE("alterTableForceAction", () => {
@@ -3122,6 +3825,16 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Table) },
       { ALT: () => this.SUBRULE(this.identifier) }, // Parquet, NATIVE, etc.
     ])
+    // Server form: TO PARQUET|NATIVE LIST '<p>' [, ...]
+    // (SqlCompilerImpl.alterTableDropConvertDetachOrAttachPartition)
+    this.OPTION3(() => {
+      this.CONSUME1(List)
+      this.CONSUME2(StringLiteral)
+      this.MANY2(() => {
+        this.CONSUME1(Comma)
+        this.CONSUME3(StringLiteral)
+      })
+    })
     // Optional WHERE clause after target
     this.OPTION1(() => {
       this.CONSUME(Where)
@@ -3153,6 +3866,17 @@ class QuestDBParser extends CstParser {
       this.SUBRULE(this.alterMaterializedViewAction)
     },
   )
+
+  // WITH <code|'tag'>, '<message>' after SUSPEND WAL (materialized views)
+  private suspendWalWith = this.RULE("suspendWalWith", () => {
+    this.CONSUME(With)
+    this.OR([
+      { ALT: () => this.CONSUME(NumberLiteral) },
+      { ALT: () => this.CONSUME(StringLiteral) },
+    ])
+    this.CONSUME(Comma)
+    this.CONSUME1(StringLiteral)
+  })
 
   private alterMaterializedViewAction = this.RULE(
     "alterMaterializedViewAction",
@@ -3263,11 +3987,12 @@ class QuestDBParser extends CstParser {
             })
           },
         },
-        // SUSPEND WAL
+        // SUSPEND WAL [WITH <code|'tag'>, '<message>'] (parseSuspendWal)
         {
           ALT: () => {
             this.CONSUME(Suspend)
             this.CONSUME1(Wal)
+            this.OPTION6(() => this.SUBRULE(this.suspendWalWith))
           },
         },
         // REBASE WAL [INTO '<targetDir>']
@@ -3331,8 +4056,128 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.SUBRULE(this.dropUserStatement) },
       { ALT: () => this.SUBRULE(this.dropGroupStatement) },
       { ALT: () => this.SUBRULE(this.dropServiceAccountStatement) },
+      { ALT: () => this.SUBRULE(this.dropResourceGroupStatement) },
     ])
   })
+
+  // ==========================================================================
+  // Enterprise resource groups (EntSqlCompilerImpl.createResourceGroup /
+  // compileAlterResourceGroup / dropResourceGroup)
+  // ==========================================================================
+
+  private createResourceGroupStatement = this.RULE(
+    "createResourceGroupStatement",
+    () => {
+      this.CONSUME(Resource)
+      this.CONSUME(Group)
+      this.OPTION(() => {
+        this.CONSUME(If)
+        this.CONSUME(Not)
+        this.CONSUME(Exists)
+      })
+      this.SUBRULE(this.qualifiedName)
+      this.OPTION1(() => {
+        this.CONSUME(With)
+        this.SUBRULE(this.resourceGroupPolicy)
+      })
+    },
+  )
+
+  private alterResourceGroupStatement = this.RULE(
+    "alterResourceGroupStatement",
+    () => {
+      this.CONSUME(Resource)
+      this.CONSUME(Group)
+      this.SUBRULE(this.qualifiedName)
+      this.OR([
+        {
+          ALT: () => {
+            this.OR1([
+              { ALT: () => this.CONSUME(Set) },
+              { ALT: () => this.CONSUME(Reset) },
+            ])
+            this.SUBRULE(this.resourceGroupPolicy)
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME(Rename)
+            this.CONSUME(To)
+            this.SUBRULE1(this.qualifiedName)
+          },
+        },
+      ])
+    },
+  )
+
+  private dropResourceGroupStatement = this.RULE(
+    "dropResourceGroupStatement",
+    () => {
+      this.CONSUME(Resource)
+      this.CONSUME(Group)
+      this.OPTION(() => {
+        this.CONSUME(If)
+        this.CONSUME(Exists)
+      })
+      this.SUBRULE(this.qualifiedName)
+    },
+  )
+
+  // ( [key [= value] {, key [= value]}] ) — values omitted for RESET
+  private resourceGroupPolicy = this.RULE("resourceGroupPolicy", () => {
+    this.CONSUME(LParen)
+    this.MANY_SEP({
+      SEP: Comma,
+      DEF: () => this.SUBRULE(this.resourceGroupOption),
+    })
+    this.CONSUME(RParen)
+  })
+
+  private resourceGroupOption = this.RULE("resourceGroupOption", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(MemoryLimit) },
+      { ALT: () => this.CONSUME(CpuWeight) },
+      { ALT: () => this.CONSUME(MaxActiveQueries) },
+      { ALT: () => this.CONSUME(MaxQueuedQueries) },
+      { ALT: () => this.CONSUME(QueueTimeout) },
+    ])
+    this.OPTION(() => {
+      this.CONSUME(Equals)
+      this.OPTION1(() => this.CONSUME(Minus))
+      this.SUBRULE(this.memoryLimit)
+    })
+  })
+
+  // SET RESOURCE GROUP g [MAPPING PRIORITY n] | UNSET RESOURCE GROUP
+  // (EntSqlCompilerImpl.compilePrincipalResourceGroup; MAPPING PRIORITY is
+  // server-valid only for ALTER GROUP, accepted everywhere here)
+  private principalResourceGroupAction = this.RULE(
+    "principalResourceGroupAction",
+    () => {
+      this.OR([
+        {
+          ALT: () => {
+            this.CONSUME(Set)
+            this.CONSUME(Resource)
+            this.CONSUME(Group)
+            this.SUBRULE(this.qualifiedName)
+            this.OPTION(() => {
+              this.CONSUME(Mapping)
+              this.CONSUME(Priority)
+              this.CONSUME(NumberLiteral)
+            })
+          },
+        },
+        {
+          ALT: () => {
+            this.CONSUME(Unset)
+            this.CONSUME1(Resource)
+            this.CONSUME1(Group)
+          },
+        },
+      ])
+    },
+  )
 
   private dropViewStatement = this.RULE("dropViewStatement", () => {
     this.CONSUME(View)
@@ -3347,8 +4192,9 @@ class QuestDBParser extends CstParser {
     this.OR([
       {
         ALT: () => {
+          // DROP ALL [TABLES] (SqlCompilerImpl.compileDrop)
           this.CONSUME(All)
-          this.CONSUME(Tables)
+          this.OPTION1(() => this.CONSUME(Tables))
         },
       },
       {
@@ -3674,7 +4520,8 @@ class QuestDBParser extends CstParser {
       this.CONSUME(LParen)
       this.CONSUME(Format)
       this.OR1([
-        { ALT: () => this.CONSUME(Identifier) }, // TEXT or JSON
+        { ALT: () => this.CONSUME(Identifier) }, // JSON
+        { ALT: () => this.CONSUME(Text) },
       ])
       this.CONSUME(RParen)
     })
@@ -3732,9 +4579,20 @@ class QuestDBParser extends CstParser {
   private copyTo = this.RULE("copyTo", () => {
     this.OR([
       {
+        // COPY (SELECT ...) | (t [WHERE ...]) | (fn(...)) | (t PIVOT (...))
+        // — server parseCopy → parseDml
         ALT: () => {
           this.CONSUME(LParen)
-          this.SUBRULE(this.selectStatement)
+          this.OR1([
+            {
+              GATE: () => {
+                const la1 = this.LA(1).tokenType
+                return la1 === Select || la1 === With || la1 === Declare
+              },
+              ALT: () => this.SUBRULE(this.selectStatement),
+            },
+            { ALT: () => this.SUBRULE(this.implicitSelectStatement) },
+          ])
           this.CONSUME(RParen)
         },
       },
@@ -3792,7 +4650,11 @@ class QuestDBParser extends CstParser {
             },
             { ALT: () => this.CONSUME(PartitionBy) },
           ])
-          this.SUBRULE(this.partitionPeriod)
+          this.OR6([
+            { ALT: () => this.SUBRULE(this.partitionPeriod) },
+            // expectLiteral unquotes: partition_by 'DAY'
+            { ALT: () => this.CONSUME3(StringLiteral) },
+          ])
         },
       },
       {
@@ -3818,6 +4680,9 @@ class QuestDBParser extends CstParser {
             { ALT: () => this.CONSUME(Lz4Raw) },
             { ALT: () => this.CONSUME(Brotli) },
             { ALT: () => this.CONSUME(Lzo) },
+            { ALT: () => this.CONSUME(Default) },
+            // expectLiteral unquotes: compression_codec 'zstd'
+            { ALT: () => this.CONSUME2(StringLiteral) },
           ])
         },
       },
@@ -4013,14 +4878,19 @@ class QuestDBParser extends CstParser {
     })
     this.CONSUME(To)
     this.SUBRULE(this.qualifiedName)
-    this.OPTION1(() => {
+    // WITH GRANT OPTION / WITH VERIFICATION in either order
+    // (PermissionParser.parse)
+    this.MANY1(() => {
       this.CONSUME(With)
-      this.CONSUME1(Grant)
-      this.CONSUME(Option)
-    })
-    this.OPTION2(() => {
-      this.CONSUME1(With)
-      this.CONSUME(Verification)
+      this.OR1([
+        {
+          ALT: () => {
+            this.CONSUME1(Grant)
+            this.CONSUME(Option)
+          },
+        },
+        { ALT: () => this.CONSUME(Verification) },
+      ])
     })
   })
 
@@ -4049,6 +4919,10 @@ class QuestDBParser extends CstParser {
     })
     this.CONSUME(From)
     this.SUBRULE(this.qualifiedName)
+    this.OPTION1(() => {
+      this.CONSUME(With)
+      this.CONSUME(Verification)
+    })
   })
 
   private permissionList = this.RULE("permissionList", () => {
@@ -4079,6 +4953,7 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(Vacuum) },
       { ALT: () => this.CONSUME(Lock) },
       { ALT: () => this.CONSUME(Set) },
+      { ALT: () => this.CONSUME(Rename) },
     ])
     // Optional second word (for compound permissions like CREATE TABLE, ALTER MATERIALIZED VIEW)
     this.OPTION(() => {
@@ -4098,13 +4973,21 @@ class QuestDBParser extends CstParser {
         // Reserved keywords that are NOT in the identifier rule
         { ALT: () => this.CONSUME(Table) },
         { ALT: () => this.CONSUME(Group) },
+        // CANCEL ANY COPY
+        { ALT: () => this.CONSUME(Any) },
         // Any other keyword/identifier as second word (VIEW, USER, INDEX, COLUMN,
         // DATABASE ADMIN, etc.)
         { ALT: () => this.SUBRULE1(this.identifier) },
       ])
       // Optional third word for 3-word permissions, e.g. SET TABLE FORMAT,
       // SET STORAGE POLICY, SET TABLE TYPE, REMOVE STORAGE POLICY.
-      this.OPTION1(() => this.SUBRULE2(this.identifier))
+      // SET REFRESH LIMIT / SET MEMORY LIMIT end in reserved LIMIT.
+      this.OPTION1(() => {
+        this.OR3([
+          { ALT: () => this.SUBRULE2(this.identifier) },
+          { ALT: () => this.CONSUME(Limit) },
+        ])
+      })
       // Trailing "TO PARQUET|NATIVE" for the CONVERT PARTITION TO {PARQUET|NATIVE}
       // permission names, whose phrase embeds the TO that normally delimits
       // GRANT … TO / REVOKE … FROM. Gated so an ordinary "… TO <grantee>" is
@@ -4170,6 +5053,10 @@ class QuestDBParser extends CstParser {
       this.SUBRULE(this.qualifiedName)
       this.CONSUME(To)
       this.SUBRULE1(this.qualifiedName)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE2(this.qualifiedName)
+      })
       this.OPTION(() => {
         this.CONSUME(With)
         this.CONSUME1(Grant)
@@ -4188,6 +5075,10 @@ class QuestDBParser extends CstParser {
       this.SUBRULE(this.qualifiedName)
       this.CONSUME(From)
       this.SUBRULE1(this.qualifiedName)
+      this.MANY(() => {
+        this.CONSUME(Comma)
+        this.SUBRULE2(this.qualifiedName)
+      })
     },
   )
 
@@ -4197,7 +5088,11 @@ class QuestDBParser extends CstParser {
 
   private vacuumTableStatement = this.RULE("vacuumTableStatement", () => {
     this.CONSUME(Vacuum)
-    this.CONSUME(Table)
+    // VACUUM PARTITIONS is the legacy spelling (SqlCompilerImpl.compileVacuum)
+    this.OR([
+      { ALT: () => this.CONSUME(Table) },
+      { ALT: () => this.CONSUME(Partitions) },
+    ])
     this.SUBRULE(this.tableName)
   })
 
@@ -4222,6 +5117,66 @@ class QuestDBParser extends CstParser {
     this.CONSUME(Type)
     this.OPTION(() => this.CONSUME(Bypass))
     this.CONSUME(Wal)
+  })
+
+  // PG compatibility no-ops (SqlCompilerImpl.compileSet / compileBegin /
+  // compileCommit / compileRollback / compileDeallocate / compileNoOp).
+  // SET [SESSION | LOCAL] name {= | TO} value [, ...] or any other tokens up
+  // to `;` (SET TIME ZONE 'UTC'); accepted loosely as a run of plain tokens.
+  private setStatement = this.RULE("setStatement", () => {
+    this.CONSUME(Set)
+    this.AT_LEAST_ONE(() => {
+      this.OR([
+        { ALT: () => this.SUBRULE(this.identifier) },
+        { ALT: () => this.CONSUME(NumberLiteral) },
+        { ALT: () => this.CONSUME(LongLiteral) },
+        { ALT: () => this.CONSUME(FloatLiteral) },
+        { ALT: () => this.CONSUME(DecimalLiteral) },
+        { ALT: () => this.CONSUME(DurationLiteral) },
+        { ALT: () => this.CONSUME(Equals) },
+        { ALT: () => this.CONSUME(To) },
+        { ALT: () => this.CONSUME(Comma) },
+        { ALT: () => this.CONSUME(Minus) },
+        { ALT: () => this.CONSUME(Plus) },
+        { ALT: () => this.CONSUME(Dot) },
+        { ALT: () => this.CONSUME(On) },
+        { ALT: () => this.CONSUME(As) },
+        { ALT: () => this.CONSUME(All) },
+        { ALT: () => this.CONSUME(True) },
+        { ALT: () => this.CONSUME(False) },
+        { ALT: () => this.CONSUME(Null) },
+      ])
+    })
+  })
+
+  // BEGIN | COMMIT | ROLLBACK [TRANSACTION]
+  private transactionStatement = this.RULE("transactionStatement", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Begin) },
+      { ALT: () => this.CONSUME(Commit) },
+      { ALT: () => this.CONSUME(Rollback) },
+    ])
+    this.OPTION(() => this.CONSUME(Transaction))
+  })
+
+  private deallocateStatement = this.RULE("deallocateStatement", () => {
+    this.CONSUME(Deallocate)
+    this.SUBRULE(this.identifier)
+  })
+
+  // DISCARD | CLOSE | UNLISTEN | RESET <one token>, e.g. ALL, *, a name
+  private pgNoOpStatement = this.RULE("pgNoOpStatement", () => {
+    this.OR([
+      { ALT: () => this.CONSUME(Discard) },
+      { ALT: () => this.CONSUME(Close) },
+      { ALT: () => this.CONSUME(Unlisten) },
+      { ALT: () => this.CONSUME(Reset) },
+    ])
+    this.OR1([
+      { ALT: () => this.CONSUME(All) },
+      { ALT: () => this.CONSUME(Star) },
+      { ALT: () => this.SUBRULE(this.identifier) },
+    ])
   })
 
   private reindexTableStatement = this.RULE("reindexTableStatement", () => {
@@ -4300,9 +5255,12 @@ class QuestDBParser extends CstParser {
     this.CONSUME(LParen)
     this.SUBRULE(this.pivotBody)
     this.CONSUME2(RParen)
-    this.OPTION2(() => {
-      this.CONSUME(As)
-      this.SUBRULE6(this.identifier)
+    this.OPTION2({
+      GATE: () => this.pivotAliasAllowed(),
+      DEF: () => {
+        this.OPTION3(() => this.CONSUME(As))
+        this.SUBRULE6(this.identifier)
+      },
     })
     this.OPTION4(() => this.SUBRULE(this.orderByClause))
     this.OPTION5(() => this.SUBRULE(this.limitClause))
@@ -4320,9 +5278,13 @@ class QuestDBParser extends CstParser {
     this.CONSUME(For)
     this.SUBRULE(this.pivotForClause)
     // Additional FOR clauses (FOR keyword optional per QuestDB syntax)
-    this.MANY1(() => {
-      this.OPTION1(() => this.CONSUME1(For))
-      this.SUBRULE1(this.pivotForClause)
+    this.MANY1({
+      GATE: () =>
+        !(this.LA(1).tokenType === Group && this.LA(2).tokenType === By),
+      DEF: () => {
+        this.OPTION1(() => this.CONSUME1(For))
+        this.SUBRULE1(this.pivotForClause)
+      },
     })
     this.OPTION(() => {
       this.CONSUME(Group)
@@ -4337,15 +5299,23 @@ class QuestDBParser extends CstParser {
 
   private pivotAggregation = this.RULE("pivotAggregation", () => {
     this.SUBRULE(this.expression)
-    this.OPTION(() => {
-      this.OPTION1(() => this.CONSUME(As))
-      this.SUBRULE(this.identifier)
+    this.OPTION({
+      GATE: () => this.LA(1).tokenType !== For,
+      DEF: () => {
+        this.OPTION1(() => this.CONSUME(As))
+        this.SUBRULE(this.identifier)
+      },
     })
   })
 
   private pivotForClause = this.RULE("pivotForClause", () => {
     // FOR keyword is consumed by pivotBody (required on first, optional on subsequent)
-    this.SUBRULE(this.columnRef)
+    // FOR <expr>: the server stops the expression at its top-level IN
+    // (setStopOnTopINOperator). bitOrExpression is the expression level just
+    // below IN/BETWEEN/comparisons, so `FOR year(ts) IN`, `FOR year - 2000 IN`
+    // and `FOR (SELECT 'NL')::VARCHAR IN` parse without a GATE (content
+    // assist ignores GATEs and would explore `year IN (...)` as an operator).
+    this.SUBRULE(this.bitOrExpression)
     this.CONSUME(In)
     this.CONSUME(LParen)
     this.OR([
@@ -4367,8 +5337,9 @@ class QuestDBParser extends CstParser {
   //   'BTC-USD' AS bitcoin
   private pivotInValue = this.RULE("pivotInValue", () => {
     this.SUBRULE(this.expression)
+    // alias with or without AS: `2000 AS y2000`, `2000 y2000`
     this.OPTION(() => {
-      this.CONSUME(As)
+      this.OPTION1(() => this.CONSUME(As))
       this.SUBRULE(this.identifier)
     })
   })
@@ -4401,31 +5372,49 @@ class QuestDBParser extends CstParser {
 
   // Precedence 14: NOT (prefix)
   private notExpression = this.RULE("notExpression", () => {
-    this.OPTION(() => this.CONSUME(Not))
+    // NOT may be stacked: `NOT NOT x`
+    this.MANY(() => this.CONSUME(Not))
     this.SUBRULE(this.equalityExpression)
   })
 
   // Precedence 13: =, !=, <>, ~, !~, LIKE, ILIKE
+  // Comparisons chain left-associatively (`a = 1 = true`), and the right
+  // operand may be a NOT expression (`x = NOT y`), as in ExpressionParser.
   private equalityExpression = this.RULE("equalityExpression", () => {
     this.SUBRULE(this.relationalExpression)
-    this.OPTION(() => {
+    this.MANY(() => {
       this.OR([
         { ALT: () => this.CONSUME(Equals) },
-        { ALT: () => this.CONSUME(NotEquals) },
+        {
+          // `<> ALL (...)` / `!= ALL (...)`: the server rewrites the operator
+          // to the <>all function; no other operator takes ALL.
+          ALT: () => {
+            this.CONSUME(NotEquals)
+            this.OPTION1(() => this.CONSUME(All))
+          },
+        },
         { ALT: () => this.CONSUME(Like) },
         { ALT: () => this.CONSUME(Ilike) },
         { ALT: () => this.CONSUME(RegexMatch) },
         { ALT: () => this.CONSUME(RegexNotMatch) },
         { ALT: () => this.CONSUME(RegexNotEquals) },
       ])
-      this.SUBRULE1(this.relationalExpression)
+      this.OR1([
+        {
+          ALT: () => {
+            this.CONSUME(Not)
+            this.SUBRULE(this.notExpression, { LABEL: "notOperand" })
+          },
+        },
+        { ALT: () => this.SUBRULE1(this.relationalExpression) },
+      ])
     })
   })
 
-  // Precedence 12: <, <=, >, >=, IS [NOT] NULL
+  // Precedence 12: <, <=, >, >=, IS [NOT] NULL|TRUE|FALSE
   private relationalExpression = this.RULE("relationalExpression", () => {
     this.SUBRULE(this.setExpression)
-    this.OPTION(() => {
+    this.MANY(() => {
       this.OR([
         {
           ALT: () => {
@@ -4442,75 +5431,90 @@ class QuestDBParser extends CstParser {
           ALT: () => {
             this.CONSUME(Is)
             this.OPTION1(() => this.CONSUME(Not))
-            this.CONSUME(Null)
+            this.OR2([
+              { ALT: () => this.CONSUME(Null) },
+              { ALT: () => this.CONSUME(True) },
+              { ALT: () => this.CONSUME(False) },
+            ])
           },
         },
       ])
     })
   })
 
-  // Precedence 11: [NOT] IN, [NOT] BETWEEN, [NOT] LIKE, [NOT] ILIKE, WITHIN
+  // Precedence 11: [NOT] IN, [NOT] BETWEEN, [NOT] LIKE, [NOT] ILIKE, [NOT] WITHIN
   private setExpression = this.RULE("setExpression", () => {
     this.SUBRULE(this.bitOrExpression)
-    this.OPTION(() => {
-      this.OR([
-        {
-          ALT: () => {
-            this.OPTION1(() => this.CONSUME(Not))
-            this.CONSUME(In)
-            this.OR1([
-              {
-                GATE: () => this.LA(1).tokenType === LParen,
-                ALT: () => {
-                  this.CONSUME(LParen)
-                  this.SUBRULE2(this.expression)
-                  this.MANY(() => {
-                    this.CONSUME(Comma)
-                    this.SUBRULE3(this.expression)
-                  })
-                  this.CONSUME(RParen)
+    this.OPTION({
+      // An EXPIRE ROWS WHEN predicate ends before `IN VOLUME` (the mat view
+      // volume clause), so `IN` there is not the IN operator.
+      GATE: () =>
+        !(
+          this.inExpireRowsPredicate &&
+          this.LA(1).tokenType === In &&
+          this.LA(2).tokenType === Volume
+        ),
+      DEF: () => {
+        this.OR([
+          {
+            ALT: () => {
+              this.OPTION1(() => this.CONSUME(Not))
+              this.CONSUME(In)
+              this.OR1([
+                {
+                  GATE: () => this.LA(1).tokenType === LParen,
+                  ALT: () => {
+                    this.CONSUME(LParen)
+                    this.SUBRULE2(this.expression)
+                    this.MANY(() => {
+                      this.CONSUME(Comma)
+                      this.SUBRULE3(this.expression)
+                    })
+                    this.CONSUME(RParen)
+                  },
                 },
-              },
-              {
-                ALT: () => {
-                  this.SUBRULE3(this.bitOrExpression, { LABEL: "inValue" })
+                {
+                  ALT: () => {
+                    this.SUBRULE3(this.bitOrExpression, { LABEL: "inValue" })
+                  },
                 },
-              },
-            ])
+              ])
+            },
           },
-        },
-        {
-          ALT: () => {
-            this.OPTION2(() => this.CONSUME1(Not))
-            this.CONSUME(Between)
-            this.SUBRULE1(this.bitOrExpression, { LABEL: "betweenLow" })
-            this.CONSUME(And)
-            this.SUBRULE2(this.bitOrExpression, { LABEL: "betweenHigh" })
+          {
+            ALT: () => {
+              this.OPTION2(() => this.CONSUME1(Not))
+              this.CONSUME(Between)
+              this.SUBRULE1(this.bitOrExpression, { LABEL: "betweenLow" })
+              this.CONSUME(And)
+              this.SUBRULE2(this.bitOrExpression, { LABEL: "betweenHigh" })
+            },
           },
-        },
-        {
-          ALT: () => {
-            this.CONSUME(Within)
-            this.CONSUME1(LParen)
-            this.SUBRULE5(this.expression)
-            this.MANY1(() => {
-              this.CONSUME1(Comma)
-              this.SUBRULE6(this.expression)
-            })
-            this.CONSUME1(RParen)
+          {
+            ALT: () => {
+              this.OPTION3(() => this.CONSUME3(Not))
+              this.CONSUME(Within)
+              this.CONSUME1(LParen)
+              this.SUBRULE5(this.expression)
+              this.MANY1(() => {
+                this.CONSUME1(Comma)
+                this.SUBRULE6(this.expression)
+              })
+              this.CONSUME1(RParen)
+            },
           },
-        },
-        {
-          ALT: () => {
-            this.CONSUME2(Not)
-            this.OR2([
-              { ALT: () => this.CONSUME(Like) },
-              { ALT: () => this.CONSUME(Ilike) },
-            ])
-            this.SUBRULE4(this.bitOrExpression, { LABEL: "notLikeRight" })
+          {
+            ALT: () => {
+              this.CONSUME2(Not)
+              this.OR2([
+                { ALT: () => this.CONSUME(Like) },
+                { ALT: () => this.CONSUME(Ilike) },
+              ])
+              this.SUBRULE4(this.bitOrExpression, { LABEL: "notLikeRight" })
+            },
           },
-        },
-      ])
+        ])
+      },
     })
   })
 
@@ -4597,7 +5601,8 @@ class QuestDBParser extends CstParser {
 
   // Precedence 3: unary -, unary ~ (bitwise complement)
   private unaryExpression = this.RULE("unaryExpression", () => {
-    this.OPTION(() => {
+    // Prefix operators may be stacked: `- -a`, `~-a`
+    this.MANY(() => {
       this.OR([
         { ALT: () => this.CONSUME(Minus) },
         { ALT: () => this.CONSUME(RegexMatch) }, // ~ used as unary bitwise complement
@@ -4609,6 +5614,15 @@ class QuestDBParser extends CstParser {
   // Precedence 2: :: (inline type cast), [] (array subscript)
   private typeCastExpression = this.RULE("typeCastExpression", () => {
     this.SUBRULE(this.primaryExpression)
+    // Member access on a parenthesised value: `(x).a`, `(f()).col`
+    // (ExpressionParser DOT dereference after `)`).
+    this.MANY3({
+      GATE: () => this.LA(0).tokenType === RParen,
+      DEF: () => {
+        this.CONSUME(Dot)
+        this.SUBRULE(this.identifier, { LABEL: "member" })
+      },
+    })
     // Postfix array subscript: expr[i], expr[i:j], expr[i, j]
     this.MANY(() => {
       this.CONSUME(LBracket)
@@ -4621,7 +5635,23 @@ class QuestDBParser extends CstParser {
     })
     this.MANY2(() => {
       this.CONSUME(DoubleColon)
-      this.SUBRULE(this.dataType)
+      this.SUBRULE(this.castDataType)
+    })
+    // <expr> AT TIME ZONE '<tz>' (ExpressionParser: AT after a completed
+    // operand, rewritten to to_timezone(expr, tz); the zone must be a
+    // string constant). Not repeated: the server does not chain it. The
+    // gate keeps `at` usable as an alias (`SELECT ts at FROM t`).
+    this.OPTION({
+      GATE: () => this.LA(2).tokenType === Time,
+      DEF: () => {
+        this.CONSUME(At)
+        this.CONSUME(Time)
+        this.CONSUME(Zone)
+        this.OR([
+          { ALT: () => this.CONSUME(StringLiteral) },
+          { ALT: () => this.CONSUME(EscapeStringLiteral) },
+        ])
+      },
     })
   })
 
@@ -4649,21 +5679,45 @@ class QuestDBParser extends CstParser {
     ])
   })
 
+  // double precision '1' (ExpressionParser skips PRECISION after DOUBLE)
+  private isDoublePrecisionLiteral(): boolean {
+    const t3 = this.LA(3).tokenType
+    return (
+      this.LA(1).tokenType === Double &&
+      this.LA(2).tokenType === Precision &&
+      (t3 === StringLiteral || t3 === EscapeStringLiteral)
+    )
+  }
+
+  private isTimestampWithTimeZoneLiteral(): boolean {
+    const t1 = this.LA(1).tokenType
+    const t5 = this.LA(5).tokenType
+    return (
+      (t1 === Timestamp || t1 === TimestampNs) &&
+      this.LA(2).tokenType === With &&
+      this.LA(3).tokenType === Time &&
+      this.LA(4).tokenType === Zone &&
+      (t5 === StringLiteral || t5 === EscapeStringLiteral)
+    )
+  }
+
   private primaryExpression = this.RULE("primaryExpression", () => {
     this.OR([
       { ALT: () => this.SUBRULE(this.castExpression) },
       { ALT: () => this.SUBRULE(this.caseExpression) },
       {
+        // timestamp [with time zone] '...' — the WITH TIME ZONE form cannot
+        // live in identifierExpression's typed-literal option, because then
+        // autocomplete would offer WITH after every column reference.
+        GATE: () => this.isTimestampWithTimeZoneLiteral(),
+        ALT: () => this.SUBRULE(this.timestampWithTimeZoneLiteral),
+      },
+      {
         // ARRAY[...] literal — must come before functionCall/columnRef
-        // since ARRAY is tokenized as Identifier
-        GATE: () => {
-          const la1 = this.LA(1)
-          return (
-            la1.tokenType === Identifier &&
-            la1.image.toUpperCase() === "ARRAY" &&
-            this.LA(2).tokenType === LBracket
-          )
-        },
+        // since ARRAY is a non-reserved keyword (usable as a name)
+        GATE: () =>
+          this.LA(1).tokenType === ArrayType &&
+          this.LA(2).tokenType === LBracket,
         ALT: () => this.SUBRULE(this.arrayLiteral),
       },
       {
@@ -4679,7 +5733,21 @@ class QuestDBParser extends CstParser {
       {
         ALT: () => this.CONSUME(VariableReference),
       },
-      { ALT: () => this.SUBRULE(this.identifierExpression) },
+      // Bind variable: $1 or :name
+      { ALT: () => this.CONSUME(BindVariable) },
+      {
+        GATE: () => !this.isDoublePrecisionLiteral(),
+        ALT: () => this.SUBRULE(this.identifierExpression),
+      },
+      {
+        // double precision '...' — like the WITH TIME ZONE form, kept out of
+        // identifierExpression so PRECISION is not offered after every column.
+        // Listed after identifierExpression (whose GATE yields to it): content
+        // assist prunes later alternatives once an earlier one completes, so
+        // `SELECT double precision ` keeps the column + alias suggestions.
+        GATE: () => this.isDoublePrecisionLiteral(),
+        ALT: () => this.SUBRULE(this.doublePrecisionLiteral),
+      },
       {
         ALT: () => {
           this.CONSUME(LParen)
@@ -4698,11 +5766,15 @@ class QuestDBParser extends CstParser {
             },
             {
               // Single expression or row constructor: (expr) or (expr, expr, ...)
+              // A trailing comma is allowed: `('a',)` (DECLARE value lists)
               ALT: () => {
                 this.SUBRULE(this.expression)
                 this.MANY2(() => {
                   this.CONSUME1(Comma)
-                  this.SUBRULE1(this.expression)
+                  this.OPTION3({
+                    GATE: () => this.LA(1).tokenType !== RParen,
+                    DEF: () => this.SUBRULE1(this.expression),
+                  })
                 })
               },
             },
@@ -4715,7 +5787,7 @@ class QuestDBParser extends CstParser {
 
   // ARRAY[...] literal: ARRAY[expr, expr, ...] or ARRAY[[...], [...], ...]
   private arrayLiteral = this.RULE("arrayLiteral", () => {
-    this.CONSUME(Identifier) // 'ARRAY'
+    this.CONSUME(ArrayType)
     this.SUBRULE(this.arrayBracketBody)
   })
 
@@ -4749,8 +5821,64 @@ class QuestDBParser extends CstParser {
     this.CONSUME(LParen)
     this.SUBRULE(this.expression)
     this.CONSUME(As)
-    this.SUBRULE(this.dataType)
+    this.SUBRULE(this.castDataType)
     this.CONSUME(RParen)
+  })
+
+  // Cast target (`::` and CAST(x AS ...)): ExpressionParser also reads the
+  // multi-word spellings `timestamp[_ns] with time zone` and
+  // `double precision`. They are separate alternatives (not options inside
+  // dataType) so autocomplete only offers WITH after TIMESTAMP and PRECISION
+  // after DOUBLE, and only where the server accepts them.
+  private castDataType = this.RULE("castDataType", () => {
+    this.OR({
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        {
+          GATE: () => {
+            const t1 = this.LA(1).tokenType
+            return (
+              (t1 === Timestamp || t1 === TimestampNs) &&
+              this.LA(2).tokenType === With &&
+              this.LA(3).tokenType === Time
+            )
+          },
+          ALT: () => this.SUBRULE(this.timestampWithTimeZoneType),
+        },
+        {
+          GATE: () => this.isDoublePrecision(),
+          ALT: () => this.SUBRULE(this.doublePrecisionType),
+        },
+        { ALT: () => this.SUBRULE(this.dataType) },
+      ],
+    })
+  })
+
+  private isDoublePrecision(): boolean {
+    return this.LA(1).tokenType === Double && this.LA(2).tokenType === Precision
+  }
+
+  private timestampWithTimeZoneType = this.RULE(
+    "timestampWithTimeZoneType",
+    () => {
+      this.OR([
+        { ALT: () => this.CONSUME(Timestamp) },
+        { ALT: () => this.CONSUME(TimestampNs) },
+      ])
+      this.CONSUME(With)
+      this.CONSUME(Time)
+      this.CONSUME(Zone)
+    },
+  )
+
+  private doublePrecisionType = this.RULE("doublePrecisionType", () => {
+    this.CONSUME(Double)
+    this.CONSUME(Precision)
+    // Array dimensions: DOUBLE PRECISION[], DOUBLE PRECISION[][]
+    this.MANY(() => {
+      this.CONSUME(LBracket)
+      this.CONSUME(RBracket)
+    })
   })
 
   private dataType = this.RULE("dataType", () => {
@@ -4802,6 +5930,16 @@ class QuestDBParser extends CstParser {
       },
       { ALT: () => this.CONSUME(Interval) },
       { ALT: () => this.CONSUME(TimestampNs) },
+      // PG aliases (ColumnType.nameTypeMap)
+      { ALT: () => this.CONSUME(Text) },
+      { ALT: () => this.CONSUME(Smallint) },
+      { ALT: () => this.CONSUME(Bigint) },
+      { ALT: () => this.CONSUME(Real) },
+      { ALT: () => this.CONSUME(Bytea) },
+      { ALT: () => this.CONSUME(Regclass) },
+      { ALT: () => this.CONSUME(Regprocedure) },
+      // Lenient compatibility; bare ARRAY is not suggested as a type.
+      { ALT: () => this.CONSUME(ArrayType) },
       { ALT: () => this.CONSUME(Identifier) }, // For custom types
     ])
     // Optional array dimensions: DOUBLE[], DOUBLE[][]
@@ -4886,8 +6024,64 @@ class QuestDBParser extends CstParser {
   // Parses: qualifiedName [( [args] ) [IGNORE NULLS] [OVER (...)]]
   // This handles both `schema.func(args)` and `schema.column` in one rule,
   // deciding based on whether `(` follows the name.
+  // timestamp with time zone '2020-12-31 15:15:51.663+00:00'
+  // (ExpressionParser: the literal branch accepts WITH TIME ZONE after a
+  // timestamp type name, then processPgTimestampCast casts the string)
+  private doublePrecisionLiteral = this.RULE("doublePrecisionLiteral", () => {
+    this.CONSUME(Double)
+    this.CONSUME(Precision)
+    this.OR([
+      { ALT: () => this.CONSUME(StringLiteral) },
+      { ALT: () => this.CONSUME(EscapeStringLiteral) },
+    ])
+  })
+
+  private timestampWithTimeZoneLiteral = this.RULE(
+    "timestampWithTimeZoneLiteral",
+    () => {
+      this.OR([
+        { ALT: () => this.CONSUME(Timestamp) },
+        { ALT: () => this.CONSUME(TimestampNs) },
+      ])
+      this.CONSUME(With)
+      this.CONSUME(Time)
+      this.CONSUME(Zone)
+      this.OR1([
+        { ALT: () => this.CONSUME(StringLiteral) },
+        { ALT: () => this.CONSUME(EscapeStringLiteral) },
+      ])
+    },
+  )
+
+  // True when `first` is the only token of the qualifiedName just consumed, is
+  // a castable type name, and the next token is a string constant.
+  private isTypedLiteralType(first: IToken): boolean {
+    const internals = this as unknown as CstParserInternals & {
+      input: IToken[]
+    }
+    if (internals.input[internals.currIdx] !== first) return false
+    const isType = TYPED_LITERAL_TYPE_TOKENS.has(first.tokenType)
+    const next = this.LA(1).tokenType
+    return isType && (next === StringLiteral || next === EscapeStringLiteral)
+  }
+
   private identifierExpression = this.RULE("identifierExpression", () => {
+    const first = this.LA(1)
     this.SUBRULE(this.qualifiedName)
+    // Typed literal: timestamp '2020-01-01', ipv4 '1.2.3.4', long '42' ...
+    // The server reads a type name directly followed by a string constant as a
+    // cast (ExpressionParser.processPgTimestampCast). Every castable type is a
+    // non-reserved keyword, so it already arrives here as a one-part
+    // qualifiedName; the trailing string turns it into a typed literal instead
+    // of a column reference followed by an alias.
+    this.OPTION5({
+      GATE: () => this.isTypedLiteralType(first),
+      DEF: () =>
+        this.OR4([
+          { ALT: () => this.CONSUME(StringLiteral) },
+          { ALT: () => this.CONSUME(EscapeStringLiteral) },
+        ]),
+    })
     this.OPTION(() => {
       this.CONSUME(LParen)
       this.OR({
@@ -5023,6 +6217,7 @@ class QuestDBParser extends CstParser {
     this.OR([
       { ALT: () => this.CONSUME(Rows) },
       { ALT: () => this.CONSUME(Range) },
+      { ALT: () => this.CONSUME(Groups) },
       { ALT: () => this.CONSUME(Cumulative) },
     ])
     this.OPTION(() => {
@@ -5040,7 +6235,8 @@ class QuestDBParser extends CstParser {
         },
       ])
     })
-    // Optional EXCLUDE clause (QuestDB supports EXCLUDE CURRENT ROW and EXCLUDE NO OTHERS)
+    // Optional EXCLUDE clause: CURRENT ROW | GROUP | TIES | NO OTHERS
+    // (ExpressionParser.parseWindowFrameClause)
     this.OPTION1(() => {
       this.CONSUME(Exclude)
       this.OR2([
@@ -5050,6 +6246,8 @@ class QuestDBParser extends CstParser {
             this.CONSUME(Row)
           },
         },
+        { ALT: () => this.CONSUME(Group) },
+        { ALT: () => this.CONSUME(Ties) },
         {
           ALT: () => {
             this.CONSUME(No)
@@ -5126,6 +6324,9 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(GeohashLiteral) },
       { ALT: () => this.CONSUME(GeohashBinaryLiteral) },
       { ALT: () => this.CONSUME(NaN) },
+      { ALT: () => this.CONSUME(HexLiteral) },
+      { ALT: () => this.CONSUME(FloatLiteral) },
+      { ALT: () => this.CONSUME(EscapeStringLiteral) },
     ])
   })
 
@@ -5135,6 +6336,74 @@ class QuestDBParser extends CstParser {
       { ALT: () => this.CONSUME(False) },
     ])
   })
+
+  // Password value: the server reads any token, unquoted and case-sensitive
+  // (EntSqlCompilerImpl.parsePassword): 'pw', pw, null, 1234. Its own rule so
+  // the formatter treats it as a value and never capitalizes it.
+  private passwordValue = this.RULE("passwordValue", () => {
+    this.OR({
+      // The specific alternatives come first; AnyKeyword (every keyword,
+      // reserved or not) overlaps them on purpose.
+      IGNORE_AMBIGUITIES: true,
+      DEF: [
+        { ALT: () => this.CONSUME(StringLiteral) },
+        { ALT: () => this.CONSUME(Null) },
+        { ALT: () => this.CONSUME(True) },
+        { ALT: () => this.CONSUME(False) },
+        { ALT: () => this.CONSUME(DurationLiteral) },
+        { ALT: () => this.CONSUME(LongLiteral) },
+        { ALT: () => this.CONSUME(DecimalLiteral) },
+        { ALT: () => this.CONSUME(FloatLiteral) },
+        { ALT: () => this.CONSUME(HexLiteral) },
+        { ALT: () => this.CONSUME(NumberLiteral) },
+        { ALT: () => this.SUBRULE(this.identifier) },
+        { ALT: () => this.CONSUME(MalformedDurationLiteral) },
+        { ALT: () => this.CONSUME(AnyKeyword) },
+        // @x and $1 are one server token (abc@def via the glue below)
+        { ALT: () => this.CONSUME(VariableReference) },
+        { ALT: () => this.CONSUME(BindVariable) },
+        // @ before a digit, trailing or alone (@123, abc@, @): bare AtSign
+        { ALT: () => this.CONSUME(AtSign) },
+      ],
+    })
+    // The server reads one whitespace-delimited token; this lexer may split
+    // it (`1G` = NumberLiteral + Identifier). Glue the unquoted pieces back
+    // together; a quoted value ends on its own (`'pw'OWNED BY g`).
+    this.MANY({
+      GATE: () => this.nextTokenIsGlued(),
+      DEF: () => {
+        this.OR1({
+          IGNORE_AMBIGUITIES: true,
+          DEF: [
+            { ALT: () => this.CONSUME1(NumberLiteral) },
+            { ALT: () => this.CONSUME1(DurationLiteral) },
+            { ALT: () => this.CONSUME1(MalformedDurationLiteral) },
+            { ALT: () => this.SUBRULE1(this.identifier) },
+            { ALT: () => this.CONSUME1(AnyKeyword) },
+            { ALT: () => this.CONSUME1(VariableReference) },
+            { ALT: () => this.CONSUME1(BindVariable) },
+            { ALT: () => this.CONSUME1(AtSign) },
+          ],
+        })
+      },
+    })
+  })
+
+  // LA(1) starts exactly where the last consumed token ended (no whitespace).
+  private nextTokenIsGlued(): boolean {
+    const internals = this as unknown as CstParserInternals & {
+      input: IToken[]
+    }
+    const prev = internals.input[internals.currIdx]
+    const next = this.LA(1)
+    return (
+      prev !== undefined &&
+      prev.endOffset !== undefined &&
+      next.startOffset === prev.endOffset + 1 &&
+      !QUOTED_TOKEN_NAMES.has(prev.tokenType.name) &&
+      !QUOTED_TOKEN_NAMES.has(next.tokenType.name)
+    )
+  }
 
   private stringOrIdentifier = this.RULE("stringOrIdentifier", () => {
     this.OR([

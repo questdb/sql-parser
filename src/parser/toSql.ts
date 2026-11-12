@@ -5,7 +5,10 @@
 import * as AST from "./ast"
 import { keywords } from "../grammar/keywords"
 import { constants } from "../grammar/constants"
-import { IDENTIFIER_KEYWORD_NAMES } from "./tokens"
+import {
+  CLAUSE_IDENTIFIER_KEYWORD_NAMES,
+  IDENTIFIER_KEYWORD_NAMES,
+} from "./tokens"
 
 function toPascalCase(str: string): string {
   if (str.includes("_")) {
@@ -19,7 +22,14 @@ function toPascalCase(str: string): string {
 
 const RESERVED_KEYWORDS = new Set(
   [...keywords, ...constants]
-    .filter((k) => !IDENTIFIER_KEYWORD_NAMES.has(toPascalCase(k)))
+    .filter((k) => {
+      const name = toPascalCase(k)
+      // Clause words stay quoted: usable unquoted, but quoting is clearer.
+      return (
+        !IDENTIFIER_KEYWORD_NAMES.has(name) ||
+        CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(name)
+      )
+    })
     .map((k) => k.toLowerCase()),
 )
 
@@ -125,6 +135,16 @@ function statementToSql(stmt: AST.Statement): string {
       return resumeWalToSql(stmt)
     case "setType":
       return setTypeToSql(stmt)
+    case "set":
+      return ["SET", ...stmt.args].join(" ").replace(/ ,/g, ",")
+    case "transaction":
+      return (
+        stmt.action.toUpperCase() + (stmt.transaction ? " TRANSACTION" : "")
+      )
+    case "deallocate":
+      return `DEALLOCATE ${stmt.name}`
+    case "pgNoOp":
+      return `${stmt.keyword.toUpperCase()} ${stmt.argument}`
     case "reindexTable":
       return reindexTableToSql(stmt)
     case "copyCancel":
@@ -143,6 +163,10 @@ function statementToSql(stmt: AST.Statement): string {
       return alterGroupToSql(stmt)
     case "compileView":
       return `COMPILE VIEW ${qualifiedNameToSql(stmt.view)}`
+    case "createResourceGroup":
+    case "alterResourceGroup":
+    case "dropResourceGroup":
+      return resourceGroupToSql(stmt)
     default:
       throw new Error(
         `Unknown statement type: ${(stmt as { type: string }).type}`,
@@ -191,16 +215,34 @@ function selectToSql(stmt: AST.SelectStatement): string {
     }
   }
 
+  // deprecated LATEST BY: right after the table (server order)
+  if (stmt.latestOn && !stmt.latestOn.timestamp) {
+    parts.push(latestOnToSql(stmt.latestOn))
+  }
+
   // WHERE
   if (stmt.where) {
     parts.push("WHERE")
     parts.push(expressionToSql(stmt.where))
   }
 
+  // LATEST ON (server order: after WHERE, before PIVOT / SAMPLE BY)
+  if (stmt.latestOn?.timestamp) {
+    parts.push(latestOnToSql(stmt.latestOn))
+  }
+
+  // PIVOT written before SAMPLE BY / GROUP BY
+  if (stmt.pivot && stmt.pivotBeforeGroupBy) {
+    parts.push(pivotClauseToSql(stmt.pivot))
+  }
+
   // SAMPLE BY (QuestDB)
   if (stmt.sampleBy) {
     parts.push("SAMPLE BY")
     parts.push(stmt.sampleBy.duration)
+    if (stmt.sampleBy.groupingSets) {
+      parts.push(groupingSetsToSql(stmt.sampleBy.groupingSets))
+    }
     // FROM/TO (must come before FILL and ALIGN TO per Java order)
     if (stmt.sampleBy.from) {
       parts.push("FROM")
@@ -221,39 +263,37 @@ function selectToSql(stmt: AST.SelectStatement): string {
         parts.push("FIRST OBSERVATION")
       } else {
         parts.push("CALENDAR")
-        if (stmt.sampleBy.alignTo.timeZone) {
+        const align = stmt.sampleBy.alignTo
+        if (align.timeZoneExpression) {
           parts.push("TIME ZONE")
-          parts.push(escapeString(stmt.sampleBy.alignTo.timeZone))
+          parts.push(expressionToSql(align.timeZoneExpression))
+        } else if (align.timeZone) {
+          parts.push("TIME ZONE")
+          parts.push(escapeString(align.timeZone))
         }
-        if (stmt.sampleBy.alignTo.offset) {
+        if (align.offsetExpression) {
           parts.push("WITH OFFSET")
-          parts.push(escapeString(stmt.sampleBy.alignTo.offset))
+          parts.push(expressionToSql(align.offsetExpression))
+        } else if (align.offset) {
+          parts.push("WITH OFFSET")
+          parts.push(escapeString(align.offset))
         }
       }
     }
   }
 
-  // LATEST ON / LATEST BY (QuestDB)
-  if (stmt.latestOn) {
-    if (stmt.latestOn.timestamp) {
-      parts.push("LATEST ON")
-      parts.push(qualifiedNameToSql(stmt.latestOn.timestamp))
-      parts.push("PARTITION BY")
-      parts.push(stmt.latestOn.partitionBy.map(qualifiedNameToSql).join(", "))
-    } else {
-      parts.push("LATEST BY")
-      parts.push(stmt.latestOn.partitionBy.map(qualifiedNameToSql).join(", "))
-    }
+  // GROUP BY [plain keys][, ROLLUP(...) | CUBE(...) | GROUPING SETS (...)]
+  const groupByItems = (stmt.groupBy ?? []).map(expressionToSql)
+  if (stmt.groupingSets) {
+    groupByItems.push(groupingSetsToSql(stmt.groupingSets))
   }
-
-  // GROUP BY
-  if (stmt.groupBy && stmt.groupBy.length > 0) {
+  if (groupByItems.length > 0) {
     parts.push("GROUP BY")
-    parts.push(stmt.groupBy.map(expressionToSql).join(", "))
+    parts.push(groupByItems.join(", "))
   }
 
   // PIVOT (inline pivot clause in SELECT)
-  if (stmt.pivot) {
+  if (stmt.pivot && !stmt.pivotBeforeGroupBy) {
     parts.push(pivotClauseToSql(stmt.pivot))
   }
 
@@ -699,7 +739,14 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
     let asSql = `AS (${selectToSql(stmt.asSelect)})`
     if (stmt.casts && stmt.casts.length > 0) {
       for (const cast of stmt.casts) {
-        asSql += `, CAST(${qualifiedNameToSql(cast.column)} AS ${cast.dataType})`
+        let castSql = `${qualifiedNameToSql(cast.column)} AS ${cast.dataType}`
+        if (cast.symbolCapacity !== undefined) {
+          castSql += ` CAPACITY ${cast.symbolCapacity}`
+        }
+        if (cast.cache !== undefined) {
+          castSql += cast.cache ? " CACHE" : " NOCACHE"
+        }
+        asSql += `, CAST(${castSql})`
       }
     }
     if (stmt.indexes && stmt.indexes.length > 0) {
@@ -760,7 +807,7 @@ function createTableToSql(stmt: AST.CreateTableStatement): string {
 
   if (stmt.dedupKeys && stmt.dedupKeys.length > 0) {
     parts.push(
-      `DEDUP UPSERT KEYS(${stmt.dedupKeys.map(escapeIdentifier).join(", ")})`,
+      `DEDUP ${(stmt.dedupMode ?? "upsert").toUpperCase()} KEYS(${stmt.dedupKeys.map(escapeIdentifier).join(", ")})`,
     )
   }
 
@@ -790,6 +837,7 @@ function createViewToSql(stmt: AST.CreateViewStatement): string {
   } else {
     parts.push(`AS ${selectToSql(stmt.query)}`)
   }
+  if (stmt.audit) parts.push("WITH AUDIT")
   if (stmt.ownedBy) parts.push(`OWNED BY ${escapeIdentifier(stmt.ownedBy)}`)
   return parts.join(" ")
 }
@@ -876,7 +924,18 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       if (action.ifNotExists) {
         parts.push("IF NOT EXISTS")
       }
-      parts.push(action.columns.map(columnDefToSql).join(", "))
+      parts.push(
+        action.columns
+          .map(
+            (c, i) =>
+              (i > 0 && c.ifNotExists ? "IF NOT EXISTS " : "") +
+              columnDefToSql(c),
+          )
+          .join(", "),
+      )
+      if (action.ownedBy) {
+        parts.push(`OWNED BY ${escapeIdentifier(action.ownedBy)}`)
+      }
       break
     }
     case "dropColumn":
@@ -888,6 +947,14 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push(escapeIdentifier(action.oldName))
       parts.push("TO")
       parts.push(escapeIdentifier(action.newName))
+      for (const r of action.additionalRenames ?? []) {
+        parts[parts.length - 1] += ","
+        parts.push(
+          escapeIdentifier(r.oldName),
+          "TO",
+          escapeIdentifier(r.newName),
+        )
+      }
       break
     case "alterColumn":
       parts.push("ALTER COLUMN")
@@ -903,6 +970,16 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
           parts.push("CACHE")
         } else if (action.cache === false) {
           parts.push("NOCACHE")
+        }
+        if (action.indexed) {
+          parts.push(
+            "INDEX" +
+              indexOptionsToSql(
+                action.indexType,
+                action.indexInclude,
+                action.indexCapacity,
+              ),
+          )
         }
       } else if (action.alterType === "addIndex") {
         parts.push(
@@ -1002,7 +1079,9 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
       parts.push("DEDUP DISABLE")
       break
     case "dedupEnable":
-      parts.push("DEDUP ENABLE UPSERT KEYS")
+      parts.push(
+        `DEDUP ENABLE ${(action.dedupMode ?? "upsert").toUpperCase()} KEYS`,
+      )
       parts.push(`(${action.keys.map(escapeIdentifier).join(", ")})`)
       break
     case "setTypeWal":
@@ -1044,14 +1123,15 @@ function alterTableToSql(stmt: AST.AlterTableStatement): string {
     }
     case "convertPartition": {
       parts.push("CONVERT PARTITION")
-      if (action.partitions && action.partitions.length > 0) {
-        parts.push("LIST")
-        parts.push(
-          action.partitions.map((p: string) => escapeString(p)).join(", "),
-        )
-      }
+      const list =
+        action.partitions && action.partitions.length > 0
+          ? "LIST " +
+            action.partitions.map((p: string) => escapeString(p)).join(", ")
+          : undefined
+      if (list && !action.listAfterTarget) parts.push(list)
       parts.push("TO")
       parts.push(action.target)
+      if (list && action.listAfterTarget) parts.push(list)
       if (action.where) {
         parts.push("WHERE")
         parts.push(expressionToSql(action.where))
@@ -1272,7 +1352,7 @@ function expireRowsClauseToSql(clause: AST.ExpireRowsClause): string {
     parts.push("KEEP")
     if (clause.keepCount !== undefined) parts.push(String(clause.keepCount))
     parts.push(clause.extremum === "lowest" ? "LOWEST" : "HIGHEST")
-    parts.push(escapeIdentifier(clause.column!))
+    parts.push("ON", escapeIdentifier(clause.column!))
     if (clause.partitionBy && clause.partitionBy.length > 0) {
       parts.push(
         `PARTITION BY ${clause.partitionBy.map(escapeIdentifier).join(", ")}`,
@@ -1374,6 +1454,13 @@ function alterMaterializedViewToSql(
     }
     case "suspendWal":
       parts.push("SUSPEND WAL")
+      if (action.code != null && action.message != null) {
+        const code =
+          typeof action.code === "number"
+            ? String(action.code)
+            : escapeString(action.code)
+        parts.push(`WITH ${code}, ${escapeString(action.message)}`)
+      }
       break
     case "rebaseWal": {
       parts.push("REBASE WAL")
@@ -1432,7 +1519,8 @@ function refreshMaterializedViewToSql(
 
 function declareClauseToSql(clause: AST.DeclareClause): string {
   const assignments = clause.assignments.map((a) => {
-    const prefix = a.overridable ? "OVERRIDABLE " : ""
+    const prefix =
+      (a.overridable ? "OVERRIDABLE " : "") + (a.audited ? "AUDITED " : "")
     return `${prefix}@${a.name} := ${expressionToSql(a.value)}`
   })
   return `DECLARE ${assignments.join(", ")}`
@@ -1461,9 +1549,56 @@ function createGroupToSql(stmt: AST.CreateGroupStatement): string {
   return parts.join(" ")
 }
 
+function resourceGroupPolicyToSql(options: AST.ResourceGroupOption[]): string {
+  return `(${options
+    .map((o) => (o.value !== undefined ? `${o.name} = ${o.value}` : o.name))
+    .join(", ")})`
+}
+
+function resourceGroupToSql(
+  stmt:
+    | AST.CreateResourceGroupStatement
+    | AST.AlterResourceGroupStatement
+    | AST.DropResourceGroupStatement,
+): string {
+  const name = qualifiedNameToSql(stmt.group)
+  if (stmt.type === "createResourceGroup") {
+    const parts = ["CREATE RESOURCE GROUP"]
+    if (stmt.ifNotExists) parts.push("IF NOT EXISTS")
+    parts.push(name)
+    if (stmt.options)
+      parts.push(`WITH ${resourceGroupPolicyToSql(stmt.options)}`)
+    return parts.join(" ")
+  }
+  if (stmt.type === "dropResourceGroup") {
+    return `DROP RESOURCE GROUP ${stmt.ifExists ? "IF EXISTS " : ""}${name}`
+  }
+  if (stmt.action === "rename") {
+    return `ALTER RESOURCE GROUP ${name} RENAME TO ${qualifiedNameToSql(stmt.newName!)}`
+  }
+  return `ALTER RESOURCE GROUP ${name} ${stmt.action.toUpperCase()} ${resourceGroupPolicyToSql(stmt.options ?? [])}`
+}
+
+function principalResourceGroupToSql(
+  group: AST.QualifiedName | undefined,
+  mappingPriority: string | undefined,
+): string {
+  if (!group) return "UNSET RESOURCE GROUP"
+  let s = `SET RESOURCE GROUP ${qualifiedNameToSql(group)}`
+  if (mappingPriority !== undefined) s += ` MAPPING PRIORITY ${mappingPriority}`
+  return s
+}
+
 function alterGroupToSql(stmt: AST.AlterGroupStatement): string {
   const parts: string[] = ["ALTER GROUP", qualifiedNameToSql(stmt.group)]
-  if (stmt.action === "setMemoryLimit") {
+  if (
+    stmt.action === "setResourceGroup" ||
+    stmt.action === "unsetResourceGroup"
+  ) {
+    parts.push(
+      principalResourceGroupToSql(stmt.resourceGroup, stmt.mappingPriority),
+    )
+  } else if (stmt.action === "setMemoryLimit") {
     parts.push(`SET MEMORY LIMIT ${stmt.memoryLimit}`)
   } else if (stmt.action === "setAlias") {
     parts.push(`WITH EXTERNAL ALIAS ${escapeString(stmt.externalAlias!)}`)
@@ -1515,6 +1650,12 @@ function alterUserActionToSql(action: AST.AlterUserAction): string {
       return `WITH PASSWORD ${escapeString(action.password!)}`
     case "setMemoryLimit":
       return `SET MEMORY LIMIT ${action.limit}`
+    case "setResourceGroup":
+    case "unsetResourceGroup":
+      return principalResourceGroupToSql(
+        action.resourceGroup,
+        action.mappingPriority,
+      )
     case "createToken": {
       const parts = [`CREATE TOKEN TYPE ${action.tokenType}`]
       if (action.publicKeyX != null && action.publicKeyY != null) {
@@ -1609,6 +1750,7 @@ function revokeToSql(stmt: AST.RevokeStatement): string {
   const parts: string[] = [`REVOKE ${stmt.permissions.join(", ")}`]
   if (stmt.on) parts.push(grantOnTargetToSql(stmt.on))
   parts.push(`FROM ${qualifiedNameToSql(stmt.from)}`)
+  if (stmt.verification) parts.push("WITH VERIFICATION")
   return parts.join(" ")
 }
 
@@ -1616,7 +1758,7 @@ function grantAssumeToSql(
   stmt: AST.GrantAssumeServiceAccountStatement,
 ): string {
   const parts: string[] = [
-    `GRANT ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} TO ${qualifiedNameToSql(stmt.to)}`,
+    `GRANT ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} TO ${(stmt.toList ?? [stmt.to]).map(qualifiedNameToSql).join(", ")}`,
   ]
   if (stmt.grantOption) parts.push("WITH GRANT OPTION")
   return parts.join(" ")
@@ -1625,7 +1767,7 @@ function grantAssumeToSql(
 function revokeAssumeToSql(
   stmt: AST.RevokeAssumeServiceAccountStatement,
 ): string {
-  return `REVOKE ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} FROM ${qualifiedNameToSql(stmt.from)}`
+  return `REVOKE ASSUME SERVICE ACCOUNT ${qualifiedNameToSql(stmt.account)} FROM ${(stmt.fromList ?? [stmt.from]).map(qualifiedNameToSql).join(", ")}`
 }
 
 // =============================================================================
@@ -1734,7 +1876,8 @@ function pivotClauseToSql(pivot: AST.PivotClause): string {
   if (pivot.groupBy && pivot.groupBy.length > 0) {
     pivotParts.push(`GROUP BY ${pivot.groupBy.map(expressionToSql).join(", ")}`)
   }
-  return `PIVOT (${pivotParts.join(" ")})`
+  const alias = pivot.alias ? ` AS ${escapeIdentifier(pivot.alias)}` : ""
+  return `PIVOT (${pivotParts.join(" ")})${alias}`
 }
 
 // =============================================================================
@@ -1828,7 +1971,7 @@ function pivotToSql(stmt: AST.PivotStatement): string {
 // Expressions
 // =============================================================================
 
-function expressionToSql(expr: AST.Expression): string {
+export function expressionToSql(expr: AST.Expression): string {
   if (!expr) return ""
   switch (expr.type) {
     case "binary":
@@ -1839,6 +1982,8 @@ function expressionToSql(expr: AST.Expression): string {
       return qualifiedNameToSql(expr.name)
     case "variable":
       return `@${expr.name}`
+    case "bindVariable":
+      return expr.name
     case "literal":
       return literalToSql(expr)
     case "function":
@@ -1849,6 +1994,10 @@ function expressionToSql(expr: AST.Expression): string {
       return castExprToSql(expr)
     case "typeCast":
       return typeCastExprToSql(expr)
+    case "atTimeZone":
+      return `${expressionToSql(expr.expression)} AT TIME ZONE ${expressionToSql(expr.timeZone)}`
+    case "memberAccess":
+      return `${expressionToSql(expr.expression)}.${escapeIdentifier(expr.member)}`
     case "in":
       return inExprToSql(expr)
     case "between":
@@ -1857,6 +2006,8 @@ function expressionToSql(expr: AST.Expression): string {
       return withinExprToSql(expr)
     case "isNull":
       return isNullExprToSql(expr)
+    case "isBoolean":
+      return `${expressionToSql(expr.expression)} IS ${expr.not ? "NOT " : ""}${expr.value ? "TRUE" : "FALSE"}`
     case "paren": {
       const inner = [expressionToSql(expr.expression)]
       if (expr.additionalExpressions) {
@@ -1901,6 +2052,8 @@ const OPERATOR_PRECEDENCE: Record<string, number> = {
   "~": 13,
   "!=": 13,
   "<>": 13,
+  "<> ALL": 13,
+  "!= ALL": 13,
   "!~": 13,
   LIKE: 13,
   ILIKE: 13,
@@ -1941,13 +2094,20 @@ function unaryExprToSql(expr: AST.UnaryExpression): string {
   if (expr.operator === "NOT") {
     return `NOT ${operand}`
   }
+  // `- -a`: keep a space so the two minuses do not lex as a `--` comment
+  if (expr.operator === "-" && operand.startsWith("-")) {
+    return `- ${operand}`
+  }
   return `${expr.operator}${operand}`
 }
 
 function literalToSql(lit: AST.Literal): string {
   switch (lit.literalType) {
-    case "string":
-      return escapeString(String(lit.value))
+    case "string": {
+      // raw is set for E'...' strings, which must keep their prefix
+      const str = lit.raw ?? escapeString(String(lit.value))
+      return lit.typeName ? `${lit.typeName} ${str}` : str
+    }
     case "number":
       if (lit.raw != null) return lit.raw
       return String(lit.value)
@@ -2065,6 +2225,12 @@ function windowFrameToSql(frame: AST.WindowFrame): string {
       case "currentRow":
         sql += " EXCLUDE CURRENT ROW"
         break
+      case "group":
+        sql += " EXCLUDE GROUP"
+        break
+      case "ties":
+        sql += " EXCLUDE TIES"
+        break
       case "noOthers":
         sql += " EXCLUDE NO OTHERS"
         break
@@ -2142,7 +2308,7 @@ function betweenExprToSql(expr: AST.BetweenExpression): string {
 function withinExprToSql(expr: AST.WithinExpression): string {
   const left = expressionToSql(expr.expression)
   const values = expr.values.map(expressionToSql).join(", ")
-  return `${left} WITHIN (${values})`
+  return `${left}${expr.not ? " NOT" : ""} WITHIN (${values})`
 }
 
 function isNullExprToSql(expr: AST.IsNullExpression): string {
@@ -2185,9 +2351,31 @@ function arrayAccessToSql(expr: AST.ArrayAccessExpression): string {
 // Helpers
 // =============================================================================
 
+function latestOnToSql(latest: AST.LatestOnClause): string {
+  // @variables are kept as one-part names and printed as written
+  const name = (n: AST.QualifiedName) =>
+    n.parts.length === 1 && n.parts[0].startsWith("@")
+      ? n.parts[0]
+      : qualifiedNameToSql(n)
+  const keys = latest.partitionBy.map(name).join(", ")
+  return latest.timestamp
+    ? `LATEST ON ${name(latest.timestamp)} PARTITION BY ${keys}`
+    : `LATEST BY ${keys}`
+}
+
 function qualifiedNameToSql(name: AST.QualifiedName): string {
   if (!name || !name.parts) return ""
   return name.parts.map(escapeIdentifier).join(".")
+}
+
+function groupingSetsToSql(spec: AST.GroupingSets): string {
+  const keys = (cols: AST.GroupingKey[] | undefined) =>
+    (cols ?? []).map(expressionToSql).join(", ")
+  if (spec.kind === "groupingSets") {
+    const sets = (spec.sets ?? []).map((set) => `(${keys(set)})`)
+    return `GROUPING SETS (${sets.join(", ")})`
+  }
+  return `${spec.kind === "cube" ? "CUBE" : "ROLLUP"}(${keys(spec.columns)})`
 }
 
 function escapeString(value: string): string {
@@ -2196,7 +2384,7 @@ function escapeString(value: string): string {
 
 function escapeIdentifier(name: string): string {
   if (
-    /^[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_\u0080-\uFFFF]*$/.test(name) &&
+    /^[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_$\u0080-\uFFFF]*$/.test(name) &&
     !RESERVED_KEYWORDS.has(name.toLowerCase())
   ) {
     return name

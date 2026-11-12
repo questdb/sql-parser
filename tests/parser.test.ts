@@ -2939,9 +2939,9 @@ describe("QuestDB Parser", () => {
         })
       })
 
-      describe("storage_policies() meta function", () => {
-        it("parses SELECT * FROM storage_policies()", () => {
-          const result = parseToAst("SELECT * FROM storage_policies()")
+      describe("storage_policies (Enterprise view)", () => {
+        it("parses SELECT * FROM storage_policies", () => {
+          const result = parseToAst("SELECT * FROM storage_policies")
           expect(result.errors).toHaveLength(0)
           expect(result.ast[0].type).toBe("select")
         })
@@ -5606,8 +5606,10 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       expect(result.ast[0].type).toBe("select")
     })
 
-    it("should parse array subscript with open-ended slice (:end)", () => {
-      const result = parseToAst("SELECT arr[:5] FROM t")
+    it("should parse array subscript with open-ended slice (: end)", () => {
+      // `arr[:5]` (no space) is an index by bind variable `:5`, as on the
+      // server (ArrayTest:4428), see tests/bind-variables.test.ts
+      const result = parseToAst("SELECT arr[: 5] FROM t")
       expect(result.errors).toHaveLength(0)
       expect(result.ast[0].type).toBe("select")
     })
@@ -7942,10 +7944,11 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         if (s.type === "select") expect(s.sampleBy?.duration).toBe(u)
       })
     }
-    it("rejects an arbitrary identifier unit", () => {
-      expect(
-        parseToAst("SELECT ts, avg(x) FROM t SAMPLE BY foo").errors.length,
-      ).toBeGreaterThan(0)
+    it("parses any other name as a SAMPLE BY expression", () => {
+      // SAMPLE BY takes an expression (SqlParser.expectSample); the server
+      // then wants a full period or a unit letter, sql-parser stays looser.
+      const r = parseToAst("SELECT ts, avg(x) FROM t SAMPLE BY foo")
+      expect(r.errors).toHaveLength(0)
     })
   })
 
@@ -8196,6 +8199,25 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
         "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP LATEST PARTITION BY sym",
       ).ast[0] as AST.CreateMaterializedViewStatement
       expect(s.expireRows?.mode).toBe("keepLatest")
+    })
+    it("KEEP N HIGHEST ON col PARTITION BY", () => {
+      const s = parseToAst(
+        "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP 2 HIGHEST ON v PARTITION BY k",
+      ).ast[0] as AST.CreateMaterializedViewStatement
+      expect(s.expireRows).toEqual({
+        mode: "keepExtremum",
+        extremum: "highest",
+        column: "v",
+        keepCount: 2,
+        partitionBy: ["k"],
+      })
+    })
+    it("KEEP HIGHEST without ON is rejected", () => {
+      expect(
+        parseToAst(
+          "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST v PARTITION BY k",
+        ).errors.length,
+      ).toBeGreaterThan(0)
     })
     it("ALTER ... DROP EXPIRE", () => {
       expect(
@@ -8529,6 +8551,11 @@ orders PIVOT (sum(amount) FOR status IN ('open'))`
       "create materialized view mv as (select * from base) expire rows when ts < now()",
       "create materialized view mv as (select * from base) expire rows when ts > now()",
       "create materialized view mv as (select * from base) expire rows when ts < cast(null as timestamp)",
+      "create materialized view mv as (select * from base) expire rows keep highest on v partition by k",
+      "create materialized view mv as (select * from base) expire rows keep 2 lowest on v partition by k, j cleanup every 1h",
+      "create materialized view mv as (select * from base) expire rows keep lowest on v",
+      "create materialized view mv as (select * from base) expire rows when v < 2.0 in volume 'v1'",
+      "alter materialized view mv set expire rows keep 1 highest on v partition by k",
     ]
     for (const query of queries) {
       it(`round-trips: ${query.slice(0, 64)}`, () => {

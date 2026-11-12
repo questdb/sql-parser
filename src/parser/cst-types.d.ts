@@ -6,8 +6,8 @@ export interface StatementsCstNode extends CstNode {
 }
 
 export type StatementsCstChildren = {
+  Semicolon?: (IToken)[];
   statement?: StatementCstNode[];
-  Semicolon?: IToken[];
 };
 
 export interface StatementCstNode extends CstNode {
@@ -42,6 +42,10 @@ export type StatementCstChildren = {
   vacuumTableStatement?: VacuumTableStatementCstNode[];
   resumeWalStatement?: ResumeWalStatementCstNode[];
   setTypeStatement?: SetTypeStatementCstNode[];
+  setStatement?: SetStatementCstNode[];
+  transactionStatement?: TransactionStatementCstNode[];
+  deallocateStatement?: DeallocateStatementCstNode[];
+  pgNoOpStatement?: PgNoOpStatementCstNode[];
   reindexTableStatement?: ReindexTableStatementCstNode[];
   refreshMaterializedViewStatement?: RefreshMaterializedViewStatementCstNode[];
   pivotStatement?: PivotStatementCstNode[];
@@ -61,6 +65,7 @@ export type WithStatementCstChildren = {
   insertStatement?: InsertStatementCstNode[];
   updateStatement?: UpdateStatementCstNode[];
   selectBody?: SelectBodyCstNode[];
+  implicitSelectStatement?: ImplicitSelectStatementCstNode[];
 };
 
 export interface SelectStatementCstNode extends CstNode {
@@ -70,8 +75,9 @@ export interface SelectStatementCstNode extends CstNode {
 
 export type SelectStatementCstChildren = {
   declareClause?: DeclareClauseCstNode[];
-  withClause?: WithClauseCstNode[];
-  selectBody: SelectBodyCstNode[];
+  withClause?: (WithClauseCstNode)[];
+  selectBody?: (SelectBodyCstNode)[];
+  implicitSelectStatement?: ImplicitSelectStatementCstNode[];
 };
 
 export interface SelectBodyCstNode extends CstNode {
@@ -120,14 +126,16 @@ export type SimpleSelectCstChildren = {
   selectList: SelectListCstNode[];
   From?: IToken[];
   fromClause?: FromClauseCstNode[];
-  whereClause?: WhereClauseCstNode[];
-  sampleByClause?: SampleByClauseCstNode[];
-  latestOnClause?: LatestOnClauseCstNode[];
-  groupByClause?: GroupByClauseCstNode[];
-  Pivot?: IToken[];
-  LParen?: IToken[];
-  pivotBody?: PivotBodyCstNode[];
-  RParen?: IToken[];
+  latestOnClause?: (LatestOnClauseCstNode)[];
+  whereClause?: (WhereClauseCstNode)[];
+  Pivot?: (IToken)[];
+  LParen?: (IToken)[];
+  pivotBody?: (PivotBodyCstNode)[];
+  RParen?: (IToken)[];
+  As?: (IToken)[];
+  pivotAlias?: (IdentifierCstNode)[];
+  sampleByClause?: (SampleByClauseCstNode)[];
+  groupByClause?: (GroupByClauseCstNode)[];
   windowClause?: WindowClauseCstNode[];
   subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
@@ -141,10 +149,12 @@ export interface SetOperationCstNode extends CstNode {
 
 export type SetOperationCstChildren = {
   Union?: IToken[];
+  All?: (IToken)[];
+  Distinct?: IToken[];
   Except?: IToken[];
   Intersect?: IToken[];
-  All?: IToken[];
   simpleSelect?: SimpleSelectCstNode[];
+  selectStatement?: SelectStatementCstNode[];
   implicitSelectBody?: ImplicitSelectBodyCstNode[];
 };
 
@@ -243,6 +253,7 @@ export type UnnestClauseCstChildren = {
   With?: IToken[];
   Ordinality?: IToken[];
   As?: IToken[];
+  unnestAlias?: (IdentifierCstNode)[];
   identifier?: (IdentifierCstNode)[];
 };
 
@@ -253,10 +264,16 @@ export interface ImplicitSelectBodyCstNode extends CstNode {
 
 export type ImplicitSelectBodyCstChildren = {
   fromClause: FromClauseCstNode[];
-  whereClause?: WhereClauseCstNode[];
-  sampleByClause?: SampleByClauseCstNode[];
-  latestOnClause?: LatestOnClauseCstNode[];
-  groupByClause?: GroupByClauseCstNode[];
+  latestOnClause?: (LatestOnClauseCstNode)[];
+  whereClause?: (WhereClauseCstNode)[];
+  Pivot?: (IToken)[];
+  LParen?: (IToken)[];
+  pivotBody?: (PivotBodyCstNode)[];
+  RParen?: (IToken)[];
+  As?: (IToken)[];
+  pivotAlias?: (IdentifierCstNode)[];
+  sampleByClause?: (SampleByClauseCstNode)[];
+  groupByClause?: (GroupByClauseCstNode)[];
   subsampleClause?: SubsampleClauseCstNode[];
   orderByClause?: OrderByClauseCstNode[];
   limitClause?: LimitClauseCstNode[];
@@ -283,10 +300,10 @@ export type TableRefCstChildren = {
   RParen?: (IToken)[];
   showStatement?: ShowStatementCstNode[];
   implicitSelectStatement?: ImplicitSelectStatementCstNode[];
-  tableFunctionCall?: TableFunctionCallCstNode[];
   VariableReference?: IToken[];
   StringLiteral?: IToken[];
   tableName?: TableNameCstNode[];
+  tableFunctionCall?: TableFunctionCallCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   As?: IToken[];
@@ -325,7 +342,8 @@ export interface TableFunctionNameCstNode extends CstNode {
 }
 
 export type TableFunctionNameCstChildren = {
-  identifier: IdentifierCstNode[];
+  identifier: (IdentifierCstNode)[];
+  Dot?: IToken[];
 };
 
 export interface JoinClauseCstNode extends CstNode {
@@ -398,10 +416,7 @@ export interface HorizonJoinCstNode extends CstNode {
 export type HorizonJoinCstChildren = {
   Horizon: IToken[];
   Join: IToken[];
-  tableName: TableNameCstNode[];
-  As?: (IToken)[];
-  identifier?: (IdentifierCstNode)[];
-  Identifier?: IToken[];
+  tableRef: TableRefCstNode[];
   On?: IToken[];
   expression?: ExpressionCstNode[];
   Range?: IToken[];
@@ -409,6 +424,8 @@ export type HorizonJoinCstChildren = {
   horizonOffset?: (HorizonOffsetCstNode)[];
   To?: IToken[];
   Step?: IToken[];
+  As?: (IToken)[];
+  identifier?: (IdentifierCstNode)[];
   List?: IToken[];
   LParen?: IToken[];
   Comma?: IToken[];
@@ -422,6 +439,7 @@ export interface HorizonOffsetCstNode extends CstNode {
 
 export type HorizonOffsetCstChildren = {
   Minus?: IToken[];
+  Plus?: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
 };
@@ -490,9 +508,10 @@ export interface SampleByClauseCstNode extends CstNode {
 export type SampleByClauseCstChildren = {
   Sample: IToken[];
   By: IToken[];
-  DurationLiteral?: IToken[];
-  VariableReference?: IToken[];
   Identifier?: IToken[];
+  sampleByExpression?: ExpressionCstNode[];
+  sampleByUnit?: IToken[];
+  groupingSetsSpec?: GroupingSetsSpecCstNode[];
   fromToClause?: FromToClauseCstNode[];
   fillClause?: FillClauseCstNode[];
   alignToClause?: AlignToClauseCstNode[];
@@ -506,10 +525,20 @@ export interface LatestOnClauseCstNode extends CstNode {
 export type LatestOnClauseCstChildren = {
   Latest: IToken[];
   On?: IToken[];
-  columnRef?: (ColumnRefCstNode)[];
+  latestOnColumn?: (LatestOnColumnCstNode)[];
   Partition?: IToken[];
   By?: (IToken)[];
   Comma?: (IToken)[];
+};
+
+export interface LatestOnColumnCstNode extends CstNode {
+  name: "latestOnColumn";
+  children: LatestOnColumnCstChildren;
+}
+
+export type LatestOnColumnCstChildren = {
+  VariableReference?: IToken[];
+  columnRef?: ColumnRefCstNode[];
 };
 
 export interface SubsampleClauseCstNode extends CstNode {
@@ -545,11 +574,7 @@ export interface FillValueCstNode extends CstNode {
 }
 
 export type FillValueCstChildren = {
-  Null?: IToken[];
-  NumberLiteral?: IToken[];
-  identifier?: (IdentifierCstNode)[];
-  LParen?: IToken[];
-  RParen?: IToken[];
+  expression: ExpressionCstNode[];
 };
 
 export interface AlignToClauseCstNode extends CstNode {
@@ -565,10 +590,10 @@ export type AlignToClauseCstChildren = {
   Calendar?: IToken[];
   Time?: IToken[];
   Zone?: IToken[];
-  timeZoneValue?: TimeZoneValueCstNode[];
+  timeZoneExpression?: ExpressionCstNode[];
   With?: IToken[];
   Offset?: IToken[];
-  stringOrIdentifier?: StringOrIdentifierCstNode[];
+  offsetExpression?: ExpressionCstNode[];
 };
 
 export interface FromToClauseCstNode extends CstNode {
@@ -590,8 +615,73 @@ export interface GroupByClauseCstNode extends CstNode {
 export type GroupByClauseCstChildren = {
   Group: IToken[];
   By: IToken[];
-  expression: (ExpressionCstNode)[];
+  groupingSetsSpec?: GroupingSetsSpecCstNode[];
+  expression?: (ExpressionCstNode)[];
+  Comma?: (IToken)[];
+  rollupOrCubeSpec?: RollupOrCubeSpecCstNode[];
+};
+
+export interface GroupingSetsSpecCstNode extends CstNode {
+  name: "groupingSetsSpec";
+  children: GroupingSetsSpecCstChildren;
+}
+
+export type GroupingSetsSpecCstChildren = {
+  rollupOrCubeSpec?: RollupOrCubeSpecCstNode[];
+  explicitGroupingSets?: ExplicitGroupingSetsCstNode[];
+};
+
+export interface RollupOrCubeSpecCstNode extends CstNode {
+  name: "rollupOrCubeSpec";
+  children: RollupOrCubeSpecCstChildren;
+}
+
+export type RollupOrCubeSpecCstChildren = {
+  Rollup?: IToken[];
+  Cube?: IToken[];
+  LParen: IToken[];
+  groupingKey: (GroupingKeyCstNode)[];
   Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface GroupingKeyCstNode extends CstNode {
+  name: "groupingKey";
+  children: GroupingKeyCstChildren;
+}
+
+export type GroupingKeyCstChildren = {
+  LParen?: IToken[];
+  groupingKey?: GroupingKeyCstNode[];
+  RParen?: IToken[];
+  VariableReference?: IToken[];
+  columnRef?: ColumnRefCstNode[];
+};
+
+export interface ExplicitGroupingSetsCstNode extends CstNode {
+  name: "explicitGroupingSets";
+  children: ExplicitGroupingSetsCstChildren;
+}
+
+export type ExplicitGroupingSetsCstChildren = {
+  Grouping: IToken[];
+  Sets: IToken[];
+  LParen: IToken[];
+  groupingSet: (GroupingSetCstNode)[];
+  Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface GroupingSetCstNode extends CstNode {
+  name: "groupingSet";
+  children: GroupingSetCstChildren;
+}
+
+export type GroupingSetCstChildren = {
+  LParen: IToken[];
+  groupingKey?: (GroupingKeyCstNode)[];
+  Comma?: IToken[];
+  RParen: IToken[];
 };
 
 export interface OrderByClauseCstNode extends CstNode {
@@ -624,7 +714,8 @@ export interface LimitClauseCstNode extends CstNode {
 
 export type LimitClauseCstChildren = {
   Limit: IToken[];
-  expression: (ExpressionCstNode)[];
+  openLowerBound?: IToken[];
+  expression?: (ExpressionCstNode)[];
   Comma?: IToken[];
 };
 
@@ -678,6 +769,7 @@ export interface UpdateStatementCstNode extends CstNode {
 export type UpdateStatementCstChildren = {
   Update: IToken[];
   tableName: TableNameCstNode[];
+  As?: IToken[];
   identifier?: IdentifierCstNode[];
   Set: IToken[];
   setClause: (SetClauseCstNode)[];
@@ -717,6 +809,7 @@ export interface DeclareAssignmentCstNode extends CstNode {
 
 export type DeclareAssignmentCstChildren = {
   Overridable?: IToken[];
+  Audited?: IToken[];
   VariableReference: IToken[];
   ColonEquals: IToken[];
   expression: ExpressionCstNode[];
@@ -736,6 +829,7 @@ export type CreateStatementCstChildren = {
   createUserStatement?: CreateUserStatementCstNode[];
   createGroupStatement?: CreateGroupStatementCstNode[];
   createServiceAccountStatement?: CreateServiceAccountStatementCstNode[];
+  createResourceGroupStatement?: CreateResourceGroupStatementCstNode[];
 };
 
 export interface CreateViewBodyCstNode extends CstNode {
@@ -755,7 +849,9 @@ export type CreateViewBodyCstChildren = {
   LParen?: (IToken)[];
   selectStatement?: (SelectStatementCstNode)[];
   RParen?: (IToken)[];
-  implicitSelectBody?: ImplicitSelectBodyCstNode[];
+  implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
+  With?: IToken[];
+  Audit?: IToken[];
   Owned?: IToken[];
   By?: IToken[];
   stringOrIdentifier?: StringOrIdentifierCstNode[];
@@ -777,6 +873,7 @@ export type CreateTableBodyCstChildren = {
   As?: IToken[];
   LParen?: (IToken)[];
   selectStatement?: SelectStatementCstNode[];
+  implicitSelectStatement?: ImplicitSelectStatementCstNode[];
   RParen?: (IToken)[];
   Comma?: (IToken)[];
   castDefinition?: CastDefinitionCstNode[];
@@ -789,19 +886,7 @@ export type CreateTableBodyCstChildren = {
   Partition?: IToken[];
   By?: (IToken)[];
   partitionPeriod?: PartitionPeriodCstNode[];
-  Ttl?: IToken[];
-  DurationLiteral?: IToken[];
-  NumberLiteral?: IToken[];
-  Hours?: IToken[];
-  Days?: IToken[];
-  Weeks?: IToken[];
-  Months?: IToken[];
-  Years?: IToken[];
-  Hour?: IToken[];
-  Day?: IToken[];
-  Week?: IToken[];
-  Month?: IToken[];
-  Year?: IToken[];
+  ttlClause?: TtlClauseCstNode[];
   optionalStoragePolicy: OptionalStoragePolicyCstNode[];
   optionalTableFormat: (OptionalTableFormatCstNode)[];
   Bypass?: IToken[];
@@ -856,13 +941,42 @@ export interface DedupClauseCstNode extends CstNode {
 }
 
 export type DedupClauseCstChildren = {
-  Dedup: IToken[];
-  Upsert: IToken[];
+  dedupKeyword: DedupKeywordCstNode[];
+  dedupModeKeys: DedupModeKeysCstNode[];
+};
+
+export interface DedupKeywordCstNode extends CstNode {
+  name: "dedupKeyword";
+  children: DedupKeywordCstChildren;
+}
+
+export type DedupKeywordCstChildren = {
+  Dedup?: IToken[];
+  Deduplicate?: IToken[];
+};
+
+export interface DedupModeKeysCstNode extends CstNode {
+  name: "dedupModeKeys";
+  children: DedupModeKeysCstChildren;
+}
+
+export type DedupModeKeysCstChildren = {
+  Upsert?: IToken[];
+  Skip?: IToken[];
   Keys: IToken[];
   LParen: IToken[];
-  identifier: (IdentifierCstNode)[];
+  keyColumn: (KeyColumnCstNode)[];
   Comma?: IToken[];
   RParen: IToken[];
+};
+
+export interface KeyColumnCstNode extends CstNode {
+  name: "keyColumn";
+  children: KeyColumnCstChildren;
+}
+
+export type KeyColumnCstChildren = {
+  identifier: IdentifierCstNode[];
 };
 
 export interface CreateUserStatementCstNode extends CstNode {
@@ -879,8 +993,7 @@ export type CreateUserStatementCstChildren = {
   With?: IToken[];
   No?: IToken[];
   Password?: (IToken)[];
-  StringLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  passwordValue?: PasswordValueCstNode[];
 };
 
 export interface CreateGroupStatementCstNode extends CstNode {
@@ -897,7 +1010,7 @@ export type CreateGroupStatementCstChildren = {
   With?: IToken[];
   External?: IToken[];
   Alias?: IToken[];
-  StringLiteral?: IToken[];
+  stringOrIdentifier?: StringOrIdentifierCstNode[];
 };
 
 export interface CreateServiceAccountStatementCstNode extends CstNode {
@@ -914,8 +1027,7 @@ export type CreateServiceAccountStatementCstChildren = {
   qualifiedName: QualifiedNameCstNode[];
   With?: IToken[];
   Password?: (IToken)[];
-  StringLiteral?: IToken[];
-  identifier?: IdentifierCstNode[];
+  passwordValue?: PasswordValueCstNode[];
   No?: IToken[];
   Owned?: IToken[];
   By?: IToken[];
@@ -937,17 +1049,19 @@ export type CreateMaterializedViewBodyCstChildren = {
   With?: IToken[];
   Base?: IToken[];
   Refresh?: IToken[];
-  materializedViewPeriod?: (MaterializedViewPeriodCstNode)[];
   materializedViewRefresh?: MaterializedViewRefreshCstNode[];
+  materializedViewPeriod?: MaterializedViewPeriodCstNode[];
   As: IToken[];
   LParen?: (IToken)[];
-  selectStatement: SelectStatementCstNode[];
+  selectStatement?: (SelectStatementCstNode)[];
   RParen?: (IToken)[];
+  implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
   Comma?: IToken[];
   indexDefinition?: IndexDefinitionCstNode[];
   Timestamp?: IToken[];
   columnRef?: ColumnRefCstNode[];
   materializedViewPartition?: MaterializedViewPartitionCstNode[];
+  ttlClause?: TtlClauseCstNode[];
   optionalStoragePolicy: OptionalStoragePolicyCstNode[];
   optionalExpireRows: OptionalExpireRowsCstNode[];
   In?: IToken[];
@@ -971,8 +1085,8 @@ export type ExpireRowsClauseCstChildren = {
   expression?: ExpressionCstNode[];
   Keep?: IToken[];
   Latest?: IToken[];
-  On?: IToken[];
-  identifier?: (IdentifierCstNode)[];
+  On?: (IToken)[];
+  keyColumn?: (KeyColumnCstNode)[];
   Partition?: (IToken)[];
   By?: (IToken)[];
   Comma?: (IToken)[];
@@ -1001,6 +1115,7 @@ export interface MaterializedViewRefreshCstNode extends CstNode {
 export type MaterializedViewRefreshCstChildren = {
   Immediate?: IToken[];
   Manual?: IToken[];
+  Incremental?: IToken[];
   Deferred?: (IToken)[];
   Every?: IToken[];
   intervalValue?: IntervalValueCstNode[];
@@ -1040,19 +1155,19 @@ export type MaterializedViewPartitionCstChildren = {
   Partition: IToken[];
   By: IToken[];
   partitionPeriod: PartitionPeriodCstNode[];
-  Ttl?: IToken[];
+};
+
+export interface TtlClauseCstNode extends CstNode {
+  name: "ttlClause";
+  children: TtlClauseCstChildren;
+}
+
+export type TtlClauseCstChildren = {
+  Ttl: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
-  Hours?: IToken[];
-  Days?: IToken[];
-  Weeks?: IToken[];
-  Months?: IToken[];
-  Years?: IToken[];
-  Hour?: IToken[];
-  Day?: IToken[];
-  Week?: IToken[];
-  Month?: IToken[];
-  Year?: IToken[];
+  storagePolicyTimeUnit?: StoragePolicyTimeUnitCstNode[];
+  Identifier?: IToken[];
 };
 
 export interface ColumnDefinitionCstNode extends CstNode {
@@ -1061,8 +1176,10 @@ export interface ColumnDefinitionCstNode extends CstNode {
 }
 
 export type ColumnDefinitionCstChildren = {
-  identifier: IdentifierCstNode[];
-  dataType: DataTypeCstNode[];
+  identifier?: IdentifierCstNode[];
+  keywordName?: (IToken)[];
+  doublePrecisionType?: DoublePrecisionTypeCstNode[];
+  dataType?: DataTypeCstNode[];
   Capacity?: IToken[];
   NumberLiteral?: IToken[];
   Cache?: IToken[];
@@ -1070,6 +1187,18 @@ export type ColumnDefinitionCstChildren = {
   Index?: IToken[];
   indexTypeOptions?: IndexTypeOptionsCstNode[];
   parquetConfig?: ParquetConfigCstNode[];
+  columnNullModifier: ColumnNullModifierCstNode[];
+};
+
+export interface ColumnNullModifierCstNode extends CstNode {
+  name: "columnNullModifier";
+  children: ColumnNullModifierCstChildren;
+}
+
+export type ColumnNullModifierCstChildren = {
+  Precision?: IToken[];
+  Not?: IToken[];
+  Null?: IToken[];
 };
 
 export interface ParquetConfigCstNode extends CstNode {
@@ -1098,6 +1227,7 @@ export type ParquetEncodingCstChildren = {
   RleDictionary?: IToken[];
   DeltaBinaryPacked?: IToken[];
   DeltaLengthByteArray?: IToken[];
+  ByteStreamSplit?: IToken[];
   Default?: IToken[];
 };
 
@@ -1113,6 +1243,7 @@ export type ParquetCompressionCstChildren = {
   Brotli?: IToken[];
   Zstd?: IToken[];
   Lz4Raw?: IToken[];
+  Default?: IToken[];
 };
 
 export interface OptionalStoragePolicyCstNode extends CstNode {
@@ -1191,7 +1322,12 @@ export type CastDefinitionCstChildren = {
   LParen: IToken[];
   columnRef: ColumnRefCstNode[];
   As: IToken[];
-  dataType: DataTypeCstNode[];
+  doublePrecisionType?: DoublePrecisionTypeCstNode[];
+  dataType?: DataTypeCstNode[];
+  Capacity?: IToken[];
+  NumberLiteral?: IToken[];
+  Cache?: IToken[];
+  Nocache?: IToken[];
   RParen: IToken[];
 };
 
@@ -1205,6 +1341,8 @@ export type IndexTypeOptionsCstChildren = {
   Posting?: IToken[];
   Delta?: IToken[];
   Ef?: IToken[];
+  PostingDelta?: IToken[];
+  PostingEf?: IToken[];
   Bitmap?: IToken[];
   None?: IToken[];
   Include?: IToken[];
@@ -1385,6 +1523,7 @@ export type AlterStatementCstChildren = {
   alterUserStatement?: AlterUserStatementCstNode[];
   alterServiceAccountStatement?: AlterServiceAccountStatementCstNode[];
   alterGroupStatement?: AlterGroupStatementCstNode[];
+  alterResourceGroupStatement?: AlterResourceGroupStatementCstNode[];
 };
 
 export interface AlterGroupStatementCstNode extends CstNode {
@@ -1398,12 +1537,13 @@ export type AlterGroupStatementCstChildren = {
   With?: IToken[];
   External?: (IToken)[];
   Alias?: (IToken)[];
-  StringLiteral?: (IToken)[];
+  stringOrIdentifier?: (StringOrIdentifierCstNode)[];
   Drop?: IToken[];
   Set?: IToken[];
   Memory?: IToken[];
   Limit?: IToken[];
   memoryLimit?: MemoryLimitCstNode[];
+  principalResourceGroupAction?: PrincipalResourceGroupActionCstNode[];
 };
 
 export interface AlterViewStatementCstNode extends CstNode {
@@ -1415,9 +1555,10 @@ export type AlterViewStatementCstChildren = {
   View: IToken[];
   stringOrQualifiedName: StringOrQualifiedNameCstNode[];
   As: IToken[];
-  LParen?: IToken[];
+  LParen?: (IToken)[];
   selectStatement?: (SelectStatementCstNode)[];
-  RParen?: IToken[];
+  RParen?: (IToken)[];
+  implicitSelectStatement?: (ImplicitSelectStatementCstNode)[];
 };
 
 export interface AlterUserStatementCstNode extends CstNode {
@@ -1449,6 +1590,7 @@ export interface AlterUserActionCstNode extends CstNode {
 }
 
 export type AlterUserActionCstChildren = {
+  principalResourceGroupAction?: PrincipalResourceGroupActionCstNode[];
   Enable?: IToken[];
   Disable?: IToken[];
   Set?: IToken[];
@@ -1458,7 +1600,7 @@ export type AlterUserActionCstChildren = {
   With?: (IToken)[];
   No?: IToken[];
   Password?: (IToken)[];
-  StringLiteral?: (IToken)[];
+  passwordValue?: PasswordValueCstNode[];
   Create?: IToken[];
   Token?: (IToken)[];
   Type?: (IToken)[];
@@ -1466,6 +1608,7 @@ export type AlterUserActionCstChildren = {
   Public?: IToken[];
   Key?: IToken[];
   Identifier?: (IToken)[];
+  StringLiteral?: (IToken)[];
   Rest?: (IToken)[];
   Ttl?: IToken[];
   DurationLiteral?: IToken[];
@@ -1480,6 +1623,7 @@ export interface MemoryLimitCstNode extends CstNode {
 }
 
 export type MemoryLimitCstChildren = {
+  StringLiteral?: IToken[];
   Unlimited?: IToken[];
   DurationLiteral?: IToken[];
   NumberLiteral?: IToken[];
@@ -1504,14 +1648,11 @@ export interface AlterTableActionCstNode extends CstNode {
 
 export type AlterTableActionCstChildren = {
   Add?: (IToken)[];
-  Column?: (IToken)[];
-  If?: IToken[];
-  Not?: IToken[];
-  Exists?: IToken[];
-  columnDefinition?: (ColumnDefinitionCstNode)[];
-  Comma?: (IToken)[];
+  alterTableAddColumns?: AlterTableAddColumnsCstNode[];
   Drop?: (IToken)[];
+  Column?: (IToken)[];
   columnRef?: (ColumnRefCstNode)[];
+  Comma?: (IToken)[];
   Partition?: (IToken)[];
   List?: (IToken)[];
   StringLiteral?: (IToken)[];
@@ -1520,7 +1661,7 @@ export type AlterTableActionCstChildren = {
   Storage?: (IToken)[];
   Policy?: (IToken)[];
   Rename?: IToken[];
-  To?: IToken[];
+  To?: (IToken)[];
   identifier?: (IdentifierCstNode)[];
   Alter?: IToken[];
   Type?: (IToken)[];
@@ -1529,6 +1670,8 @@ export type AlterTableActionCstChildren = {
   NumberLiteral?: (IToken)[];
   Cache?: (IToken)[];
   Nocache?: (IToken)[];
+  alterColumnTypeIndex?: AlterColumnTypeIndexCstNode[];
+  columnNullModifier?: ColumnNullModifierCstNode[];
   Index?: (IToken)[];
   indexTypeOptions?: IndexTypeOptionsCstNode[];
   Symbol?: IToken[];
@@ -1548,13 +1691,10 @@ export type AlterTableActionCstChildren = {
   Wal?: (IToken)[];
   storagePolicy?: StoragePolicyCstNode[];
   tableFormatKind?: TableFormatKindCstNode[];
-  Dedup?: IToken[];
+  dedupKeyword?: DedupKeywordCstNode[];
   Disable?: (IToken)[];
   Enable?: (IToken)[];
-  Upsert?: IToken[];
-  Keys?: IToken[];
-  LParen?: IToken[];
-  RParen?: IToken[];
+  dedupModeKeys?: DedupModeKeysCstNode[];
   Suspend?: IToken[];
   With?: IToken[];
   Resume?: IToken[];
@@ -1565,6 +1705,42 @@ export type AlterTableActionCstChildren = {
   Into?: IToken[];
   Convert?: IToken[];
   convertPartitionTarget?: ConvertPartitionTargetCstNode[];
+};
+
+export interface AlterTableAddColumnsCstNode extends CstNode {
+  name: "alterTableAddColumns";
+  children: AlterTableAddColumnsCstChildren;
+}
+
+export type AlterTableAddColumnsCstChildren = {
+  Column?: IToken[];
+  addColumnItem: (AddColumnItemCstNode)[];
+  Comma?: IToken[];
+  Owned?: IToken[];
+  By?: IToken[];
+  stringOrIdentifier?: StringOrIdentifierCstNode[];
+};
+
+export interface AddColumnItemCstNode extends CstNode {
+  name: "addColumnItem";
+  children: AddColumnItemCstChildren;
+}
+
+export type AddColumnItemCstChildren = {
+  If?: IToken[];
+  Not?: IToken[];
+  Exists?: IToken[];
+  columnDefinition: ColumnDefinitionCstNode[];
+};
+
+export interface AlterColumnTypeIndexCstNode extends CstNode {
+  name: "alterColumnTypeIndex";
+  children: AlterColumnTypeIndexCstChildren;
+}
+
+export type AlterColumnTypeIndexCstChildren = {
+  Index?: IToken[];
+  indexTypeOptions?: IndexTypeOptionsCstNode[];
 };
 
 export interface AlterTableForceActionCstNode extends CstNode {
@@ -1591,7 +1767,7 @@ export interface ConvertPartitionTargetCstNode extends CstNode {
 }
 
 export type ConvertPartitionTargetCstChildren = {
-  List?: IToken[];
+  List?: (IToken)[];
   StringLiteral?: (IToken)[];
   Comma?: (IToken)[];
   To: IToken[];
@@ -1615,6 +1791,18 @@ export type AlterMaterializedViewStatementCstChildren = {
   View: IToken[];
   tableName: TableNameCstNode[];
   alterMaterializedViewAction: AlterMaterializedViewActionCstNode[];
+};
+
+export interface SuspendWalWithCstNode extends CstNode {
+  name: "suspendWalWith";
+  children: SuspendWalWithCstChildren;
+}
+
+export type SuspendWalWithCstChildren = {
+  With: IToken[];
+  NumberLiteral?: IToken[];
+  StringLiteral: (IToken)[];
+  Comma: IToken[];
 };
 
 export interface AlterMaterializedViewActionCstNode extends CstNode {
@@ -1649,6 +1837,7 @@ export type AlterMaterializedViewActionCstChildren = {
   Transaction?: IToken[];
   Txn?: IToken[];
   Suspend?: IToken[];
+  suspendWalWith?: SuspendWalWithCstNode[];
   Rebase?: IToken[];
   Into?: IToken[];
   StringLiteral?: IToken[];
@@ -1674,6 +1863,96 @@ export type DropStatementCstChildren = {
   dropUserStatement?: DropUserStatementCstNode[];
   dropGroupStatement?: DropGroupStatementCstNode[];
   dropServiceAccountStatement?: DropServiceAccountStatementCstNode[];
+  dropResourceGroupStatement?: DropResourceGroupStatementCstNode[];
+};
+
+export interface CreateResourceGroupStatementCstNode extends CstNode {
+  name: "createResourceGroupStatement";
+  children: CreateResourceGroupStatementCstChildren;
+}
+
+export type CreateResourceGroupStatementCstChildren = {
+  Resource: IToken[];
+  Group: IToken[];
+  If?: IToken[];
+  Not?: IToken[];
+  Exists?: IToken[];
+  qualifiedName: QualifiedNameCstNode[];
+  With?: IToken[];
+  resourceGroupPolicy?: ResourceGroupPolicyCstNode[];
+};
+
+export interface AlterResourceGroupStatementCstNode extends CstNode {
+  name: "alterResourceGroupStatement";
+  children: AlterResourceGroupStatementCstChildren;
+}
+
+export type AlterResourceGroupStatementCstChildren = {
+  Resource: IToken[];
+  Group: IToken[];
+  qualifiedName: (QualifiedNameCstNode)[];
+  Set?: IToken[];
+  Reset?: IToken[];
+  resourceGroupPolicy?: ResourceGroupPolicyCstNode[];
+  Rename?: IToken[];
+  To?: IToken[];
+};
+
+export interface DropResourceGroupStatementCstNode extends CstNode {
+  name: "dropResourceGroupStatement";
+  children: DropResourceGroupStatementCstChildren;
+}
+
+export type DropResourceGroupStatementCstChildren = {
+  Resource: IToken[];
+  Group: IToken[];
+  If?: IToken[];
+  Exists?: IToken[];
+  qualifiedName: QualifiedNameCstNode[];
+};
+
+export interface ResourceGroupPolicyCstNode extends CstNode {
+  name: "resourceGroupPolicy";
+  children: ResourceGroupPolicyCstChildren;
+}
+
+export type ResourceGroupPolicyCstChildren = {
+  LParen: IToken[];
+  resourceGroupOption?: ResourceGroupOptionCstNode[];
+  Comma?: IToken[];
+  RParen: IToken[];
+};
+
+export interface ResourceGroupOptionCstNode extends CstNode {
+  name: "resourceGroupOption";
+  children: ResourceGroupOptionCstChildren;
+}
+
+export type ResourceGroupOptionCstChildren = {
+  MemoryLimit?: IToken[];
+  CpuWeight?: IToken[];
+  MaxActiveQueries?: IToken[];
+  MaxQueuedQueries?: IToken[];
+  QueueTimeout?: IToken[];
+  Equals?: IToken[];
+  Minus?: IToken[];
+  memoryLimit?: MemoryLimitCstNode[];
+};
+
+export interface PrincipalResourceGroupActionCstNode extends CstNode {
+  name: "principalResourceGroupAction";
+  children: PrincipalResourceGroupActionCstChildren;
+}
+
+export type PrincipalResourceGroupActionCstChildren = {
+  Set?: IToken[];
+  Resource?: (IToken)[];
+  Group?: (IToken)[];
+  qualifiedName?: QualifiedNameCstNode[];
+  Mapping?: IToken[];
+  Priority?: IToken[];
+  NumberLiteral?: IToken[];
+  Unset?: IToken[];
 };
 
 export interface DropViewStatementCstNode extends CstNode {
@@ -1914,6 +2193,7 @@ export type ExplainStatementCstChildren = {
   LParen?: IToken[];
   Format?: IToken[];
   Identifier?: IToken[];
+  Text?: IToken[];
   RParen?: IToken[];
   statement: StatementCstNode[];
 };
@@ -1975,6 +2255,7 @@ export interface CopyToCstNode extends CstNode {
 export type CopyToCstChildren = {
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];
+  implicitSelectStatement?: ImplicitSelectStatementCstNode[];
   RParen?: IToken[];
   tableName?: TableNameCstNode[];
   To: IToken[];
@@ -2004,7 +2285,7 @@ export type CopyOptionCstChildren = {
   stringOrIdentifier?: (StringOrIdentifierCstNode)[];
   Delimiter?: IToken[];
   Format?: IToken[];
-  StringLiteral?: IToken[];
+  StringLiteral?: (IToken)[];
   identifier?: IdentifierCstNode[];
   Partition?: IToken[];
   By?: IToken[];
@@ -2024,6 +2305,7 @@ export type CopyOptionCstChildren = {
   Lz4Raw?: IToken[];
   Brotli?: IToken[];
   Lzo?: IToken[];
+  Default?: IToken[];
   CompressionLevel?: IToken[];
   expression?: (ExpressionCstNode)[];
   RowGroupSize?: IToken[];
@@ -2118,7 +2400,7 @@ export type GrantStatementCstChildren = {
   Comma?: IToken[];
   To: IToken[];
   qualifiedName: QualifiedNameCstNode[];
-  With?: (IToken)[];
+  With?: IToken[];
   Option?: IToken[];
   Verification?: IToken[];
 };
@@ -2138,6 +2420,8 @@ export type RevokeStatementCstChildren = {
   Comma?: IToken[];
   From: IToken[];
   qualifiedName: QualifiedNameCstNode[];
+  With?: IToken[];
+  Verification?: IToken[];
 };
 
 export interface PermissionListCstNode extends CstNode {
@@ -2172,12 +2456,15 @@ export type PermissionTokenCstChildren = {
   Vacuum?: IToken[];
   Lock?: IToken[];
   Set?: IToken[];
+  Rename?: IToken[];
   Materialized?: IToken[];
   View?: IToken[];
   Service?: IToken[];
   Account?: IToken[];
   Table?: IToken[];
   Group?: IToken[];
+  Any?: IToken[];
+  Limit?: IToken[];
   To?: IToken[];
   Parquet?: IToken[];
   Native?: IToken[];
@@ -2210,6 +2497,7 @@ export type GrantAssumeServiceAccountStatementCstChildren = {
   Account: IToken[];
   qualifiedName: (QualifiedNameCstNode)[];
   To: IToken[];
+  Comma?: IToken[];
   With?: IToken[];
   Option?: IToken[];
 };
@@ -2226,6 +2514,7 @@ export type RevokeAssumeServiceAccountStatementCstChildren = {
   Account: IToken[];
   qualifiedName: (QualifiedNameCstNode)[];
   From: IToken[];
+  Comma?: IToken[];
 };
 
 export interface VacuumTableStatementCstNode extends CstNode {
@@ -2235,7 +2524,8 @@ export interface VacuumTableStatementCstNode extends CstNode {
 
 export type VacuumTableStatementCstChildren = {
   Vacuum: IToken[];
-  Table: IToken[];
+  Table?: IToken[];
+  Partitions?: IToken[];
   tableName: TableNameCstNode[];
 };
 
@@ -2264,6 +2554,70 @@ export type SetTypeStatementCstChildren = {
   Type: IToken[];
   Bypass?: IToken[];
   Wal: IToken[];
+};
+
+export interface SetStatementCstNode extends CstNode {
+  name: "setStatement";
+  children: SetStatementCstChildren;
+}
+
+export type SetStatementCstChildren = {
+  Set: IToken[];
+  identifier?: IdentifierCstNode[];
+  NumberLiteral?: IToken[];
+  LongLiteral?: IToken[];
+  FloatLiteral?: IToken[];
+  DecimalLiteral?: IToken[];
+  DurationLiteral?: IToken[];
+  Equals?: IToken[];
+  To?: IToken[];
+  Comma?: IToken[];
+  Minus?: IToken[];
+  Plus?: IToken[];
+  Dot?: IToken[];
+  On?: IToken[];
+  As?: IToken[];
+  All?: IToken[];
+  True?: IToken[];
+  False?: IToken[];
+  Null?: IToken[];
+};
+
+export interface TransactionStatementCstNode extends CstNode {
+  name: "transactionStatement";
+  children: TransactionStatementCstChildren;
+}
+
+export type TransactionStatementCstChildren = {
+  Begin?: IToken[];
+  Commit?: IToken[];
+  Rollback?: IToken[];
+  Transaction?: IToken[];
+};
+
+export interface DeallocateStatementCstNode extends CstNode {
+  name: "deallocateStatement";
+  children: DeallocateStatementCstChildren;
+}
+
+export type DeallocateStatementCstChildren = {
+  Deallocate: IToken[];
+  identifier: IdentifierCstNode[];
+};
+
+export interface PgNoOpStatementCstNode extends CstNode {
+  name: "pgNoOpStatement";
+  children: PgNoOpStatementCstChildren;
+}
+
+export type PgNoOpStatementCstChildren = {
+  Discard?: IToken[];
+  Close?: IToken[];
+  Unlisten?: IToken[];
+  Reset?: IToken[];
+  All?: IToken[];
+  Star?: IToken[];
+  identifier?: IdentifierCstNode[];
 };
 
 export interface ReindexTableStatementCstNode extends CstNode {
@@ -2354,7 +2708,7 @@ export interface PivotForClauseCstNode extends CstNode {
 }
 
 export type PivotForClauseCstChildren = {
-  columnRef: ColumnRefCstNode[];
+  bitOrExpression: BitOrExpressionCstNode[];
   In: IToken[];
   LParen: IToken[];
   pivotInValue?: (PivotInValueCstNode)[];
@@ -2422,11 +2776,14 @@ export type EqualityExpressionCstChildren = {
   relationalExpression: (RelationalExpressionCstNode)[];
   Equals?: IToken[];
   NotEquals?: IToken[];
+  All?: IToken[];
   Like?: IToken[];
   Ilike?: IToken[];
   RegexMatch?: IToken[];
   RegexNotMatch?: IToken[];
   RegexNotEquals?: IToken[];
+  Not?: IToken[];
+  notOperand?: NotExpressionCstNode[];
 };
 
 export interface RelationalExpressionCstNode extends CstNode {
@@ -2443,6 +2800,8 @@ export type RelationalExpressionCstChildren = {
   Is?: IToken[];
   Not?: IToken[];
   Null?: IToken[];
+  True?: IToken[];
+  False?: IToken[];
 };
 
 export interface SetExpressionCstNode extends CstNode {
@@ -2563,12 +2922,19 @@ export interface TypeCastExpressionCstNode extends CstNode {
 
 export type TypeCastExpressionCstChildren = {
   primaryExpression: PrimaryExpressionCstNode[];
+  Dot?: IToken[];
+  member?: IdentifierCstNode[];
   LBracket?: IToken[];
   arraySubscript?: (ArraySubscriptCstNode)[];
   Comma?: IToken[];
   RBracket?: IToken[];
   DoubleColon?: IToken[];
-  dataType?: DataTypeCstNode[];
+  castDataType?: CastDataTypeCstNode[];
+  At?: IToken[];
+  Time?: IToken[];
+  Zone?: IToken[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
 };
 
 export interface ArraySubscriptCstNode extends CstNode {
@@ -2589,10 +2955,13 @@ export interface PrimaryExpressionCstNode extends CstNode {
 export type PrimaryExpressionCstChildren = {
   castExpression?: CastExpressionCstNode[];
   caseExpression?: CaseExpressionCstNode[];
+  timestampWithTimeZoneLiteral?: TimestampWithTimeZoneLiteralCstNode[];
+  doublePrecisionLiteral?: DoublePrecisionLiteralCstNode[];
   arrayLiteral?: ArrayLiteralCstNode[];
   functionCall?: FunctionCallCstNode[];
   literal?: LiteralCstNode[];
   VariableReference?: IToken[];
+  BindVariable?: IToken[];
   identifierExpression?: IdentifierExpressionCstNode[];
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];
@@ -2607,7 +2976,7 @@ export interface ArrayLiteralCstNode extends CstNode {
 }
 
 export type ArrayLiteralCstChildren = {
-  Identifier: IToken[];
+  Array: IToken[];
   arrayBracketBody: ArrayBracketBodyCstNode[];
 };
 
@@ -2643,8 +3012,44 @@ export type CastExpressionCstChildren = {
   LParen: IToken[];
   expression: ExpressionCstNode[];
   As: IToken[];
-  dataType: DataTypeCstNode[];
+  castDataType: CastDataTypeCstNode[];
   RParen: IToken[];
+};
+
+export interface CastDataTypeCstNode extends CstNode {
+  name: "castDataType";
+  children: CastDataTypeCstChildren;
+}
+
+export type CastDataTypeCstChildren = {
+  timestampWithTimeZoneType?: TimestampWithTimeZoneTypeCstNode[];
+  doublePrecisionType?: DoublePrecisionTypeCstNode[];
+  dataType?: DataTypeCstNode[];
+};
+
+export interface TimestampWithTimeZoneTypeCstNode extends CstNode {
+  name: "timestampWithTimeZoneType";
+  children: TimestampWithTimeZoneTypeCstChildren;
+}
+
+export type TimestampWithTimeZoneTypeCstChildren = {
+  Timestamp?: IToken[];
+  TimestampNs?: IToken[];
+  With: IToken[];
+  Time: IToken[];
+  Zone: IToken[];
+};
+
+export interface DoublePrecisionTypeCstNode extends CstNode {
+  name: "doublePrecisionType";
+  children: DoublePrecisionTypeCstChildren;
+}
+
+export type DoublePrecisionTypeCstChildren = {
+  Double: IToken[];
+  Precision: IToken[];
+  LBracket?: IToken[];
+  RBracket?: IToken[];
 };
 
 export interface DataTypeCstNode extends CstNode {
@@ -2681,6 +3086,14 @@ export type DataTypeCstChildren = {
   Comma?: IToken[];
   Interval?: IToken[];
   TimestampNs?: IToken[];
+  Text?: IToken[];
+  Smallint?: IToken[];
+  Bigint?: IToken[];
+  Real?: IToken[];
+  Bytea?: IToken[];
+  Regclass?: IToken[];
+  Regprocedure?: IToken[];
+  Array?: IToken[];
   Identifier?: IToken[];
   LBracket?: IToken[];
   RBracket?: IToken[];
@@ -2731,6 +3144,33 @@ export type FunctionCallCstChildren = {
   overClause?: OverClauseCstNode[];
 };
 
+export interface DoublePrecisionLiteralCstNode extends CstNode {
+  name: "doublePrecisionLiteral";
+  children: DoublePrecisionLiteralCstChildren;
+}
+
+export type DoublePrecisionLiteralCstChildren = {
+  Double: IToken[];
+  Precision: IToken[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
+};
+
+export interface TimestampWithTimeZoneLiteralCstNode extends CstNode {
+  name: "timestampWithTimeZoneLiteral";
+  children: TimestampWithTimeZoneLiteralCstChildren;
+}
+
+export type TimestampWithTimeZoneLiteralCstChildren = {
+  Timestamp?: IToken[];
+  TimestampNs?: IToken[];
+  With: IToken[];
+  Time: IToken[];
+  Zone: IToken[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
+};
+
 export interface IdentifierExpressionCstNode extends CstNode {
   name: "identifierExpression";
   children: IdentifierExpressionCstChildren;
@@ -2738,6 +3178,8 @@ export interface IdentifierExpressionCstNode extends CstNode {
 
 export type IdentifierExpressionCstChildren = {
   qualifiedName: QualifiedNameCstNode[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
   LParen?: IToken[];
   selectStatement?: SelectStatementCstNode[];
   Star?: IToken[];
@@ -2825,6 +3267,7 @@ export interface WindowFrameClauseCstNode extends CstNode {
 export type WindowFrameClauseCstChildren = {
   Rows?: IToken[];
   Range?: IToken[];
+  Groups?: IToken[];
   Cumulative?: IToken[];
   Between?: IToken[];
   windowFrameBound?: (WindowFrameBoundCstNode)[];
@@ -2832,6 +3275,8 @@ export type WindowFrameClauseCstChildren = {
   Exclude?: IToken[];
   Current?: IToken[];
   Row?: IToken[];
+  Group?: IToken[];
+  Ties?: IToken[];
   No?: IToken[];
   Others?: IToken[];
 };
@@ -2868,6 +3313,9 @@ export type LiteralCstChildren = {
   GeohashLiteral?: IToken[];
   GeohashBinaryLiteral?: IToken[];
   Nan?: IToken[];
+  HexLiteral?: IToken[];
+  FloatLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
 };
 
 export interface BooleanLiteralCstNode extends CstNode {
@@ -2878,6 +3326,30 @@ export interface BooleanLiteralCstNode extends CstNode {
 export type BooleanLiteralCstChildren = {
   True?: IToken[];
   False?: IToken[];
+};
+
+export interface PasswordValueCstNode extends CstNode {
+  name: "passwordValue";
+  children: PasswordValueCstChildren;
+}
+
+export type PasswordValueCstChildren = {
+  StringLiteral?: IToken[];
+  Null?: IToken[];
+  True?: IToken[];
+  False?: IToken[];
+  DurationLiteral?: (IToken)[];
+  LongLiteral?: IToken[];
+  DecimalLiteral?: IToken[];
+  FloatLiteral?: IToken[];
+  HexLiteral?: IToken[];
+  NumberLiteral?: (IToken)[];
+  identifier?: (IdentifierCstNode)[];
+  MalformedDurationLiteral?: (IToken)[];
+  AnyKeyword?: (IToken)[];
+  VariableReference?: (IToken)[];
+  BindVariable?: (IToken)[];
+  AtSign?: (IToken)[];
 };
 
 export interface StringOrIdentifierCstNode extends CstNode {
@@ -3009,12 +3481,18 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   whereClause(children: WhereClauseCstChildren, param?: IN): OUT;
   sampleByClause(children: SampleByClauseCstChildren, param?: IN): OUT;
   latestOnClause(children: LatestOnClauseCstChildren, param?: IN): OUT;
+  latestOnColumn(children: LatestOnColumnCstChildren, param?: IN): OUT;
   subsampleClause(children: SubsampleClauseCstChildren, param?: IN): OUT;
   fillClause(children: FillClauseCstChildren, param?: IN): OUT;
   fillValue(children: FillValueCstChildren, param?: IN): OUT;
   alignToClause(children: AlignToClauseCstChildren, param?: IN): OUT;
   fromToClause(children: FromToClauseCstChildren, param?: IN): OUT;
   groupByClause(children: GroupByClauseCstChildren, param?: IN): OUT;
+  groupingSetsSpec(children: GroupingSetsSpecCstChildren, param?: IN): OUT;
+  rollupOrCubeSpec(children: RollupOrCubeSpecCstChildren, param?: IN): OUT;
+  groupingKey(children: GroupingKeyCstChildren, param?: IN): OUT;
+  explicitGroupingSets(children: ExplicitGroupingSetsCstChildren, param?: IN): OUT;
+  groupingSet(children: GroupingSetCstChildren, param?: IN): OUT;
   orderByClause(children: OrderByClauseCstChildren, param?: IN): OUT;
   orderByItem(children: OrderByItemCstChildren, param?: IN): OUT;
   limitClause(children: LimitClauseCstChildren, param?: IN): OUT;
@@ -3032,6 +3510,9 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   optionalTableFormat(children: OptionalTableFormatCstChildren, param?: IN): OUT;
   batchClause(children: BatchClauseCstChildren, param?: IN): OUT;
   dedupClause(children: DedupClauseCstChildren, param?: IN): OUT;
+  dedupKeyword(children: DedupKeywordCstChildren, param?: IN): OUT;
+  dedupModeKeys(children: DedupModeKeysCstChildren, param?: IN): OUT;
+  keyColumn(children: KeyColumnCstChildren, param?: IN): OUT;
   createUserStatement(children: CreateUserStatementCstChildren, param?: IN): OUT;
   createGroupStatement(children: CreateGroupStatementCstChildren, param?: IN): OUT;
   createServiceAccountStatement(children: CreateServiceAccountStatementCstChildren, param?: IN): OUT;
@@ -3041,7 +3522,9 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   materializedViewRefresh(children: MaterializedViewRefreshCstChildren, param?: IN): OUT;
   materializedViewPeriod(children: MaterializedViewPeriodCstChildren, param?: IN): OUT;
   materializedViewPartition(children: MaterializedViewPartitionCstChildren, param?: IN): OUT;
+  ttlClause(children: TtlClauseCstChildren, param?: IN): OUT;
   columnDefinition(children: ColumnDefinitionCstChildren, param?: IN): OUT;
+  columnNullModifier(children: ColumnNullModifierCstChildren, param?: IN): OUT;
   parquetConfig(children: ParquetConfigCstChildren, param?: IN): OUT;
   parquetEncoding(children: ParquetEncodingCstChildren, param?: IN): OUT;
   parquetCompression(children: ParquetCompressionCstChildren, param?: IN): OUT;
@@ -3070,11 +3553,21 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   memoryLimit(children: MemoryLimitCstChildren, param?: IN): OUT;
   alterTableStatement(children: AlterTableStatementCstChildren, param?: IN): OUT;
   alterTableAction(children: AlterTableActionCstChildren, param?: IN): OUT;
+  alterTableAddColumns(children: AlterTableAddColumnsCstChildren, param?: IN): OUT;
+  addColumnItem(children: AddColumnItemCstChildren, param?: IN): OUT;
+  alterColumnTypeIndex(children: AlterColumnTypeIndexCstChildren, param?: IN): OUT;
   alterTableForceAction(children: AlterTableForceActionCstChildren, param?: IN): OUT;
   convertPartitionTarget(children: ConvertPartitionTargetCstChildren, param?: IN): OUT;
   alterMaterializedViewStatement(children: AlterMaterializedViewStatementCstChildren, param?: IN): OUT;
+  suspendWalWith(children: SuspendWalWithCstChildren, param?: IN): OUT;
   alterMaterializedViewAction(children: AlterMaterializedViewActionCstChildren, param?: IN): OUT;
   dropStatement(children: DropStatementCstChildren, param?: IN): OUT;
+  createResourceGroupStatement(children: CreateResourceGroupStatementCstChildren, param?: IN): OUT;
+  alterResourceGroupStatement(children: AlterResourceGroupStatementCstChildren, param?: IN): OUT;
+  dropResourceGroupStatement(children: DropResourceGroupStatementCstChildren, param?: IN): OUT;
+  resourceGroupPolicy(children: ResourceGroupPolicyCstChildren, param?: IN): OUT;
+  resourceGroupOption(children: ResourceGroupOptionCstChildren, param?: IN): OUT;
+  principalResourceGroupAction(children: PrincipalResourceGroupActionCstChildren, param?: IN): OUT;
   dropViewStatement(children: DropViewStatementCstChildren, param?: IN): OUT;
   dropTableStatement(children: DropTableStatementCstChildren, param?: IN): OUT;
   dropMaterializedViewStatement(children: DropMaterializedViewStatementCstChildren, param?: IN): OUT;
@@ -3113,6 +3606,10 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   vacuumTableStatement(children: VacuumTableStatementCstChildren, param?: IN): OUT;
   resumeWalStatement(children: ResumeWalStatementCstChildren, param?: IN): OUT;
   setTypeStatement(children: SetTypeStatementCstChildren, param?: IN): OUT;
+  setStatement(children: SetStatementCstChildren, param?: IN): OUT;
+  transactionStatement(children: TransactionStatementCstChildren, param?: IN): OUT;
+  deallocateStatement(children: DeallocateStatementCstChildren, param?: IN): OUT;
+  pgNoOpStatement(children: PgNoOpStatementCstChildren, param?: IN): OUT;
   reindexTableStatement(children: ReindexTableStatementCstChildren, param?: IN): OUT;
   refreshMaterializedViewStatement(children: RefreshMaterializedViewStatementCstChildren, param?: IN): OUT;
   pivotStatement(children: PivotStatementCstChildren, param?: IN): OUT;
@@ -3142,10 +3639,15 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   arrayBracketBody(children: ArrayBracketBodyCstChildren, param?: IN): OUT;
   arrayElement(children: ArrayElementCstChildren, param?: IN): OUT;
   castExpression(children: CastExpressionCstChildren, param?: IN): OUT;
+  castDataType(children: CastDataTypeCstChildren, param?: IN): OUT;
+  timestampWithTimeZoneType(children: TimestampWithTimeZoneTypeCstChildren, param?: IN): OUT;
+  doublePrecisionType(children: DoublePrecisionTypeCstChildren, param?: IN): OUT;
   dataType(children: DataTypeCstChildren, param?: IN): OUT;
   caseExpression(children: CaseExpressionCstChildren, param?: IN): OUT;
   functionName(children: FunctionNameCstChildren, param?: IN): OUT;
   functionCall(children: FunctionCallCstChildren, param?: IN): OUT;
+  doublePrecisionLiteral(children: DoublePrecisionLiteralCstChildren, param?: IN): OUT;
+  timestampWithTimeZoneLiteral(children: TimestampWithTimeZoneLiteralCstChildren, param?: IN): OUT;
   identifierExpression(children: IdentifierExpressionCstChildren, param?: IN): OUT;
   overClause(children: OverClauseCstChildren, param?: IN): OUT;
   windowClause(children: WindowClauseCstChildren, param?: IN): OUT;
@@ -3156,6 +3658,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   windowFrameBound(children: WindowFrameBoundCstChildren, param?: IN): OUT;
   literal(children: LiteralCstChildren, param?: IN): OUT;
   booleanLiteral(children: BooleanLiteralCstChildren, param?: IN): OUT;
+  passwordValue(children: PasswordValueCstChildren, param?: IN): OUT;
   stringOrIdentifier(children: StringOrIdentifierCstChildren, param?: IN): OUT;
   stringOrQualifiedName(children: StringOrQualifiedNameCstChildren, param?: IN): OUT;
   intervalValue(children: IntervalValueCstChildren, param?: IN): OUT;

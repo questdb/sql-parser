@@ -54,6 +54,10 @@ export type Statement =
   | VacuumTableStatement
   | ResumeWalStatement
   | SetTypeStatement
+  | SetStatement
+  | TransactionStatement
+  | DeallocateStatement
+  | PgNoOpStatement
   | ReindexTableStatement
   | RefreshMaterializedViewStatement
   | PivotStatement
@@ -61,6 +65,9 @@ export type Statement =
   | SwitchStatement
   | AlterGroupStatement
   | CompileViewStatement
+  | CreateResourceGroupStatement
+  | AlterResourceGroupStatement
+  | DropResourceGroupStatement
 
 export interface SelectStatement extends AstNode {
   type: "select"
@@ -74,8 +81,16 @@ export interface SelectStatement extends AstNode {
   where?: Expression
   sampleBy?: SampleByClause
   latestOn?: LatestOnClause
+  /** Plain GROUP BY keys (the prefix of a composite `GROUP BY a, ROLLUP(b)`) */
   groupBy?: Expression[]
+  /** GROUP BY ROLLUP(...) / CUBE(...) / GROUPING SETS (...), after any plain keys */
+  groupingSets?: GroupingSets
   pivot?: PivotClause
+  /**
+   * PIVOT written before SAMPLE BY / GROUP BY (server order): those clauses
+   * then apply to the pivoted result.
+   */
+  pivotBeforeGroupBy?: boolean
   /** Named window definitions: SELECT ... WINDOW w AS (...) [, w2 AS (...)] */
   namedWindows?: NamedWindow[]
   /** SUBSAMPLE method(args): server-side downsampling, before ORDER BY */
@@ -150,6 +165,7 @@ export interface DeclareAssignment extends AstNode {
   name: string
   value: Expression
   overridable?: boolean
+  audited?: boolean
 }
 
 export interface CreateTableStatement extends AstNode {
@@ -179,8 +195,13 @@ export interface CreateTableStatement extends AstNode {
   volume?: string
   ownedBy?: string
   dedupKeys?: string[]
+  /** DEDUP UPSERT | SKIP KEYS(...) mode; set whenever dedupKeys is */
+  dedupMode?: DedupMode
   tableFormat?: "parquet" | "native"
 }
+
+/** Deduplication mode: UPSERT replaces the existing row, SKIP keeps it */
+export type DedupMode = "upsert" | "skip"
 
 export interface TableParam extends AstNode {
   type: "tableParam"
@@ -192,6 +213,10 @@ export interface CastDefinition extends AstNode {
   type: "castDefinition"
   column: QualifiedName
   dataType: string
+  /** SYMBOL CAPACITY n */
+  symbolCapacity?: number
+  /** SYMBOL CACHE (true) / NOCACHE (false) */
+  cache?: boolean
 }
 
 export interface IndexDefinition extends AstNode {
@@ -233,7 +258,7 @@ export interface ExpireRowsClause {
   predicate?: Expression
   // keepLatest: KEEP LATEST [ON <ts>] PARTITION BY <cols>
   on?: string
-  // keepExtremum: KEEP [<N>] HIGHEST|LOWEST <col> [PARTITION BY <cols>]
+  // keepExtremum: KEEP [<N>] HIGHEST|LOWEST ON <col> [PARTITION BY <cols>]
   keepCount?: number
   extremum?: "highest" | "lowest"
   column?: string
@@ -363,6 +388,8 @@ export interface ColumnDefinition extends AstNode {
   type: "columnDefinition"
   name: string
   dataType: string
+  /** ALTER TABLE ADD COLUMN a INT, IF NOT EXISTS b INT (columns after the first) */
+  ifNotExists?: boolean
   /** SYMBOL CAPACITY value */
   symbolCapacity?: number
   /** SYMBOL CACHE/NOCACHE */
@@ -456,6 +483,8 @@ export interface AlterMaterializedViewResumeWal {
 
 export interface AlterMaterializedViewSuspendWal {
   actionType: "suspendWal"
+  code?: number | string
+  message?: string
 }
 
 export interface AlterMaterializedViewRebaseWal {
@@ -502,6 +531,14 @@ export type AlterUserAction =
   | AlterUserCreateTokenAction
   | AlterUserDropTokenAction
   | AlterUserMemoryLimitAction
+  | AlterUserResourceGroupAction
+
+/** SET RESOURCE GROUP g [MAPPING PRIORITY n] | UNSET RESOURCE GROUP */
+export interface AlterUserResourceGroupAction {
+  actionType: "setResourceGroup" | "unsetResourceGroup"
+  resourceGroup?: QualifiedName
+  mappingPriority?: string
+}
 
 export interface AlterUserEnableAction {
   actionType: "enable"
@@ -575,6 +612,8 @@ export interface AddColumnAction {
   actionType: "addColumn"
   ifNotExists?: boolean
   columns: ColumnDefinition[]
+  /** Enterprise: OWNED BY user|group */
+  ownedBy?: string
 }
 
 export interface DropColumnAction {
@@ -586,6 +625,8 @@ export interface RenameColumnAction {
   actionType: "renameColumn"
   oldName: string
   newName: string
+  /** further `, old TO new` pairs */
+  additionalRenames?: { oldName: string; newName: string }[]
 }
 
 export interface AlterColumnAction {
@@ -605,6 +646,10 @@ export interface AlterColumnAction {
   indexType?: "posting" | "posting_delta" | "posting_ef" | "bitmap" | "none"
   indexInclude?: string[]
   cache?: boolean
+  /** TYPE SYMBOL ... INDEX */
+  indexed?: boolean
+  /** TYPE SYMBOL ... INDEX CAPACITY n */
+  indexCapacity?: number
   /** PARQUET config for SET PARQUET(...) */
   parquetConfig?: ParquetConfig
 }
@@ -683,6 +728,8 @@ export interface DedupDisableAction {
 export interface DedupEnableAction {
   actionType: "dedupEnable"
   keys: string[]
+  /** UPSERT | SKIP; printed as UPSERT when absent */
+  dedupMode?: DedupMode
 }
 
 export interface SetTypeWalAction {
@@ -710,6 +757,8 @@ export interface RebaseWalAction {
 export interface ConvertPartitionAction {
   actionType: "convertPartition"
   partitions?: string[]
+  /** LIST written after `TO <target>` (server form) */
+  listAfterTarget?: boolean
   target: string
   where?: Expression
   /** WITH (bloom_filter_columns = '...', bloom_filter_fpp = 0.01) */
@@ -737,6 +786,8 @@ export interface CreateViewStatement extends AstNode {
   query: SelectStatement
   asParens?: boolean
   ownedBy?: string
+  /** Enterprise: WITH AUDIT */
+  audit?: boolean
 }
 
 export interface AlterViewStatement extends AstNode {
@@ -917,6 +968,7 @@ export interface RevokeStatement extends AstNode {
   permissions: string[]
   on?: GrantOnTarget
   from: QualifiedName
+  verification?: boolean
 }
 
 export interface GrantOnTarget extends AstNode {
@@ -939,6 +991,8 @@ export interface GrantAssumeServiceAccountStatement extends AstNode {
   type: "grantAssumeServiceAccount"
   account: QualifiedName
   to: QualifiedName
+  /** All grantees when more than one is listed (`to` is the first) */
+  toList?: QualifiedName[]
   grantOption?: boolean
 }
 
@@ -946,6 +1000,8 @@ export interface RevokeAssumeServiceAccountStatement extends AstNode {
   type: "revokeAssumeServiceAccount"
   account: QualifiedName
   from: QualifiedName
+  /** All grantees when more than one is listed (`from` is the first) */
+  fromList?: QualifiedName[]
 }
 
 export interface VacuumTableStatement extends AstNode {
@@ -963,6 +1019,33 @@ export interface SetTypeStatement extends AstNode {
   type: "setType"
   bypass?: boolean
   wal: boolean
+}
+
+/** PG-compatible `SET ...` (a no-op on the server); `args` are the raw tokens after SET */
+export interface SetStatement extends AstNode {
+  type: "set"
+  args: string[]
+}
+
+/** BEGIN | COMMIT | ROLLBACK [TRANSACTION] */
+export interface TransactionStatement extends AstNode {
+  type: "transaction"
+  action: "begin" | "commit" | "rollback"
+  transaction?: boolean
+}
+
+export interface DeallocateStatement extends AstNode {
+  type: "deallocate"
+  /** Statement name as written (quotes kept) */
+  name: string
+}
+
+/** DISCARD | CLOSE | UNLISTEN | RESET <argument> (no-ops on the server) */
+export interface PgNoOpStatement extends AstNode {
+  type: "pgNoOp"
+  keyword: "discard" | "close" | "unlisten" | "reset"
+  /** Argument as written: ALL, *, or a name */
+  argument: string
 }
 
 export interface ReindexTableStatement extends AstNode {
@@ -999,10 +1082,48 @@ export interface SwitchStatement extends AstNode {
 export interface AlterGroupStatement extends AstNode {
   type: "alterGroup"
   group: QualifiedName
-  action: "setAlias" | "dropAlias" | "setMemoryLimit"
+  action:
+    | "setAlias"
+    | "dropAlias"
+    | "setMemoryLimit"
+    | "setResourceGroup"
+    | "unsetResourceGroup"
   externalAlias?: string
   /** SET MEMORY LIMIT value, e.g. "2G", "512M", "0", "UNLIMITED" */
   memoryLimit?: string
+  /** SET RESOURCE GROUP name */
+  resourceGroup?: QualifiedName
+  /** SET RESOURCE GROUP ... MAPPING PRIORITY n */
+  mappingPriority?: string
+}
+
+/** Resource group policy entry: `key = value` (value omitted in RESET) */
+export interface ResourceGroupOption {
+  name: string
+  /** Raw value text, e.g. "'8M'", "200", "UNLIMITED" */
+  value?: string
+}
+
+export interface CreateResourceGroupStatement extends AstNode {
+  type: "createResourceGroup"
+  group: QualifiedName
+  ifNotExists?: boolean
+  /** WITH (...) policy; empty array for WITH () */
+  options?: ResourceGroupOption[]
+}
+
+export interface AlterResourceGroupStatement extends AstNode {
+  type: "alterResourceGroup"
+  group: QualifiedName
+  action: "set" | "reset" | "rename"
+  options?: ResourceGroupOption[]
+  newName?: QualifiedName
+}
+
+export interface DropResourceGroupStatement extends AstNode {
+  type: "dropResourceGroup"
+  group: QualifiedName
+  ifExists?: boolean
 }
 
 export interface CompileViewStatement extends AstNode {
@@ -1027,6 +1148,8 @@ export interface PivotClause extends AstNode {
   aggregations: PivotAggregation[]
   pivots: PivotForClause[]
   groupBy?: Expression[]
+  /** Table alias after the closing parenthesis: `PIVOT (...) [AS] p` */
+  alias?: string
 }
 
 export interface PivotAggregation extends AstNode {
@@ -1172,13 +1295,35 @@ export interface SampleByClause extends AstNode {
   alignTo?: AlignToClause
   from?: Expression
   to?: Expression
+  /** SAMPLE BY 1h ROLLUP(...) / CUBE(...) / GROUPING SETS (...) */
+  groupingSets?: GroupingSets
 }
+
+/**
+ * ROLLUP(a, b), CUBE(a, b) or GROUPING SETS ((a, b), (a), ()) in GROUP BY or
+ * after the SAMPLE BY interval. Keys are column references.
+ */
+export interface GroupingSets extends AstNode {
+  type: "groupingSets"
+  kind: "rollup" | "cube" | "groupingSets"
+  /** ROLLUP / CUBE keys */
+  columns?: GroupingKey[]
+  /** GROUPING SETS: one entry per set, `[]` is the empty set `()` */
+  sets?: GroupingKey[][]
+}
+
+/** A grouping key: a column, or a DECLARE variable that names one */
+export type GroupingKey = ColumnRef | VariableRef
 
 export interface AlignToClause extends AstNode {
   type: "alignTo"
   mode: "firstObservation" | "calendar"
   timeZone?: string
   offset?: string
+  /** TIME ZONE value when it is not a string literal / plain name (@tz, $1, f(...)) */
+  timeZoneExpression?: Expression
+  /** WITH OFFSET value when it is not a string literal / plain name */
+  offsetExpression?: Expression
 }
 
 export interface LatestOnClause extends AstNode {
@@ -1228,15 +1373,19 @@ export type Expression =
   | UnaryExpression
   | ColumnRef
   | VariableRef
+  | BindVariable
   | Literal
   | FunctionCall
   | CaseExpression
   | CastExpression
   | TypeCastExpression
+  | AtTimeZoneExpression
+  | MemberAccessExpression
   | InExpression
   | BetweenExpression
   | WithinExpression
   | IsNullExpression
+  | IsBooleanExpression
   | ParenExpression
   | ArrayLiteral
   | ArrayAccessExpression
@@ -1270,6 +1419,8 @@ export interface Literal extends AstNode {
   value: string | number | boolean | null
   literalType: "string" | "number" | "boolean" | "null" | "geohash" | "duration"
   raw?: string
+  /** Typed literal prefix, e.g. "TIMESTAMP" for `timestamp '2020-01-01'` */
+  typeName?: string
 }
 
 export interface FunctionCall extends AstNode {
@@ -1305,10 +1456,10 @@ export interface WindowSpecification extends AstNode {
 
 export interface WindowFrame extends AstNode {
   type: "windowFrame"
-  mode: "rows" | "range" | "cumulative"
+  mode: "rows" | "range" | "groups" | "cumulative"
   start?: WindowFrameBound
   end?: WindowFrameBound
-  exclude?: "currentRow" | "noOthers"
+  exclude?: "currentRow" | "group" | "ties" | "noOthers"
 }
 
 export interface WindowFrameBound extends AstNode {
@@ -1344,6 +1495,20 @@ export interface TypeCastExpression extends AstNode {
   dataType: string
 }
 
+/** `<expr> AT TIME ZONE '<tz>'` (the server rewrites it to to_timezone(expr, tz)) */
+/** Member access on a parenthesised value: `(x).a` */
+export interface MemberAccessExpression extends AstNode {
+  type: "memberAccess"
+  expression: Expression
+  member: string
+}
+
+export interface AtTimeZoneExpression extends AstNode {
+  type: "atTimeZone"
+  expression: Expression
+  timeZone: Expression
+}
+
 export interface InExpression extends AstNode {
   type: "in"
   expression: Expression
@@ -1364,6 +1529,8 @@ export interface WithinExpression extends AstNode {
   type: "within"
   expression: Expression
   values: Expression[]
+  /** `NOT WITHIN` (set only when true) */
+  not?: boolean
 }
 
 export interface IsNullExpression extends AstNode {
@@ -1372,8 +1539,25 @@ export interface IsNullExpression extends AstNode {
   not?: boolean
 }
 
+/** `<expr> IS [NOT] TRUE|FALSE` (the server rewrites it to `= / != true|false`) */
+export interface IsBooleanExpression extends AstNode {
+  type: "isBoolean"
+  expression: Expression
+  value: boolean
+  not?: boolean
+}
+
 export interface VariableRef extends AstNode {
   type: "variable"
+  name: string
+}
+
+/**
+ * Bind variable: positional `$1` or named `:name`. `name` is the token as
+ * written, including the `$` / `:` sigil.
+ */
+export interface BindVariable extends AstNode {
+  type: "bindVariable"
   name: string
 }
 

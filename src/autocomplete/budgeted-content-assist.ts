@@ -29,7 +29,43 @@ import {
   Rule,
   Terminal,
 } from "chevrotain"
-import { parser } from "../parser/parser"
+import {
+  ALIAS_STOP_STATEMENT_TOKENS,
+  IMPLICIT_ALIAS_STOP_TOKENS,
+  parser,
+} from "../parser/parser"
+import { As, Case, IdentifierKeyword, Semicolon, When } from "../parser/lexer"
+
+// The parser's implicit-alias GATEs (a join / clause / statement word is not
+// an alias without AS), which content assist would otherwise ignore: the
+// alias path would consume e.g. `ASOF` in `FROM t ASOF JOIN u` and prune the
+// join path.
+function isStoppedIdentifier(
+  terminalType: TokenType,
+  ruleStack: string[],
+  tokenVector: IToken[],
+  idx: number,
+): boolean {
+  if (terminalType !== IdentifierKeyword) return false
+  // `CASE WHEN`: never a simple-CASE operand named `when`
+  const tokenType = tokenVector[idx].tokenType
+  if (tokenType === When && idx > 0 && tokenVector[idx - 1].tokenType === Case)
+    return true
+  // `SHOW `, `COPY `, `GRANT ` ...: a statement keyword, not the table of an
+  // implicit SELECT (`show WHERE ...`) at statement start
+  if (
+    ALIAS_STOP_STATEMENT_TOKENS.has(tokenType) &&
+    (idx === 0 || tokenVector[idx - 1].tokenType === Semicolon) &&
+    (ruleStack.includes("implicitSelectStatement") ||
+      ruleStack.includes("pivotStatement"))
+  )
+    return true
+  const n = ruleStack.length
+  if (n < 2 || ruleStack[n - 1] !== "identifier") return false
+  const stops = IMPLICIT_ALIAS_STOP_TOKENS.get(ruleStack[n - 2])
+  if (!stops || !stops.has(tokenVector[idx].tokenType)) return false
+  return idx === 0 || tokenVector[idx - 1].tokenType !== As
+}
 
 export interface ContentAssistSuggestion {
   nextTokenType: TokenType
@@ -147,7 +183,15 @@ function nextPossibleTokensAfterBudgeted(
       if (currIdx < tokenVectorLength - 1) {
         const nextIdx = currIdx + 1
         const actualToken = tokenVector[nextIdx]
-        if (tokMatcher(actualToken, prod.terminalType)) {
+        if (
+          tokMatcher(actualToken, prod.terminalType) &&
+          !isStoppedIdentifier(
+            prod.terminalType,
+            currRuleStack,
+            tokenVector,
+            nextIdx,
+          )
+        ) {
           possiblePaths.push({
             idx: nextIdx,
             def: currDef.slice(1),

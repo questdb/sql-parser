@@ -1,0 +1,2132 @@
+[
+  {
+    "query": "alter table t force reindex parquet column b partition list '2024-01-02'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/parquet/StaleParquetColumnTopTest.java:325",
+    "feature": "baseline",
+    "toSql": "ALTER TABLE t FORCE REINDEX PARQUET COLUMN b PARTITION LIST '2024-01-02'"
+  },
+  {
+    "query": "select first(i) from a sample by 1h fill(linear) align to first observation",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/ExplainPlanTest.java:8658",
+    "feature": "baseline",
+    "toSql": "SELECT first(i) FROM a SAMPLE BY 1h FILL(LINEAR) ALIGN TO FIRST OBSERVATION"
+  },
+  {
+    "query": "INSERT INTO dim1 VALUES (1, 'one')",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewHashJoinGroupByTest.java:82",
+    "feature": "baseline",
+    "toSql": "INSERT INTO dim1 VALUES (1, 'one')"
+  },
+  {
+    "query": "GRANT SELECT ON pending_grants TO alice",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1357",
+    "feature": "baseline",
+    "toSql": "GRANT SELECT ON pending_grants TO alice"
+  },
+  {
+    "query": "insert into tab values (false, cast(24814 as short), 24814, 8260188555232587029, 0x7ee65ec7b6e3bc3a422a8855e9d7bfd29199af5c2aa91ba39c022fa261bdede7, 'J', 'ORANGE', '123', '1970-01-01T00:00:01.000000Z')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCodeGeneratorTest.java:10357",
+    "feature": "literal-hex",
+    "toSql": "INSERT INTO tab VALUES (FALSE, CAST(24814 AS SHORT), 24814, 8260188555232587029, 0x7ee65ec7b6e3bc3a422a8855e9d7bfd29199af5c2aa91ba39c022fa261bdede7, 'J', 'ORANGE', '123', '1970-01-01T00:00:01.000000Z')"
+  },
+  {
+    "query": "select cast(0x00 as boolean)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastTest.java:604",
+    "feature": "literal-hex",
+    "toSql": "SELECT CAST(0x00 AS BOOLEAN)"
+  },
+  {
+    "query": "create table tab as (select 0x11111111 as a, 0x11111111 as b from long_sequence(1))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/eq/EqLong256FunctionFactoryTest.java:66",
+    "feature": "literal-hex",
+    "toSql": "CREATE TABLE tab AS (SELECT 0x11111111 AS a, 0x11111111 AS b FROM long_sequence(1))"
+  },
+  {
+    "query": "insert into tab values (0xb00ee5505bd95e51dd18889bae1dee3404d446e61d5293f55ff29ba4a01ab073)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/groupby/SumLong256VecGroupByFunctionFactoryTest.java:55",
+    "feature": "literal-hex",
+    "toSql": "INSERT INTO tab VALUES (0xb00ee5505bd95e51dd18889bae1dee3404d446e61d5293f55ff29ba4a01ab073)"
+  },
+  {
+    "query": "INSERT INTO t VALUES (3.14f, 1::TIMESTAMP), (1.0f, 2::TIMESTAMP)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressBindRoundTripTest.java:266",
+    "feature": "literal-float",
+    "toSql": "INSERT INTO t VALUES (3.14f, 1::TIMESTAMP), (1.0f, 2::TIMESTAMP)"
+  },
+  {
+    "query": "INSERT INTO t VALUES (1.5f), (-1.5f), (0.0f), (NULL), (CAST(0.0/0.0 AS FLOAT))",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressTypesExhaustiveTest.java:919",
+    "feature": "literal-float",
+    "toSql": "INSERT INTO t VALUES (1.5f), (-1.5f), (0.0f), (NULL), (CAST(0.0 / 0.0 AS FLOAT))"
+  },
+  {
+    "query": "select rn from z where i > 16777216.0f and rn <= 3",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:5614",
+    "feature": "literal-float",
+    "toSql": "SELECT rn FROM z WHERE i > 16777216.0f AND rn <= 3"
+  },
+  {
+    "query": "SELECT 1e10f * 1e30f * 1e-30f AS v",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IntArithmeticOverflowFoldingTest.java:111",
+    "feature": "literal-float",
+    "toSql": "SELECT 1e10f * 1e30f * 1e-30f AS v"
+  },
+  {
+    "query": "SELECT CASE WHEN True THEN 1.0f ELSE 1 END",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13852",
+    "feature": "literal-float",
+    "toSql": "SELECT CASE WHEN TRUE THEN 1.0f ELSE 1 END"
+  },
+  {
+    "query": "select * from x where c in (1.0f, null, 1::byte, 1::short, 1::int, 1::long)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8006",
+    "feature": "literal-float",
+    "toSql": "SELECT * FROM x WHERE c IN (1.0f, NULL, 1::BYTE, 1::SHORT, 1::INT, 1::LONG)"
+  },
+  {
+    "query": "update t1 set f = 5.2f",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/TouchTableFunctionTest.java:71",
+    "feature": "literal-float",
+    "toSql": "UPDATE t1 SET f = 5.2f"
+  },
+  {
+    "query": "with data as (select -1e30d v) select cast(v as decimal(24,2)) from data",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDoubleToDecimalFunctionFactoryTest.java:264",
+    "feature": "literal-float",
+    "toSql": "WITH data AS (SELECT -1e30d AS v) SELECT CAST(v AS DECIMAL(24, 2)) FROM data"
+  },
+  {
+    "query": "select 10f * 0f x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/math/MulFloatFunctionFactoryTest.java:49",
+    "feature": "literal-float",
+    "toSql": "SELECT 10f * 0f AS x"
+  },
+  {
+    "query": "insert into x values ((2+3*3600L*1000000)::timestamp,2, 8,8,8f,8d,cast(8 as date),8::timestamp,rnd_long256(),'8','8',rnd_geohash(5) ,rnd_geohash(10),rnd_geohash(20),rnd_geohash(40))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/CountColumnTest.java:74",
+    "feature": "literal-float",
+    "toSql": "INSERT INTO x VALUES ((2 + 3 * 3600L * 1000000)::TIMESTAMP, 2, 8, 8, 8f, 8d, CAST(8 AS DATE), 8::TIMESTAMP, rnd_long256(), '8', '8', rnd_geohash(5), rnd_geohash(10), rnd_geohash(20), rnd_geohash(40))"
+  },
+  {
+    "query": "SELECT x, count() FROM (SELECT dateadd(E'h', 1, ts) x FROM jan) SAMPLE BY 1d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampOffsetPushdownTest.java:1048",
+    "feature": "literal-escape-string",
+    "toSql": "SELECT x, count() FROM (SELECT dateadd(E'h', 1, ts) AS x FROM jan) SAMPLE BY 1d"
+  },
+  {
+    "query": "select ipv4 '2.1.1.1' & '2.2.2.2'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:92",
+    "feature": "literal-typed",
+    "toSql": "SELECT IPV4 '2.1.1.1' & '2.2.2.2'"
+  },
+  {
+    "query": "select null >= ipv4 '34.11.45.3'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:1046",
+    "feature": "literal-typed",
+    "toSql": "SELECT NULL >= IPV4 '34.11.45.3'"
+  },
+  {
+    "query": "select ip & ipv4 '255.255.255.255' from test",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:1255",
+    "feature": "literal-typed",
+    "toSql": "SELECT ip & IPV4 '255.255.255.255' FROM test"
+  },
+  {
+    "query": "select ipv4 '0.0.0.0' - ipv4 '1.1.1.1'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:2705",
+    "feature": "literal-typed",
+    "toSql": "SELECT IPV4 '0.0.0.0' - IPV4 '1.1.1.1'"
+  },
+  {
+    "query": "select (uuid '11111111-1111-1111-1111-111111111111') = cast('11111111-1111-1111-1111-111111111111' as uuid) from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UuidTest.java:1067",
+    "feature": "literal-typed",
+    "toSql": "SELECT (UUID '11111111-1111-1111-1111-111111111111') = CAST('11111111-1111-1111-1111-111111111111' AS UUID) FROM long_sequence(1)"
+  },
+  {
+    "query": "select typeOf(uuid '11111111-1111-1111-1111-111111111111') from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UuidTest.java:1210",
+    "feature": "literal-typed",
+    "toSql": "SELECT typeOf(UUID '11111111-1111-1111-1111-111111111111') FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT DATE_TRUNC('hour',          TIMESTAMP '2017-03-17T02:09:30.111111Z') as truncated",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/DateTruncFunctionFactoryTest.java:63",
+    "feature": "literal-typed",
+    "toSql": "SELECT DATE_TRUNC('hour', TIMESTAMP '2017-03-17T02:09:30.111111Z') AS truncated"
+  },
+  {
+    "query": "SELECT DATE_TRUNC('day',           TIMESTAMP_NS '2017-03-17T02:09:30.111111111Z') as truncated",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/DateTruncFunctionFactoryTest.java:120",
+    "feature": "literal-typed",
+    "toSql": "SELECT DATE_TRUNC('day', TIMESTAMP_NS '2017-03-17T02:09:30.111111111Z') AS truncated"
+  },
+  {
+    "query": "insert into t values (timestamp with time zone '2020-12-31 15:15:51.663+00:00')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1789",
+    "feature": "literal-typed",
+    "toSql": "INSERT INTO t VALUES (TIMESTAMP WITH TIME ZONE '2020-12-31 15:15:51.663+00:00')"
+  },
+  {
+    "query": "insert into test (test_timestamp, test_value) values (timestamp with time zone '2020-12-31 15:15:51.663+00:00', '256')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AbstractSqlParserTest.java:160",
+    "feature": "literal-typed",
+    "toSql": "INSERT INTO test (test_timestamp, test_value) VALUES (TIMESTAMP WITH TIME ZONE '2020-12-31 15:15:51.663+00:00', '256')"
+  },
+  {
+    "query": "SELECT * FROM (\nSELECT \n  n.nspname\n  ,c.relname\n  ,a.attname\n  ,a.atttypid\n  ,a.attnotnull OR (t.typtype = 'd' AND t.typnotnull) AS attnotnull\n  ,a.atttypmod\n  ,a.attlen\n  ,t.typtypmod\n  ,row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS attnum\n  , nullif(a.attidentity, '') as attidentity\n  ,null as attgenerated\n  ,pg_catalog.pg_get_expr(def.adbin, def.adrelid) AS adsrc\n  ,dsc.description\n  ,t.typbasetype\n  ,t.typtype  \nFROM pg_catalog.pg_namespace n\nJOIN pg_catalog.pg_class c ON (c.relnamespace = n.oid)\nJOIN pg_catalog.pg_attribute a ON (a.attrelid=c.oid)\nJOIN pg_catalog.pg_type t ON (a.atttypid = t.oid)\nLEFT JOIN pg_catalog.pg_attrdef def ON (a.attrelid=def.adrelid AND a.attnum = def.adnum)\nLEFT JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)\nLEFT JOIN pg_catalog.pg_class dc ON (dc.oid=dsc.classoid AND dc.relname='pg_class')\nLEFT JOIN pg_catalog.pg_namespace dn ON (dc.relnamespace=dn.oid AND dn.nspname='pg_catalog')\nWHERE \n  c.relkind in ('r','p','v','f','m')\n  and a.attnum > 0 \n  AND NOT a.attisdropped\n  AND c.relname LIKE E'test'\n) c WHERE true\nORDER BY nspname,c.relname,attnum;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGJobContextTest.java:8217",
+    "feature": "literal-escape-string",
+    "toSql": "SELECT * FROM (SELECT n.nspname, c.relname, a.attname, a.atttypid, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull) AS attnotnull, a.atttypmod, a.attlen, t.typtypmod, row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS attnum, nullif(a.attidentity, '') AS attidentity, NULL AS attgenerated, pg_catalog.pg_get_expr(def.adbin, def.adrelid) AS adsrc, dsc.description, t.typbasetype, t.typtype FROM pg_catalog.pg_namespace AS n JOIN pg_catalog.pg_class AS c ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute AS a ON (a.attrelid = c.oid) JOIN pg_catalog.pg_type AS t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef AS def ON (a.attrelid = def.adrelid AND a.attnum = def.adnum) LEFT JOIN pg_catalog.pg_description AS dsc ON (c.oid = dsc.objoid AND a.attnum = dsc.objsubid) LEFT JOIN pg_catalog.pg_class AS dc ON (dc.oid = dsc.classoid AND dc.relname = 'pg_class') LEFT JOIN pg_catalog.pg_namespace AS dn ON (dc.relnamespace = dn.oid AND dn.nspname = 'pg_catalog') WHERE c.relkind IN ('r', 'p', 'v', 'f', 'm') AND a.attnum > 0 AND NOT a.attisdropped AND c.relname LIKE E'test') AS c WHERE TRUE ORDER BY nspname, c.relname, attnum"
+  },
+  {
+    "query": "SELECT a, b, grouping_id(a, b) g, sum(v) FROM t GROUP BY CUBE(a, b)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:72",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, b, grouping_id(a, b) AS g, sum(v) FROM t GROUP BY CUBE(a, b)"
+  },
+  {
+    "query": "SELECT trim(s) k, a, sum(v) sv FROM t WHERE v > 10 GROUP BY k, ROLLUP(a)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:73",
+    "feature": "grouping-sets",
+    "toSql": "SELECT trim(s) AS k, a, sum(v) AS sv FROM t WHERE v > 10 GROUP BY k, ROLLUP(a)"
+  },
+  {
+    "query": "SELECT a, b, GROUPING_ID(a, b) AS gid, SUM(v) FROM t GROUP BY GROUPING SETS ((a, b), (a), ()) ORDER BY gid, a, b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:128",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, b, GROUPING_ID(a, b) AS gid, SUM(v) FROM t GROUP BY GROUPING SETS ((a, b), (a), ()) ORDER BY gid, a, b"
+  },
+  {
+    "query": "SELECT trim(s) k, b, GROUPING(b) g, SUM(v) s FROM t GROUP BY trim(s), ROLLUP(b) ORDER BY k, g",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:166",
+    "feature": "grouping-sets",
+    "toSql": "SELECT trim(s) AS k, b, GROUPING(b) AS g, SUM(v) AS s FROM t GROUP BY trim(s), ROLLUP(b) ORDER BY k, g"
+  },
+  {
+    "query": "SELECT x, SUM(y) FROM t GROUP BY cube(x) ORDER BY x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:427",
+    "feature": "grouping-sets",
+    "toSql": "SELECT x, SUM(y) FROM t GROUP BY CUBE(x) ORDER BY x"
+  },
+  {
+    "query": "SELECT * FROM (SELECT a,b,SUM(v) s FROM t GROUP BY CUBE(a,b)) WHERE a=1 ORDER BY a,b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:439",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM (SELECT a, b, SUM(v) AS s FROM t GROUP BY CUBE(a, b)) WHERE a = 1 ORDER BY a, b"
+  },
+  {
+    "query": "SELECT * FROM t2 JOIN t3 ON t2.a = t3.b GROUP BY ROLLUP(a, b) ORDER BY a, b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:649",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM t2 JOIN t3 ON t2.a = t3.b GROUP BY ROLLUP(a, b) ORDER BY a, b"
+  },
+  {
+    "query": "SELECT 1 AS x FROM t GROUP BY GROUPING SETS (())",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:683",
+    "feature": "grouping-sets",
+    "toSql": "SELECT 1 AS x FROM t GROUP BY GROUPING SETS (())"
+  },
+  {
+    "query": "SELECT * FROM (t GROUP BY GROUPING SETS (()))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:829",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM (t GROUP BY GROUPING SETS (()))"
+  },
+  {
+    "query": "SELECT t.b AS w, GROUPING(w) g, count() n FROM t JOIN u ON t.a = u.a GROUP BY ROLLUP(t.b, w) ORDER BY w, g",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:989",
+    "feature": "grouping-sets",
+    "toSql": "SELECT t.b AS w, GROUPING(w) AS g, count() AS n FROM t JOIN u ON t.a = u.a GROUP BY ROLLUP(t.b, w) ORDER BY w, g"
+  },
+  {
+    "query": "SELECT a + 1 AS k, b, GROUPING(k) gk, GROUPING(b) gb, sum(v) s FROM t GROUP BY a + 1, ROLLUP(b) ORDER BY k, b",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:1012",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a + 1 AS k, b, GROUPING(k) AS gk, GROUPING(b) AS gb, sum(v) AS s FROM t GROUP BY a + 1, ROLLUP(b) ORDER BY k, b"
+  },
+  {
+    "query": "SELECT a, CASE WHEN GROUPING(a) = 1 THEN 'total' ELSE 'row' END k, sum(v) s FROM t GROUP BY ROLLUP(a) ORDER BY a",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:1610",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, CASE WHEN GROUPING(a) = 1 THEN 'total' ELSE 'row' END AS k, sum(v) AS s FROM t GROUP BY ROLLUP(a) ORDER BY a"
+  },
+  {
+    "query": "SELECT a,b,SUM(v) FROM t GROUP BY a, CUBE(b) LIMIT 0",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:1813",
+    "feature": "grouping-sets",
+    "toSql": "SELECT a, b, SUM(v) FROM t GROUP BY a, CUBE(b) LIMIT 0"
+  },
+  {
+    "query": "CREATE TABLE t (cube INT, rollup INT, grouping INT, v INT)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2055",
+    "feature": "grouping-sets",
+    "toSql": "CREATE TABLE t (cube INT, rollup INT, grouping INT, v INT)"
+  },
+  {
+    "query": "SELECT cube, rollup, grouping, SUM(v) FROM t GROUP BY cube, rollup, grouping ORDER BY cube, rollup, grouping",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2058",
+    "feature": "grouping-sets",
+    "toSql": "SELECT cube, rollup, grouping, SUM(v) FROM t GROUP BY cube, rollup, grouping ORDER BY cube, rollup, grouping"
+  },
+  {
+    "query": "SELECT rollup, cube, SUM(v) FROM t GROUP BY rollup, cube ORDER BY rollup, cube",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2063",
+    "feature": "grouping-sets",
+    "toSql": "SELECT rollup, cube, SUM(v) FROM t GROUP BY rollup, cube ORDER BY rollup, cube"
+  },
+  {
+    "query": "SELECT cube::string AS k, SUM(v) AS s FROM t GROUP BY cube::string ORDER BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2081",
+    "feature": "grouping-sets",
+    "toSql": "SELECT cube::STRING AS k, SUM(v) AS s FROM t GROUP BY cube::STRING ORDER BY k"
+  },
+  {
+    "query": "SELECT grouping + 1 AS k, SUM(v) AS s FROM t GROUP BY grouping + 1 ORDER BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2084",
+    "feature": "grouping-sets",
+    "toSql": "SELECT grouping + 1 AS k, SUM(v) AS s FROM t GROUP BY grouping + 1 ORDER BY k"
+  },
+  {
+    "query": "SELECT cube, SUM(v) AS s FROM t GROUP BY grouping sets ((cube), ()) ORDER BY cube",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2088",
+    "feature": "grouping-sets",
+    "toSql": "SELECT cube, SUM(v) AS s FROM t GROUP BY GROUPING SETS ((cube), ()) ORDER BY cube"
+  },
+  {
+    "query": "SELECT o.k, l.a, l.cnt\nFROM o LEFT JOIN LATERAL (\n    SELECT a, count(*) AS cnt\n    FROM t\n    WHERE t.k = o.k\n    GROUP BY GROUPING SETS ((a), ())\n) l ON true\nORDER BY o.k, l.a\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/LateralJoinTest.java:54",
+    "feature": "grouping-sets",
+    "toSql": "SELECT o.k, l.a, l.cnt FROM o LEFT JOIN LATERAL (SELECT a, count(*) AS cnt FROM t WHERE t.k = o.k GROUP BY GROUPING SETS ((a), ())) AS l ON TRUE ORDER BY o.k, l.a"
+  },
+  {
+    "query": "SELECT ts, x, a, count() c FROM v SAMPLE BY 1d ROLLUP(x, a) FILL(NULL) ORDER BY ts, x, a",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:3522",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, x, a, count() AS c FROM v SAMPLE BY 1d ROLLUP(x, a) FILL(NULL) ORDER BY ts, x, a"
+  },
+  {
+    "query": "SELECT ts, a, COUNT(*) FROM t SAMPLE BY 1d CUBE(a, a) FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:3965",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, a, COUNT(*) FROM t SAMPLE BY 1d CUBE(a, a) FILL(NULL)"
+  },
+  {
+    "query": "SELECT ts, a, b, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((a, b), (b, a)) FILL(0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:4009",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, a, b, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((a, b), (b, a)) FILL(0)"
+  },
+  {
+    "query": "SELECT ts, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((), ()) FROM '2024-01-01' TO '2024-01-03' FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:3998",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, COUNT(*) FROM t SAMPLE BY 1d GROUPING SETS ((), ()) FROM '2024-01-01' TO '2024-01-03' FILL(NULL)"
+  },
+  {
+    "query": "SELECT ts, a, count() c FROM t WHERE v < 0 SAMPLE BY 1d ROLLUP(a) FROM '2024-01-01' TO '2024-01-04' FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:4340",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, a, count() AS c FROM t WHERE v < 0 SAMPLE BY 1d ROLLUP(a) FROM '2024-01-01' TO '2024-01-04' FILL(NULL)"
+  },
+  {
+    "query": "SELECT * FROM t o JOIN LATERAL (SELECT ts, count() n FROM u WHERE u.a = o.a SAMPLE BY 1d GROUPING SETS (())) l",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:2194",
+    "feature": "grouping-sets",
+    "toSql": "SELECT * FROM t AS o JOIN LATERAL (SELECT ts, count() AS n FROM u WHERE u.a = o.a SAMPLE BY 1d GROUPING SETS (())) AS l"
+  },
+  {
+    "query": "WITH s AS (SELECT ts, a, v FROM t) SELECT ts, a, sum(v) FROM s SAMPLE BY 1d ROLLUP(a) ORDER BY ts, a",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupingSetsTest.java:4709",
+    "feature": "grouping-sets",
+    "toSql": "WITH s AS (SELECT ts, a, v FROM t) SELECT ts, a, sum(v) FROM s SAMPLE BY 1d ROLLUP(a) ORDER BY ts, a"
+  },
+  {
+    "query": "SELECT ts, sum(val) FROM x SAMPLE BY 1d GROUPING SETS (()) FILL(NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByFillTest.java:2452",
+    "feature": "grouping-sets",
+    "toSql": "SELECT ts, sum(val) FROM x SAMPLE BY 1d GROUPING SETS (()) FILL(NULL)"
+  },
+  {
+    "query": "CREATE TABLE pt (s SYMBOL INDEX, v INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, s)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/parquet/O3ParquetStaleReaderTest.java:2806",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE pt (s SYMBOL INDEX, v INT, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, s)"
+  },
+  {
+    "query": "CREATE TABLE t (ts TIMESTAMP, k1 VARCHAR, k2 STRING, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k1, k2)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:1390",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE t (ts TIMESTAMP, k1 VARCHAR, k2 STRING, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k1, k2)"
+  },
+  {
+    "query": "CREATE TABLE t (ts TIMESTAMP, sym SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY FORMAT PARQUET WAL DEDUP SKIP KEYS(ts, sym)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:405",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE t (ts TIMESTAMP, sym SYMBOL, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL FORMAT PARQUET DEDUP SKIP KEYS(ts, sym)"
+  },
+  {
+    "query": "CREATE TABLE c (ts TIMESTAMP, k INT, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableSetTypeRestartTest.java:711",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE c (ts TIMESTAMP, k INT, v LONG) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, k)"
+  },
+  {
+    "query": "CREATE TABLE x AS (\n    SELECT timestamp_sequence('2024-01-01', 1_000_000) ts, 'a'::SYMBOL sym, x v FROM long_sequence(3)\n) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, sym)\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:190",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE x AS (SELECT timestamp_sequence('2024-01-01', 1_000_000) AS ts, 'a'::SYMBOL AS sym, x AS v FROM long_sequence(3)) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, sym)"
+  },
+  {
+    "query": "create table testAddIndexOnDeduplicatedColumn (ts TIMESTAMP, x long, s symbol, i int) timestamp(ts) PARTITION BY DAY WAL DEDUPLICATE UPSERT KEYS (ts, i, s ) ",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:61",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE testAddIndexOnDeduplicatedColumn (ts TIMESTAMP, x LONG, s SYMBOL, i INT) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP UPSERT KEYS(ts, i, s)"
+  },
+  {
+    "query": "create table testDeduplicationEnabledTimestampAndSymbol (ts TIMESTAMP, x long, s symbol) timestamp(ts) PARTITION BY DAY WAL DEDUPLICATE UPSERT KEYS(ts, s)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:715",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE testDeduplicationEnabledTimestampAndSymbol (ts TIMESTAMP, x LONG, s SYMBOL) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP UPSERT KEYS(ts, s)"
+  },
+  {
+    "query": "CREATE TABLE 'foo' ( \n\tts TIMESTAMP,\n\ts SYMBOL,\n\ti INT\n) timestamp(ts) PARTITION BY DAY\nDEDUP SKIP KEYS(ts,s);\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/ShowCreateTableTest.java:110",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE foo (ts TIMESTAMP, s SYMBOL, i INT) TIMESTAMP(ts) PARTITION BY DAY DEDUP SKIP KEYS(ts, s)"
+  },
+  {
+    "query": "create table foo ( ts timestamp, s symbol, i int ) timestamp(ts) partition by day wal dedup skip keys(ts, s)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateTableTest.java:67",
+    "feature": "dedup-skip",
+    "toSql": "CREATE TABLE foo (ts TIMESTAMP, s SYMBOL, i INT) TIMESTAMP(ts) PARTITION BY DAY WAL DEDUP SKIP KEYS(ts, s)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP ENABLE SKIP KEYS(ts, k)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:190",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE SKIP KEYS (ts, k)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP ENABLE SKIP KEYS(ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/WalWriterTest.java:5983",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE SKIP KEYS (ts)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP SKIP KEYS(ts, sym)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:1484",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE SKIP KEYS (ts, sym)"
+  },
+  {
+    "query": "ALTER TABLE t DEDUP UPSERT KEYS(ts, sym)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/wal/DedupSkipTest.java:1477",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE t DEDUP ENABLE UPSERT KEYS (ts, sym)"
+  },
+  {
+    "query": "alter table trips dedup upsert keys(Pickup_DateTime)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/ImportIODispatcherTest.java:1063",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE trips DEDUP ENABLE UPSERT KEYS (Pickup_DateTime)"
+  },
+  {
+    "query": "Alter table dups dedup upsert keys(ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:125",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE dups DEDUP ENABLE UPSERT KEYS (ts)"
+  },
+  {
+    "query": "ALTER TABLE x DEDUPLICATE SKIP KEYS(ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CreateTableDedupTest.java:149",
+    "feature": "dedup-skip",
+    "toSql": "ALTER TABLE x DEDUP ENABLE SKIP KEYS (ts)"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows keep highest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:1407",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "alter materialized view mv set expire rows keep highest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:1423",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) partition by day ttl 3 days expire rows keep 1 highest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2766",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) PARTITION BY DAY TTL 3 DAYS EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) partition by day expire rows keep 1 highest on v partition by k cleanup every 30m",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2976",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) PARTITION BY DAY EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k CLEANUP EVERY 30m"
+  },
+  {
+    "query": "create materialized view mv2 as (select * from base2) EXPIRE ROWS KEEP HIGHEST ON v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:3725",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv2 AS (SELECT * FROM base2) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY \"k limit 1\", k CLEANUP EVERY 1h;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryKeepLatestTest.java:229",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY \"k limit 1\", k CLEANUP EVERY 1h"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows keep highest on \"my val\" partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:668",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON \"my val\" PARTITION BY k"
+  },
+  {
+    "query": "create materialized view mvbad as (select * from base) expire rows keep 2 lowest on v partition by k, nope",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:762",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mvbad AS (SELECT * FROM base) EXPIRE ROWS KEEP 2 LOWEST ON v PARTITION BY k, nope"
+  },
+  {
+    "query": "create materialized view mv as (select * from base) expire rows keep lowest on v partition by k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:1093",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP LOWEST ON v PARTITION BY k"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mvalt SET EXPIRE ROWS KEEP 2 LOWEST ON nope PARTITION BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:1028",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mvalt SET EXPIRE ROWS KEEP 2 LOWEST ON nope PARTITION BY k"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base)\nEXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k CLEANUP EVERY 1s",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsHardeningTest.java:764",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k CLEANUP EVERY 1s"
+  },
+  {
+    "query": "create materialized view no_keys as (select * from erb_base) expire rows KEEP HIGHEST ON v OWNED BY 'group'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8590",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW no_keys AS (SELECT * FROM erb_base) EXPIRE ROWS KEEP HIGHEST ON v OWNED BY \"group\""
+  },
+  {
+    "query": "create materialized view top_n as (select * from erb_base) expire rows KEEP 2 HIGHEST ON v PARTITION BY k OWNED BY 'group'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8589",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW top_n AS (SELECT * FROM erb_base) EXPIRE ROWS KEEP 2 HIGHEST ON v PARTITION BY k OWNED BY \"group\""
+  },
+  {
+    "query": "create materialized view in_volume as (select * from erb_base) expire rows when v < 2 in volume vol1 owned by 'group'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:8620",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW in_volume AS (SELECT * FROM erb_base) EXPIRE ROWS WHEN v < 2 IN VOLUME vol1 OWNED BY \"group\""
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS WHEN v < 2.0 IN VOLUME 'vol1'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2426",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS WHEN v < 2.0 IN VOLUME vol1"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k IN VOLUME 'vol1'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsTest.java:2426",
+    "feature": "expire-rows-keep-on",
+    "toSql": "CREATE MATERIALIZED VIEW mvv AS (SELECT * FROM base) EXPIRE ROWS KEEP HIGHEST ON v PARTITION BY k IN VOLUME vol1"
+  },
+  {
+    "query": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/EntRowExpiryAclTest.java:586",
+    "feature": "expire-rows-keep-on",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS KEEP 1 HIGHEST ON v PARTITION BY k"
+  },
+  {
+    "query": "create materialized view price_copy as (base_price where \"declare\" > 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10596",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW price_copy AS (base_price WHERE \"declare\" > 0)"
+  },
+  {
+    "query": "create materialized view v3 as (base_price)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10746",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v3 AS (base_price)"
+  },
+  {
+    "query": "create materialized view v4 as base_price",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10747",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v4 AS base_price"
+  },
+  {
+    "query": "create materialized view v5 as (base_price where price > 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10748",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v5 AS (base_price WHERE price > 0)"
+  },
+  {
+    "query": "create materialized view v6 as (base_price where price * 2 > 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:10749",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE MATERIALIZED VIEW v6 AS (base_price WHERE price * 2 > 0)"
+  },
+  {
+    "query": "create table z as (x union all y)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:4765",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE z AS (x UNION ALL y)"
+  },
+  {
+    "query": "CREATE ATOMIC TABLE y AS (x UNION ALL append)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3FailureTest.java:1415",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE ATOMIC TABLE y AS (x UNION ALL append)"
+  },
+  {
+    "query": "create atomic table x1 as (x) timestamp(ts) partition by DAY",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3FailureTest.java:4558",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE ATOMIC TABLE x1 AS (x) TIMESTAMP(ts) PARTITION BY DAY"
+  },
+  {
+    "query": "create table y as (w union all append1 union all append2)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:3664",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y AS (w UNION ALL append1 UNION ALL append2)"
+  },
+  {
+    "query": "create table y as (x order by 1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:4523",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y AS (x ORDER BY 1)"
+  },
+  {
+    "query": "create table y1 as (y)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:8548",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y1 AS (y)"
+  },
+  {
+    "query": "CREATE TABLE tab2 AS (tab WHERE x>8)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/QueryRegistryTest.java:79",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE tab2 AS (tab WHERE x > 8)"
+  },
+  {
+    "query": "create table y as (x), cast(col as ipv4)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IPv4Test.java:727",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE y AS (x), CAST(col AS IPV4)"
+  },
+  {
+    "query": "create table x as (tab), cast(b as double), cast(b as long)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:2989",
+    "feature": "implicit-select-bodies",
+    "toSql": "CREATE TABLE x AS (tab), CAST(b AS DOUBLE), CAST(b AS LONG)"
+  },
+  {
+    "query": "alter view v1 as bla",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:1009",
+    "feature": "implicit-select-bodies",
+    "toSql": "ALTER VIEW v1 AS (bla)"
+  },
+  {
+    "query": "alter view v1 as bla",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntSqlParserTest.java:586",
+    "feature": "implicit-select-bodies",
+    "toSql": "ALTER VIEW v1 AS (bla)"
+  },
+  {
+    "query": "copy (generate_series(0, '9999-01-01', '1U')) TO 'very_large_table' WITH FORMAT PARQUET;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:226",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (generate_series(0, '9999-01-01', '1U')) TO 'very_large_table' WITH FORMAT PARQUET"
+  },
+  {
+    "query": "COPY (test_table where x > 0) TO 'mmap_fail_output' WITH FORMAT parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:716",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (test_table WHERE x > 0) TO 'mmap_fail_output' WITH FORMAT parquet"
+  },
+  {
+    "query": "copy (monthly_sales PIVOT (SUM(amount) FOR month IN ('JAN', 'FEB', 'MAR') GROUP BY empid) ORDER BY empid) to 'pivot_output' with format parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:2736",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (monthly_sales PIVOT (SUM(amount) FOR month IN ('JAN', 'FEB', 'MAR') GROUP BY empid) ORDER BY empid) TO 'pivot_output' WITH format parquet"
+  },
+  {
+    "query": "copy (test_table ORDER BY x DESC) to 'output1' with format parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:4251",
+    "feature": "implicit-select-bodies",
+    "toSql": "COPY (test_table ORDER BY x DESC) TO 'output1' WITH format parquet"
+  },
+  {
+    "query": "insert into t values ( '1st ''', '2nd ''''', '3rd ''''''' );",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/EscapeTest.java:52",
+    "feature": "single-quote-unescape",
+    "toSql": "INSERT INTO t VALUES ('1st ''', '2nd ''''', '3rd ''''''')"
+  },
+  {
+    "query": "select strpos('abc''def', '''' ) ",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/EscapeTest.java:62",
+    "feature": "single-quote-unescape",
+    "toSql": "SELECT strpos('abc''def', '''')"
+  },
+  {
+    "query": "SELECT s, v FROM escaped_symbols_0 WHERE (s IN ('O''Brien', 'O''''Brien', 'x') AND s NOT IN ('O''Brien', 'x')) LATEST ON ts PARTITION BY s ORDER BY v",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:3797",
+    "feature": "single-quote-unescape",
+    "toSql": "SELECT s, v FROM escaped_symbols_0 WHERE (s IN ('O''Brien', 'O''''Brien', 'x') AND s NOT IN ('O''Brien', 'x')) LATEST ON ts PARTITION BY s ORDER BY v"
+  },
+  {
+    "query": "select sym, last(price) as price, ts from base_price sample by 1000000000n",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:9487",
+    "feature": "duration-boundary",
+    "toSql": "SELECT sym, last(price) AS price, ts FROM base_price SAMPLE BY 1000000000n"
+  },
+  {
+    "query": "select x,sum(y) from tab sample by 2U align to first observation",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:11184",
+    "feature": "duration-boundary",
+    "toSql": "SELECT x, sum(y) FROM tab SAMPLE BY 2U ALIGN TO FIRST OBSERVATION"
+  },
+  {
+    "query": "select sum(a), k from x sample by 100T fill(none) align to first observation",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByNanoTimestampTest.java:5436",
+    "feature": "duration-boundary",
+    "toSql": "SELECT sum(a), k FROM x SAMPLE BY 100T FILL(NONE) ALIGN TO FIRST OBSERVATION"
+  },
+  {
+    "query": "SELECT ts, s, first(arr) a FROM tango SAMPLE BY 1m FILL(PREV) ORDER BY s, ts",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:852",
+    "feature": "duration-boundary",
+    "toSql": "SELECT ts, s, first(arr) AS a FROM tango SAMPLE BY 1m FILL(PREV) ORDER BY s, ts"
+  },
+  {
+    "query": "alter table x1 set param o3MaxLag = 100ms",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableO3MaxLagTest.java:429",
+    "feature": "duration-boundary",
+    "toSql": "ALTER TABLE x1 SET PARAM o3MaxLag = 100ms"
+  },
+  {
+    "query": "alter table x1 set param o3MaxLag = 10us",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableO3MaxLagTest.java:434",
+    "feature": "duration-boundary",
+    "toSql": "ALTER TABLE x1 SET PARAM o3MaxLag = 10us"
+  },
+  {
+    "query": "create table x (gh GEOHASH(8c), t TIMESTAMP) timestamp(t) partition by DAY WITH maxUncommittedRows=10000, o3MaxLag=250ms;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:4572",
+    "feature": "duration-boundary",
+    "toSql": "CREATE TABLE x (gh GEOHASH(8c), t TIMESTAMP) TIMESTAMP(t) PARTITION BY DAY WITH maxUncommittedRows = 10000, o3MaxLag = 250ms"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1D",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/TtlTest.java:264",
+    "feature": "duration-boundary",
+    "toSql": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1 DAY"
+  },
+  {
+    "query": "insert batch 20000 o3MaxLag 3d into x select * from top",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3Test.java:5151",
+    "feature": "duration-boundary",
+    "toSql": "INSERT BATCH 20000 o3MaxLag 3d INTO x SELECT * FROM top"
+  },
+  {
+    "query": "select * from tab t1 asof join tab t2 tolerance 15250285w",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:1269",
+    "feature": "duration-boundary",
+    "toSql": "SELECT * FROM tab AS t1 ASOF JOIN tab AS t2 TOLERANCE 15250285w"
+  },
+  {
+    "query": "ALTER GROUP test_group SET MEMORY LIMIT 1G",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/wal/transfer/ReplicationAclTest.java:2310",
+    "feature": "duration-boundary",
+    "toSql": "ALTER GROUP test_group SET MEMORY LIMIT 1G"
+  },
+  {
+    "query": "SELECT sym, val FROM t_bv_latest WHERE sym = $1 LATEST ON ts PARTITION BY sym",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexBindVariableKeyTest.java:46",
+    "feature": "bind-variables",
+    "toSql": "SELECT sym, val FROM t_bv_latest WHERE sym = $1 LATEST ON ts PARTITION BY sym"
+  },
+  {
+    "query": "SELECT sym, price FROM t_in_dup_bind WHERE sym IN ($1, $2) LATEST ON ts PARTITION BY sym",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexTest.java:12920",
+    "feature": "bind-variables",
+    "toSql": "SELECT sym, price FROM t_in_dup_bind WHERE sym IN ($1, $2) LATEST ON ts PARTITION BY sym"
+  },
+  {
+    "query": "INSERT INTO test VALUES($1, $2);",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGJobContextTest.java:6412",
+    "feature": "bind-variables",
+    "toSql": "INSERT INTO test VALUES ($1, $2)"
+  },
+  {
+    "query": "select * from y limit $1, $2;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:723",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM y LIMIT $1, $2"
+  },
+  {
+    "query": "SELECT $1::UUID AS u FROM long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressBindFuzzTest.java:227",
+    "feature": "bind-variables",
+    "toSql": "SELECT $1::UUID AS u FROM long_sequence(1)"
+  },
+  {
+    "query": "SELECT CAST($1 AS BOOLEAN) AS v FROM long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressBindRoundTripTest.java:384",
+    "feature": "bind-variables",
+    "toSql": "SELECT CAST($1 AS BOOLEAN) AS v FROM long_sequence(1)"
+  },
+  {
+    "query": "alter materialized view mv set expire rows when v > $1",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewExpireRowsHardeningTest.java:1188",
+    "feature": "bind-variables",
+    "toSql": "ALTER MATERIALIZED VIEW mv SET EXPIRE ROWS WHEN v > $1"
+  },
+  {
+    "query": "DECLARE @x := $1, @y := $2 SELECT @x, @y",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:856",
+    "feature": "bind-variables",
+    "toSql": "DECLARE @x := $1, @y := $2 SELECT @x, @y"
+  },
+  {
+    "query": "select $1+x, $2 from long_sequence(10)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCodeGeneratorTest.java:7919",
+    "feature": "bind-variables",
+    "toSql": "SELECT $1 + x, $2 FROM long_sequence(10)"
+  },
+  {
+    "query": "SELECT ARRAY[1.0, $1]",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/array/ArrayCreateFunctionFactoryTest.java:60",
+    "feature": "bind-variables",
+    "toSql": "SELECT ARRAY[1.0, $1]"
+  },
+  {
+    "query": "SELECT rn FROM x WHERE (a*$1) IS NULL",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/InLongFunctionFactoryTest.java:668",
+    "feature": "bind-variables",
+    "toSql": "SELECT rn FROM x WHERE (a * $1) IS NULL"
+  },
+  {
+    "query": "SELECT * FROM trades WHERE date_trunc('day', timestamp) BETWEEN $1 AND $2",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/MonotonicTimestampPruningTest.java:183",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM trades WHERE date_trunc('day', timestamp) BETWEEN $1 AND $2"
+  },
+  {
+    "query": "UPDATE up SET x = $1 WHERE x > 1 and x < 4",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UpdateTest.java:3011",
+    "feature": "bind-variables",
+    "toSql": "UPDATE up SET x = $1 WHERE x > 1 AND x < 4"
+  },
+  {
+    "query": "select k, s, first(lat) lat, last(lon) lon from x where s in ('a') sample by $1 T align to calendar",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByNanoTimestampTest.java:143",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, s, first(lat) AS lat, last(lon) AS lon FROM x WHERE s IN ('a') SAMPLE BY $1 T ALIGN TO CALENDAR"
+  },
+  {
+    "query": "SELECT r.reading_ts, count(*) n, sum(r.energy_kwh) energy FROM r JOIN p ON r.plant_id = p.plant_id SAMPLE BY 1d FROM $1 TO $2 ALIGN TO CALENDAR TIME ZONE 'Europe/Berlin'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/HashJoinGroupByRuntimeConstantTest.java:450",
+    "feature": "bind-variables",
+    "toSql": "SELECT r.reading_ts, count(*) AS n, sum(r.energy_kwh) AS energy FROM r JOIN p ON r.plant_id = p.plant_id SAMPLE BY 1d FROM $1 TO $2 ALIGN TO CALENDAR TIME ZONE 'Europe/Berlin'"
+  },
+  {
+    "query": "SELECT k, percentile_disc($1, 0.5) OVER () p, quantile_disc($2, 0.5) OVER (PARTITION BY k) q FROM t",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/PercentileWindowFunctionTest.java:1933",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, percentile_disc($1, 0.5) OVER () AS p, quantile_disc($2, 0.5) OVER (PARTITION BY k) AS q FROM t"
+  },
+  {
+    "query": "EXPLAIN SELECT price, ts FROM t SUBSAMPLE cadence($1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SubsampleTest.java:5481",
+    "feature": "bind-variables",
+    "toSql": "EXPLAIN SELECT price, ts FROM t SUBSAMPLE cadence($1)"
+  },
+  {
+    "query": "DECLARE @flag := ($1 = 1) SELECT * FROM v_flag",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:644",
+    "feature": "bind-variables",
+    "toSql": "DECLARE @flag := ($1 = 1) SELECT * FROM v_flag"
+  },
+  {
+    "query": "COPY (SELECT * FROM ts_table2 WHERE x <= $1) TO 'bind_streaming' WITH FORMAT parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:2208",
+    "feature": "bind-variables",
+    "toSql": "COPY (SELECT * FROM ts_table2 WHERE x <= $1) TO 'bind_streaming' WITH FORMAT parquet"
+  },
+  {
+    "query": "select * from alcatel_traffic_tmp where deviceName not in ($1,$2) and time < '1970-01-01T00:00:00.300000Z'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCodeGeneratorTest.java:9952",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM alcatel_traffic_tmp WHERE deviceName NOT IN ($1, $2) AND time < '1970-01-01T00:00:00.300000Z'"
+  },
+  {
+    "query": "SELECT price FROM t_latest_bind WHERE sym = :sym LATEST ON ts PARTITION BY sym",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexTest.java:6363",
+    "feature": "bind-variables",
+    "toSql": "SELECT price FROM t_latest_bind WHERE sym = :sym LATEST ON ts PARTITION BY sym"
+  },
+  {
+    "query": "SELECT count() cnt FROM t_pf_mk_bind WHERE sym IN (:k1, :k2)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexTest.java:12786",
+    "feature": "bind-variables",
+    "toSql": "SELECT count() AS cnt FROM t_pf_mk_bind WHERE sym IN (:k1, :k2)"
+  },
+  {
+    "query": "SELECT id FROM neg_min WHERE -:sv = s",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:7460",
+    "feature": "bind-variables",
+    "toSql": "SELECT id FROM neg_min WHERE -:sv = s"
+  },
+  {
+    "query": "select k, f, l from a4b where (:fv + f) * 1.0 > 1.5",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:8560",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, f, l FROM a4b WHERE (:fv + f) * 1.0 > 1.5"
+  },
+  {
+    "query": "DECLARE @a := :value SELECT * FROM (SELECT @a AS value)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareOperatorPrecedenceTest.java:75",
+    "feature": "bind-variables",
+    "toSql": "DECLARE @a := :value SELECT * FROM (SELECT @a AS value)"
+  },
+  {
+    "query": "SELECT :b0::LONG + 1 AS e0, count() AS a0 FROM t",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupByTest.java:4090",
+    "feature": "bind-variables",
+    "toSql": "SELECT :b0::LONG + 1 AS e0, count() AS a0 FROM t"
+  },
+  {
+    "query": "select * from x where ts in :date and ts != :ts1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IntervalFilterTest.java:224",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM x WHERE ts IN :date AND ts != :ts1"
+  },
+  {
+    "query": "select * from x where ts not in :i",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/IntervalFilterTest.java:641",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM x WHERE ts NOT IN :i"
+  },
+  {
+    "query": "select * from y limit :lo,:hi",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:1206",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM y LIMIT :lo, :hi"
+  },
+  {
+    "query": "SELECT count(*) cnt, min(v) mn, max(v) mx FROM (SELECT * FROM x ORDER BY v LIMIT :n)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/OrderByEncodeSortTest.java:642",
+    "feature": "bind-variables",
+    "toSql": "SELECT count(*) AS cnt, min(v) AS mn, max(v) AS mx FROM (SELECT * FROM x ORDER BY v LIMIT :n)"
+  },
+  {
+    "query": "SELECT c0, ts FROM t WHERE NOT ((:b0::BYTE)::DECIMAL(38, 1) >= c0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/ParquetTest.java:789",
+    "feature": "bind-variables",
+    "toSql": "SELECT c0, ts FROM t WHERE NOT ((:b0::BYTE)::DECIMAL(38, 1) >= c0)"
+  },
+  {
+    "query": "SELECT k, mode(l > :b0::INT * 17_161::SHORT) m FROM t ORDER BY k",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/RuntimeConstFunctionTest.java:1114",
+    "feature": "bind-variables",
+    "toSql": "SELECT k, mode(l > :b0::INT * 17_161::SHORT) AS m FROM t ORDER BY k"
+  },
+  {
+    "query": "SELECT * FROM ca SUBSAMPLE minmax(x, :target)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SubsampleWildcardProjectionTest.java:974",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM ca SUBSAMPLE minmax(x, :target)"
+  },
+  {
+    "query": "SELECT sym FROM x WHERE sym ILIKE $1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/regex/ILikeSymbolFunctionFactoryTest.java:78",
+    "feature": "bind-variables",
+    "toSql": "SELECT sym FROM x WHERE sym ILIKE $1"
+  },
+  {
+    "query": "SELECT * FROM t WHERE :b0 LATEST ON ts PARTITION BY c3",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:1280",
+    "feature": "bind-variables",
+    "toSql": "SELECT * FROM t WHERE :b0 LATEST ON ts PARTITION BY c3"
+  },
+  {
+    "query": "SELECT count() FROM table_cold_partitions(:table_name)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/cold/storage/TableColdPartitionsTest.java:92",
+    "feature": "bind-variables",
+    "toSql": "SELECT count() FROM table_cold_partitions(:table_name)"
+  },
+  {
+    "query": "SELECT arr[1:n] FROM tango",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:488",
+    "feature": "bind-variables",
+    "toSql": "SELECT arr[1:n] FROM tango"
+  },
+  {
+    "query": "SELECT arr[i:j+j-i-i] x FROM tango",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:677",
+    "feature": "bind-variables",
+    "toSql": "SELECT arr[i:j + j - i - i] AS x FROM tango"
+  },
+  {
+    "query": "WITH p AS \n(WITH t AS\n(\n\n    SELECT timestamp, symbol,  side, AVG(price) price, AVG(amount) amount FROM trades WHERE symbol IN 'BTC-USD'\n    SAMPLE BY 1m\n)\nSELECT * FROM t\nPIVOT (\n    sum(price)\n    FOR symbol IN ('BTC-USD')    \n    side IN ('buy', 'sell')   \n    GROUP BY timestamp\n) ) SELECT * from p where `BTC-USD_buy` > 25780 or `BTC-USD_sell` > 25780;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:4104",
+    "feature": "lexer-quoting",
+    "toSql": "WITH p AS (WITH t AS (SELECT timestamp, symbol, side, AVG(price) AS price, AVG(amount) AS amount FROM trades WHERE symbol IN 'BTC-USD' SAMPLE BY 1m) SELECT * FROM t PIVOT (sum(price) FOR symbol IN ('BTC-USD') side IN ('buy', 'sell') GROUP BY timestamp)) SELECT * FROM p WHERE \"BTC-USD_buy\" > 25780 OR \"BTC-USD_sell\" > 25780"
+  },
+  {
+    "query": "copy `test_table❤️` to '❤️🍺' with format parquet",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CopyExportTest.java:1622",
+    "feature": "lexer-quoting",
+    "toSql": "COPY test_table❤️ TO '❤️🍺' WITH format parquet"
+  },
+  {
+    "query": "DECLARE OVERRIDABLE @col := `@c` + 1 SELECT @col v FROM q",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:638",
+    "feature": "lexer-quoting",
+    "toSql": "DECLARE OVERRIDABLE @col := \"@c\" + 1 SELECT @col AS v FROM q"
+  },
+  {
+    "query": "DECLARE OVERRIDABLE @x := (1, ``) SELECT d FROM q",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:390",
+    "feature": "lexer-quoting",
+    "toSql": "DECLARE OVERRIDABLE @x := (1, \"\") SELECT d FROM q"
+  },
+  {
+    "query": "select 'a' a1$_",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6037",
+    "feature": "lexer-quoting",
+    "toSql": "SELECT 'a' AS a1$_"
+  },
+  {
+    "query": "select 'a' _a1$",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6038",
+    "feature": "lexer-quoting",
+    "toSql": "SELECT 'a' AS _a1$"
+  },
+  {
+    "query": "CREATE TABLE base (k SYMBOL, \"price$1\" DOUBLE, \"price$2\" DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/RowExpiryWindowTest.java:168",
+    "feature": "lexer-quoting",
+    "toSql": "CREATE TABLE base (k SYMBOL, price$1 DOUBLE, price$2 DOUBLE, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY WAL"
+  },
+  {
+    "query": "DECLARE @x := /* a /* b */ c */ ('a', 'b') SELECT s FROM k WHERE s IN @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5139",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE @x := ('a', 'b') SELECT s FROM k WHERE s IN @x"
+  },
+  {
+    "query": "DECLARE @x := ('a' /* a /* b */ ) */ , 'b') SELECT s FROM k WHERE s IN @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5154",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE @x := ('a', 'b') SELECT s FROM k WHERE s IN @x"
+  },
+  {
+    "query": "DECLARE @x := (1 /* a /* b */ , */ + 2) SELECT l FROM k WHERE l = @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5162",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE @x := (1 + 2) SELECT l FROM k WHERE l = @x"
+  },
+  {
+    "query": "DECLARE OVERRIDABLE /* a /* b */ c */ @y := 2 SELECT @y AS y",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5714",
+    "feature": "comments-empty-statements",
+    "toSql": "DECLARE OVERRIDABLE @y := 2 SELECT @y AS y"
+  },
+  {
+    "query": "select /* /*+ NO_INDEX(a) */ */ a,b,c from xyz where a = 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6397",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT a, b, c FROM xyz WHERE a = 1"
+  },
+  {
+    "query": "select /*+ NO_INDEX(a) /*+ IGNORED */ */ a,b,c from xyz where a = 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6417",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT a, b, c FROM xyz WHERE a = 1"
+  },
+  {
+    "query": "(x where a > 1) 'b a' where x > 1 /* this block comment",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:1534",
+    "feature": "comments-empty-statements",
+    "toSql": "(x WHERE a > 1) AS \"b a\" WHERE x > 1"
+  },
+  {
+    "query": "select 1;;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:890",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT 1"
+  },
+  {
+    "query": ";;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:909",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": " ; ;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:918",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": ";--comment",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:982",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": "; /* comment */",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:985",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": "/* comment */",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:976",
+    "feature": "comments-empty-statements",
+    "toSql": "",
+    "statements": 0
+  },
+  {
+    "query": "select 1;/* comment */",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:1108",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT 1"
+  },
+  {
+    "query": "select 1;;/*multiline comment */;--single line comment\n;select 2;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:333",
+    "feature": "comments-empty-statements",
+    "toSql": "SELECT 1;\nSELECT 2",
+    "statements": 2
+  },
+  {
+    "query": "SELECT cast(99m as byte)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:217",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT CAST(99m AS BYTE)"
+  },
+  {
+    "query": "select cast(-127m as byte)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:470",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT CAST(-127m AS BYTE)"
+  },
+  {
+    "query": "select cast(cast(2147483647m as DECIMAL(19)) as byte)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:526",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT CAST(CAST(2147483647m AS DECIMAL(19)) AS BYTE)"
+  },
+  {
+    "query": "select 123::byte + 123m",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastByteToDecimalFunctionFactoryTest.java:429",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT 123::BYTE + 123m"
+  },
+  {
+    "query": "WITH data AS (SELECT 123m AS value) SELECT cast(value as byte) FROM data",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastDecimalToByteFunctionFactoryTest.java:113",
+    "feature": "numeric-literal-typing",
+    "toSql": "WITH data AS (SELECT 123m AS value) SELECT CAST(value AS BYTE) FROM data"
+  },
+  {
+    "query": "insert into target select id, val * 2m as price, val, ts from source where id > 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:742",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO target SELECT id, val * 2m AS price, val, ts FROM source WHERE id > 1"
+  },
+  {
+    "query": "insert into mixed_types values (1, 99.99m, 'Item1', true, 100m, 1.5, 'ABC', 0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:819",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO mixed_types VALUES (1, 99.99m, 'Item1', TRUE, 100m, 1.5, 'ABC', 0)"
+  },
+  {
+    "query": "INSERT INTO t VALUES (0m), (0)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DecimalFullScaleTest.java:232",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO t VALUES (0m), (0)"
+  },
+  {
+    "query": "INSERT INTO base (ts, sym, d) VALUES ('2026-10-01T02:00:00.000000Z', 1, 20m)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewSmokeTest.java:9080",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO base (ts, sym, d) VALUES ('2026-10-01T02:00:00.000000Z', 1, 20m)"
+  },
+  {
+    "query": "DECLARE @minp := 150.00m SELECT * FROM v_sec",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:1427",
+    "feature": "numeric-literal-typing",
+    "toSql": "DECLARE @minp := 150.00m SELECT * FROM v_sec"
+  },
+  {
+    "query": "select 10d * 0d x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/math/MulDoubleFunctionFactoryTest.java:49",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT 10d * 0d AS x"
+  },
+  {
+    "query": "create table y as (select 0d a union select 3d union select 5d union select 9d union select 8d)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/UnionAllCastTest.java:864",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE TABLE y AS (SELECT 0d AS a UNION SELECT 3d UNION SELECT 5d UNION SELECT 9d UNION SELECT 8d)"
+  },
+  {
+    "query": "select greatest(4::decimal(2,1), 1d, null::decimal(1,0))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/math/GreatestNumericFunctionFactoryTest.java:61",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT greatest(4::DECIMAL(2, 1), 1d, NULL::DECIMAL(1, 0))"
+  },
+  {
+    "query": "create table y as ( select x + 0.1d as d from long_sequence(10) )",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/GroupByRewriteTest.java:340",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE TABLE y AS (SELECT x + 0.1d AS d FROM long_sequence(10))"
+  },
+  {
+    "query": "INSERT INTO TS values(to_timestamp('2019-12-04T13:20:49', 'yyyy-MM-ddTHH:mm:ss'),'X',123.33d)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1221",
+    "feature": "numeric-literal-typing",
+    "toSql": "INSERT INTO TS VALUES (to_timestamp('2019-12-04T13:20:49', 'yyyy-MM-ddTHH:mm:ss'), 'X', 123.33d)"
+  },
+  {
+    "query": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1M",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/TtlTest.java:769",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE TABLE tango (ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY HOUR TTL 1 MONTH"
+  },
+  {
+    "query": "alter table x1 set param o3MaxLag = 7d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableO3MaxLagTest.java:414",
+    "feature": "numeric-literal-typing",
+    "toSql": "ALTER TABLE x1 SET PARAM o3MaxLag = 7d"
+  },
+  {
+    "query": "SELECT avg(p.price) FROM trades AS t HORIZON JOIN prices AS p ON (t.sym = p.sym) LIST (100T, 1s, 1m, 1h, 1d) AS h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:6658",
+    "feature": "numeric-literal-typing",
+    "toSql": "SELECT avg(p.price) FROM trades AS t HORIZON JOIN prices AS p ON (t.sym = p.sym) LIST (100T, 1s, 1m, 1h, 1d) AS h"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv3 AS (SELECT ts, avg(x) AS avg_x FROM tab SAMPLE BY 10m) PARTITION BY DAY",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/DdlListenerTest.java:388",
+    "feature": "numeric-literal-typing",
+    "toSql": "CREATE MATERIALIZED VIEW mv3 AS (SELECT ts, avg(x) AS avg_x FROM tab SAMPLE BY 10m) PARTITION BY DAY"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555Z'::timestamp at time zone 'UTC'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:180",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555Z'::TIMESTAMP AT TIME ZONE 'UTC'"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555555Z'::timestamp_ns at time zone 'UTC'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:188",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555555Z'::TIMESTAMP_NS AT TIME ZONE 'UTC'"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555Z'::timestamp at time zone 'UTC' + 5",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:34",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555Z'::TIMESTAMP AT TIME ZONE 'UTC' + 5"
+  },
+  {
+    "query": "select cast('2022-03-11T22:00:30.555555555Z'::timestamp_ns at time zone 'EST' as string)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:61",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST('2022-03-11T22:00:30.555555555Z'::TIMESTAMP_NS AT TIME ZONE 'EST' AS STRING)"
+  },
+  {
+    "query": "select date_trunc('day', '2022-03-11T22:00:30.555555Z'::timestamp at time zone 'UTC')",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:96",
+    "feature": "type-syntax",
+    "toSql": "SELECT date_trunc('day', '2022-03-11T22:00:30.555555Z'::TIMESTAMP AT TIME ZONE 'UTC')"
+  },
+  {
+    "query": "select case    when to_timestamp('2022-03-11T22:00:30.555555Z') at time zone 'EST' > 0   then 'abc'   else 'cde'end",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:115",
+    "feature": "type-syntax",
+    "toSql": "SELECT CASE WHEN to_timestamp('2022-03-11T22:00:30.555555Z') AT TIME ZONE 'EST' > 0 THEN 'abc' ELSE 'cde' END"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555Z'::timestamp time",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:142",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555Z'::TIMESTAMP AS time"
+  },
+  {
+    "query": "select '2022-03-11T22:00:30.555555555Z'::timestamp_ns zone",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/date/TimestampAtTimeZoneTest.java:169",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2022-03-11T22:00:30.555555555Z'::TIMESTAMP_NS AS zone"
+  },
+  {
+    "query": "insert into t values (cast('2021-12-31 15:15:51.663+00:00' as timestamp with time zone))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1798",
+    "feature": "type-syntax",
+    "toSql": "INSERT INTO t VALUES (CAST('2021-12-31 15:15:51.663+00:00' AS TIMESTAMP WITH TIME ZONE))"
+  },
+  {
+    "query": "insert into t values (cast('2021-12-31 15:15:51.663+00:00'::varchar as timestamp with time zone))",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/InsertTest.java:1822",
+    "feature": "type-syntax",
+    "toSql": "INSERT INTO t VALUES (CAST('2021-12-31 15:15:51.663+00:00'::VARCHAR AS TIMESTAMP WITH TIME ZONE))"
+  },
+  {
+    "query": "select cast('2020-12-31 15:15:51.663+00:00' as timestamp with time zone) time, timestamp from t;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SimpleTableTest.java:83",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST('2020-12-31 15:15:51.663+00:00' AS TIMESTAMP WITH TIME ZONE) AS time, timestamp FROM t"
+  },
+  {
+    "query": "select cast(t as timestamp with time zone) from x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13672",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST(t AS TIMESTAMP WITH TIME ZONE) FROM x"
+  },
+  {
+    "query": "select cast('2005-04-02 12:00:00-07' as timestamp with time zone) col from x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13681",
+    "feature": "type-syntax",
+    "toSql": "SELECT CAST('2005-04-02 12:00:00-07' AS TIMESTAMP WITH TIME ZONE) AS col FROM x"
+  },
+  {
+    "query": "select '2020-01-01T00:00:00.000000001Z'::timestamp_ns with time zone ts",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:1428",
+    "feature": "type-syntax",
+    "toSql": "SELECT '2020-01-01T00:00:00.000000001Z'::TIMESTAMP_NS WITH TIME ZONE AS ts"
+  },
+  {
+    "query": "select concat('2020-01-01T','01:02:03.123456Z')::timestamp with time zone ts",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:2138",
+    "feature": "type-syntax",
+    "toSql": "SELECT concat('2020-01-01T', '01:02:03.123456Z')::TIMESTAMP WITH TIME ZONE AS ts"
+  },
+  {
+    "query": "insert into tt values ('2020-01-01T00:00:00.000000123Z', '2020-01-01T00:00:00.000000123Z'::timestamp_ns with time zone)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:1448",
+    "feature": "type-syntax",
+    "toSql": "INSERT INTO tt VALUES ('2020-01-01T00:00:00.000000123Z', '2020-01-01T00:00:00.000000123Z'::TIMESTAMP_NS WITH TIME ZONE)"
+  },
+  {
+    "query": "select vch::timestamp with time zone ts from tt",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TimestampQueryTest.java:2151",
+    "feature": "type-syntax",
+    "toSql": "SELECT vch::TIMESTAMP WITH TIME ZONE AS ts FROM tt",
+    "format": "select vch::timestamp with time zone ts\nfrom tt"
+  },
+  {
+    "query": "select '{1}'::double precision[] as arr from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGArraysTest.java:1000",
+    "feature": "type-syntax",
+    "toSql": "SELECT '{1}'::DOUBLE PRECISION[] AS arr FROM long_sequence(1)"
+  },
+  {
+    "query": "select '{{1},{2}}'::douBLE pREciSioN[][] as arr from long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGArraysTest.java:1014",
+    "feature": "type-syntax",
+    "toSql": "SELECT '{{1},{2}}'::DOUBLE PRECISION[][] AS arr FROM long_sequence(1)"
+  },
+  {
+    "query": "select * from long_sequence(1) where 'aaa' <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:34",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM long_sequence(1) WHERE 'aaa' <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:45",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{}'::TEXT[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:60",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{добрий,вечір}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:74",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{добрий,вечір}'::TEXT[])",
+    "format": "select *\nfrom tab\nwhere a <> all('{добрий,вечір}'::text[])"
+  },
+  {
+    "query": "select * from tab where a <> all('{aaa,bbb,ccc}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:86",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{aaa,bbb,ccc}'::TEXT[])"
+  },
+  {
+    "query": "select * from long_sequence(1) where null <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:100",
+    "feature": "predicates",
+    "toSql": "SELECT * FROM long_sequence(1) WHERE NULL <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts GROUPS unbounded preceding) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:710",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts GROUPS UNBOUNDED PRECEDING) FROM xyz"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts GROUPS between unbounded preceding and current row) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:755",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts GROUPS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM xyz"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts groups between 1+0 preceding and unbounded following exclude group) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:425",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts GROUPS BETWEEN 1 + 0 PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE GROUP) FROM xyz"
+  },
+  {
+    "query": "select a,b, f(c) over (partition by b order by ts rows between 1/1 preceding and unbounded following exclude ties) from xyz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:480",
+    "feature": "window-frames",
+    "toSql": "SELECT a, b, f(c) OVER (PARTITION BY b ORDER BY ts ROWS BETWEEN 1 / 1 PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE TIES) FROM xyz"
+  },
+  {
+    "query": "select corr(y, x) over (order by ts groups between 1 preceding and current row) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:1043",
+    "feature": "window-frames",
+    "toSql": "SELECT corr(y, x) OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM tab"
+  },
+  {
+    "query": "select cume_dist() over (order by ts groups between 1 preceding and current row) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:2458",
+    "feature": "window-frames",
+    "toSql": "SELECT cume_dist() OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM tab"
+  },
+  {
+    "query": "select ntile(4) over (order by ts groups between 1 preceding and current row) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:17002",
+    "feature": "window-frames",
+    "toSql": "SELECT ntile(4) OVER (ORDER BY ts GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM tab"
+  },
+  {
+    "query": "select cume_dist() over (order by ts range between unbounded preceding and current row exclude group) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:2432",
+    "feature": "window-frames",
+    "toSql": "SELECT cume_dist() OVER (ORDER BY ts RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE GROUP) FROM tab"
+  },
+  {
+    "query": "select cume_dist() over (order by ts range between unbounded preceding and current row exclude ties) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:2436",
+    "feature": "window-frames",
+    "toSql": "SELECT cume_dist() OVER (ORDER BY ts RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE TIES) FROM tab"
+  },
+  {
+    "query": "select nth_value(val, 1) over (order by ts rows between 3 preceding and current row exclude group) from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:13936",
+    "feature": "window-frames",
+    "toSql": "SELECT nth_value(val, 1) OVER (ORDER BY ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW EXCLUDE GROUP) FROM tab"
+  },
+  {
+    "query": "select ts, sym, avg(x) over (partition by sym order by ts range between 2 preceding and current row exclude group) a from base",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewCheckpointFunctionCompilerTest.java:706",
+    "feature": "window-frames",
+    "toSql": "SELECT ts, sym, avg(x) OVER (PARTITION BY sym ORDER BY ts RANGE BETWEEN 2 PRECEDING AND CURRENT ROW EXCLUDE GROUP) AS a FROM base"
+  },
+  {
+    "query": "select ts, sym, sum(x) over (partition by sym order by ts rows between 3 preceding and current row exclude ties) s from base",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewCheckpointFunctionCompilerTest.java:712",
+    "feature": "window-frames",
+    "toSql": "SELECT ts, sym, sum(x) OVER (PARTITION BY sym ORDER BY ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW EXCLUDE TIES) AS s FROM base"
+  },
+  {
+    "query": "DECLARE @x := CASE WHEN (v > 1) THEN (v).x ELSE 2 END SELECT @x FROM t",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:4542",
+    "feature": "expression-gaps",
+    "toSql": "DECLARE @x := CASE WHEN (v > 1) THEN (v).x ELSE 2 END SELECT @x FROM t"
+  },
+  {
+    "query": "DECLARE @x := (pg_catalog.pg_class()).relnamespace SELECT @x x FROM long_sequence(1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:4545",
+    "feature": "expression-gaps",
+    "toSql": "DECLARE @x := (pg_catalog.pg_class()).relnamespace SELECT @x AS x FROM long_sequence(1)"
+  },
+  {
+    "query": "select * from t where not not (select b from x_true limit 1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/BooleanSubQueryPredicateTest.java:252",
+    "feature": "expression-gaps",
+    "toSql": "SELECT * FROM t WHERE NOT NOT (SELECT b FROM x_true LIMIT 1)"
+  },
+  {
+    "query": "CREATE VIEW v_cte AS (WITH c AS (DECLARE OVERRIDABLE AUDITED @x := 1 SELECT @x a) SELECT * FROM c)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/view/ViewAuditTest.java:193",
+    "feature": "declare",
+    "toSql": "CREATE VIEW v_cte AS (WITH c AS (DECLARE OVERRIDABLE AUDITED @x := 1 SELECT @x AS a) SELECT * FROM c)"
+  },
+  {
+    "query": "CREATE VIEW v_bare AS SELECT * FROM (DECLARE AUDITED @x := 1 SELECT @x a)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/view/ViewAuditTest.java:192",
+    "feature": "declare",
+    "toSql": "CREATE VIEW v_bare AS SELECT * FROM (DECLARE AUDITED @x := 1 SELECT @x AS a)"
+  },
+  {
+    "query": "SELECT 1 a UNION ALL DECLARE OVERRIDABLE AUDITED @x := 2 SELECT @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5616",
+    "feature": "declare",
+    "toSql": "SELECT 1 AS a UNION ALL DECLARE OVERRIDABLE AUDITED @x := 2 SELECT @x"
+  },
+  {
+    "query": "DECLARE @x := ('a',) SELECT s FROM k WHERE s IN @x",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5409",
+    "feature": "declare",
+    "toSql": "DECLARE @x := ('a') SELECT s FROM k WHERE s IN @x"
+  },
+  {
+    "query": "DECLARE @x := 1 (SELECT @x AS x)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:4332",
+    "feature": "declare",
+    "toSql": "DECLARE @x := 1 (SELECT @x AS x)"
+  },
+  {
+    "query": "DECLARE @lim := 1, audited WHERE x > @lim",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:5867",
+    "feature": "declare",
+    "toSql": "DECLARE @lim := 1 audited WHERE x > @lim"
+  },
+  {
+    "query": "WITH c AS (SELECT 'a'::SYMBOL x) SELECT * FROM c UNION ALL WITH c AS (SELECT 'b'::SYMBOL x) SELECT * FROM c UNION ALL SELECT * FROM c",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/WithClauseTest.java:654",
+    "feature": "declare",
+    "toSql": "WITH c AS (SELECT 'a'::SYMBOL AS x) SELECT * FROM c UNION ALL WITH c AS (SELECT 'b'::SYMBOL AS x) SELECT * FROM c UNION ALL SELECT * FROM c"
+  },
+  {
+    "query": "SELECT ts, percentile_cont(v, 0.25) p FROM t SAMPLE BY 1h FILL(-1)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/groupby/PercentileContDoubleGroupByFunctionFactoryTest.java:530",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT ts, percentile_cont(v, 0.25) AS p FROM t SAMPLE BY 1h FILL(-1)"
+  },
+  {
+    "query": "SELECT ts, sum(a) FROM t SAMPLE BY 1h FILL(PREV(abs(a))) ALIGN TO CALENDAR",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByFillPrevTest.java:1988",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT ts, sum(a) FROM t SAMPLE BY 1h FILL(PREV(abs(a))) ALIGN TO CALENDAR"
+  },
+  {
+    "query": "DECLARE @f := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY 12h FILL(@f)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:2028",
+    "feature": "sample-by-fill-align",
+    "toSql": "DECLARE @f := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY 12h FILL(@f)"
+  },
+  {
+    "query": "select b, sum(a), k k1, k from x y sample by 3h align to calendar time zone rnd_str('foo','bar') with offset '00:15'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SampleBySqlParserTest.java:57",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT b, sum(a), k AS k1, k FROM x AS y SAMPLE BY 3h ALIGN TO CALENDAR TIME ZONE rnd_str('foo', 'bar') WITH OFFSET '00:15'"
+  },
+  {
+    "query": "DECLARE @tz := 'Antarctica/McMurdo' SELECT timestamp, symbol, avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ZONE @tz",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:1036",
+    "feature": "sample-by-fill-align",
+    "toSql": "DECLARE @tz := 'Antarctica/McMurdo' SELECT timestamp, symbol, avg(price) FROM trades SAMPLE BY 1h ALIGN TO CALENDAR TIME ZONE @tz"
+  },
+  {
+    "query": "DECLARE @q := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY @q h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:3750",
+    "feature": "sample-by-fill-align",
+    "toSql": "DECLARE @q := (SELECT 1) SELECT ts, count() FROM k SAMPLE BY @q h"
+  },
+  {
+    "query": "select sum(a), k from x sample by (1+2)*10L m align to calendar",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/groupby/SampleByNanoTimestampTest.java:16610",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT sum(a), k FROM x SAMPLE BY (1 + 2) * 10L m ALIGN TO CALENDAR"
+  },
+  {
+    "query": "select timestamp + 60000000 as 'timestamp', timestamp, count() from t where name = 'a' sample by (1m)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlOptimiserTest.java:4550",
+    "feature": "sample-by-fill-align",
+    "toSql": "SELECT timestamp + 60000000 AS timestamp, timestamp, count() FROM t WHERE name = 'a' SAMPLE BY (1m)"
+  },
+  {
+    "query": "SELECT ts, count() FROM (SELECT * FROM t) LATEST ON ts PARTITION BY sym SAMPLE BY 1d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByHoistEquivalenceTest.java:139",
+    "feature": "clause-order",
+    "toSql": "SELECT ts, count() FROM (SELECT * FROM t) LATEST ON ts PARTITION BY sym SAMPLE BY 1d"
+  },
+  {
+    "query": "select ts, count() c from (select * from nb) latest on ts partition by s sample by 1d",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:1472",
+    "feature": "clause-order",
+    "toSql": "SELECT ts, count() AS c FROM (SELECT * FROM nb) LATEST ON ts PARTITION BY s SAMPLE BY 1d"
+  },
+  {
+    "query": "select * from x latest by b where b = 'HNR'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/QueryExecutionTimeoutTest.java:331",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM x LATEST BY b WHERE b = 'HNR'"
+  },
+  {
+    "query": "select * from x latest by b where b = 'PEHN' and a < 22 and test_match()",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:8285",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM x LATEST BY b WHERE b = 'PEHN' AND a < 22 AND test_match()"
+  },
+  {
+    "query": "DECLARE @c := (SELECT 1) SELECT * FROM k LATEST ON ts PARTITION BY @c",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:2005",
+    "feature": "clause-order",
+    "toSql": "DECLARE @c := (SELECT 1) SELECT * FROM k LATEST ON ts PARTITION BY @c"
+  },
+  {
+    "query": "DECLARE @ts := timestamp, @sym := symbol SELECT * FROM trades LATEST ON @ts PARTITION BY @sym;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:875",
+    "feature": "clause-order",
+    "toSql": "DECLARE @ts := timestamp, @sym := symbol SELECT * FROM trades LATEST ON @ts PARTITION BY @sym"
+  },
+  {
+    "query": "select * from y limit 5,",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:176",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM y LIMIT 5"
+  },
+  {
+    "query": "select * from y limit ,5",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LimitTest.java:192",
+    "feature": "clause-order",
+    "toSql": "SELECT * FROM y LIMIT 0, 5"
+  },
+  {
+    "query": "SELECT * FROM cities\nPIVOT (\n    SUM(population)\n    FOR year - 2000 IN (0, 10)\n    GROUP BY country\n) ORDER BY country\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:2914",
+    "feature": "pivot",
+    "toSql": "SELECT * FROM cities PIVOT (SUM(population) FOR year - 2000 IN (0, 10) GROUP BY country) ORDER BY country"
+  },
+  {
+    "query": "cities\nPIVOT (\n    SUM(population)\n    FOR\n        year IN (2000 as D1, 2010 D2, 2020 as D3)\n    GROUP BY country\n);\n",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:2934",
+    "feature": "pivot",
+    "toSql": "cities PIVOT (SUM(population) FOR year IN (2000 AS D1, 2010 AS D2, 2020 AS D3) GROUP BY country)"
+  },
+  {
+    "query": "SELECT * FROM cities PIVOT (SUM(population) FOR (SELECT 'NL')::VARCHAR IN ('NL') GROUP BY year)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/PivotTest.java:415",
+    "feature": "pivot",
+    "toSql": "SELECT * FROM cities PIVOT (SUM(population) FOR (SELECT 'NL')::VARCHAR IN ('NL') GROUP BY year)"
+  },
+  {
+    "query": "SELECT * FROM t1 ASOF JOIN t2 TOLERANCE 2s;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/AsOfJoinTest.java:1987",
+    "feature": "join-aliases",
+    "toSql": "SELECT * FROM t1 ASOF JOIN t2 TOLERANCE 2s"
+  },
+  {
+    "query": "SELECT * FROM t1 LT JOIN t2 TOLERANCE 2s;",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/AsOfJoinTest.java:5251",
+    "feature": "join-aliases",
+    "toSql": "SELECT * FROM t1 LT JOIN t2 TOLERANCE 2s"
+  },
+  {
+    "query": "select t.* from trades t WINDOW JOIN quotes range between 2 second preceding and 1 second preceding order by t.timestamp",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:14994",
+    "feature": "join-aliases",
+    "toSql": "SELECT t.* FROM trades AS t WINDOW JOIN quotes RANGE BETWEEN 2 SECOND PRECEDING AND 1 SECOND PRECEDING ORDER BY t.timestamp"
+  },
+  {
+    "query": "DECLARE @q := (SELECT 3_600_000_000L) SELECT k.ts, sum(p.v) FROM k WINDOW JOIN p RANGE BETWEEN @q PRECEDING AND CURRENT ROW",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/DeclareTest.java:3753",
+    "feature": "join-aliases",
+    "toSql": "DECLARE @q := (SELECT 3_600_000_000L) SELECT k.ts, sum(p.v) FROM k WINDOW JOIN p RANGE BETWEEN @q PRECEDING AND CURRENT ROW"
+  },
+  {
+    "query": "explain select h.offset, avg(ws.v) from (select * from wm where now() < '2100-01-01') wm horizon join ws on (wm.k = ws.k) range from 0s to 2s step 1s as h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/BooleanSubQueryRuntimeGateTest.java:321",
+    "feature": "join-aliases",
+    "toSql": "EXPLAIN SELECT h.offset, avg(ws.v) FROM (SELECT * FROM wm WHERE now() < '2100-01-01') AS wm HORIZON JOIN ws ON (wm.k = ws.k) RANGE FROM 0s TO 2s STEP 1s AS h"
+  },
+  {
+    "query": "SELECT t.sym, q.id FROM trades t HORIZON JOIN (quotes WHERE bid > 50) q ON (sym) LIST (0s) AS h",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/HorizonJoinProjectionTest.java:1615",
+    "feature": "join-aliases",
+    "toSql": "SELECT t.sym, q.id FROM trades AS t HORIZON JOIN (quotes WHERE bid > 50) AS q ON (sym) LIST (0s) AS h"
+  },
+  {
+    "query": "SELECT val FROM t, UNNEST(t.arr)(val) WHERE val > 1.0",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:14224",
+    "feature": "join-aliases",
+    "toSql": "SELECT val FROM t, UNNEST(t.arr)(val) WHERE val > 1.0"
+  },
+  {
+    "query": "select * from information_schema.tables() order by table_name",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/catalogue/InformationSchemaTablesFunctionFactoryTest.java:42",
+    "feature": "from-sources",
+    "toSql": "SELECT * FROM information_schema.tables() ORDER BY table_name"
+  },
+  {
+    "query": "SELECT table_type, is_insertable_into FROM information_schema.tables()",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/lv/LiveViewTest.java:1193",
+    "feature": "from-sources",
+    "toSql": "SELECT table_type, is_insertable_into FROM information_schema.tables()"
+  },
+  {
+    "query": "SELECT table_name, column_name FROM information_schema.columns() ORDER BY table_name, column_name",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/catalogue/InformationSchemaColumnsFunctionFactoryTest.java:78",
+    "feature": "from-sources",
+    "toSql": "SELECT table_name, column_name FROM information_schema.columns() ORDER BY table_name, column_name"
+  },
+  {
+    "query": "select * from a union distinct select * from b union select * from c",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:13928",
+    "feature": "from-sources",
+    "toSql": "SELECT * FROM a UNION SELECT * FROM b UNION SELECT * FROM c"
+  },
+  {
+    "query": "create table weather_data_historical ( sensor_time timestamp not null, sensor_day symbol, min_temperature_out float, max_temperature_out float, avg_temperature_out float, snow_height float, rain_acc_24h float, max_wind_gust_speed float ) TIMESTAMP(sensor_time)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/HashJoinTest.java:136",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE weather_data_historical (sensor_time TIMESTAMP, sensor_day SYMBOL, min_temperature_out FLOAT, max_temperature_out FLOAT, avg_temperature_out FLOAT, snow_height FLOAT, rain_acc_24h FLOAT, max_wind_gust_speed FLOAT) TIMESTAMP(sensor_time)"
+  },
+  {
+    "query": "CREATE TABLE \"quickstart-events4\" ( \"flag\" BOOLEAN NOT NULL, \"id8\" SMALLINT NOT NULL, \"id16\" SMALLINT NOT NULL, \"id32\" INT NOT NULL, \"id64\" BIGINT NOT NULL, \"idFloat\" REAL NOT NULL, \"idDouble\" DOUBLE PRECISION NOT NULL, \"idBytes\" BYTEA NOT NULL, \"msg\" TEXT NULL)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:3045",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE \"quickstart-events4\" (flag BOOLEAN, id8 SMALLINT, id16 SMALLINT, id32 INT, id64 BIGINT, idFloat REAL, idDouble DOUBLE PRECISION, idBytes BYTEA, msg TEXT)"
+  },
+  {
+    "query": "alter table x add column \"mycol\" int not null",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAddColumnTest.java:295",
+    "feature": "create-table-options",
+    "toSql": "ALTER TABLE x ADD COLUMN mycol INT"
+  },
+  {
+    "query": "create table x as (tab), cast(a as double), cast(c as symbol capacity 20 nocache), index(c capacity 100000000)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:2889",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE x AS (tab), CAST(a AS DOUBLE), CAST(c AS SYMBOL CAPACITY 20 NOCACHE), INDEX(c CAPACITY 100000000)"
+  },
+  {
+    "query": "create table x as (tab), cast(a as double), cast(c as symbol capacity 16)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserTest.java:2839",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE x AS (tab), CAST(a AS DOUBLE), CAST(c AS SYMBOL CAPACITY 16)"
+  },
+  {
+    "query": "create table new as (select * from old), index(s), cast(s as symbol), cast(ts as date)",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/CreateTableTest.java:468",
+    "feature": "create-table-options",
+    "toSql": "CREATE TABLE new AS (SELECT * FROM old), CAST(s AS SYMBOL), CAST(ts AS DATE), INDEX(s)"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 1m) TTL 5H",
+    "source": "questdb-enterprise:src/test/java/com/questdb/cairo/cold/storage/StoragePolicyWriterTest.java:2510",
+    "feature": "mat-view-create-options",
+    "toSql": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 1m) TTL 5 HOURS"
+  },
+  {
+    "query": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 2h) TTL 24 MONTHS",
+    "source": "questdb-enterprise:src/test/java/com/questdb/cairo/cold/storage/StoragePolicyWriterTest.java:2637",
+    "feature": "mat-view-create-options",
+    "toSql": "CREATE MATERIALIZED VIEW mv15 AS (SELECT ts, avg(x) FROM t15 SAMPLE BY 2h) TTL 24 MONTHS"
+  },
+  {
+    "query": "create materialized view price_1h refresh incremental period(length 1d) as select sym, last(price) as price, ts from base_price sample by 1h;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewReloadOnRestartTest.java:970",
+    "feature": "mat-view-create-options",
+    "toSql": "CREATE MATERIALIZED VIEW price_1h REFRESH IMMEDIATE PERIOD (LENGTH 1d) AS SELECT sym, last(price) AS price, ts FROM base_price SAMPLE BY 1h",
+    "skipAutocomplete": "INCREMENTAL is an obsolete synonym of IMMEDIATE and intentionally not suggested"
+  },
+  {
+    "query": "ALTER TABLE t ALTER COLUMN s TYPE SYMBOL INDEX",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/composite/CompositeColumnMappingTest.java:87",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE t ALTER COLUMN s TYPE SYMBOL INDEX"
+  },
+  {
+    "query": "alter table x alter column ik type symbol index",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableChangeColumnTypeTest.java:933",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE x ALTER COLUMN ik TYPE SYMBOL INDEX"
+  },
+  {
+    "query": "alter table tab add val2 DOUBLE",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AggregateTest.java:2198",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE tab ADD COLUMN val2 DOUBLE"
+  },
+  {
+    "query": "alter table x add mycol int not null, mycol2 int",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAddColumnTest.java:82",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE x ADD COLUMN mycol INT, mycol2 INT"
+  },
+  {
+    "query": "alter table x add \"spa ce\" string",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAddColumnTest.java:324",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE x ADD COLUMN \"spa ce\" STRING"
+  },
+  {
+    "query": "alter table product rename column name to name1, timestamp to timestamp1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/TableWriterAsyncCmdTest.java:406",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE product RENAME COLUMN name TO name1, timestamp TO timestamp1"
+  },
+  {
+    "query": "alter table test rename column col1 to colA, col2 to colB",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/integration/acl/HttpCallbackTest.java:33",
+    "feature": "alter-table-columns",
+    "toSql": "ALTER TABLE test RENAME COLUMN col1 TO colA, col2 TO colB"
+  },
+  {
+    "query": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2024-01-01'",
+    "source": "questdb:core/src/test/java/io/questdb/test/AdaptiveParquetColumnConversionRestartTest.java:75",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2024-01-01'"
+  },
+  {
+    "query": "ALTER TABLE tango CONVERT PARTITION TO PARQUET LIST '2025-01-01'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:2399",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE tango CONVERT PARTITION TO PARQUET LIST '2025-01-01'"
+  },
+  {
+    "query": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2020-01-01' WITH (bloom_filter_columns = 'x')",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/parquet/ParquetWriteTest.java:2774",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE x CONVERT PARTITION TO PARQUET LIST '2020-01-01' WITH (bloom_filter_columns = 'x')"
+  },
+  {
+    "query": "ALTER TABLE t CONVERT PARTITION TO NATIVE LIST '2024-01-01'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/DataSyncFailureCleanupTest.java:62",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE t CONVERT PARTITION TO NATIVE LIST '2024-01-01'"
+  },
+  {
+    "query": "ALTER TABLE t_cov CONVERT PARTITION TO PARQUET LIST '2024-01-01', '2024-01-02'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/covering/CoveringIndexParquetNativeRoundTripTest.java:273",
+    "feature": "convert-partition",
+    "toSql": "ALTER TABLE t_cov CONVERT PARTITION TO PARQUET LIST '2024-01-01', '2024-01-02'"
+  },
+  {
+    "query": "BEGIN TRANSACTION",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:3241",
+    "feature": "pg-session-statements",
+    "toSql": "BEGIN TRANSACTION"
+  },
+  {
+    "query": "COMMIT TRANSACTION;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:125",
+    "feature": "pg-session-statements",
+    "toSql": "COMMIT TRANSACTION"
+  },
+  {
+    "query": "BEGIN; select 2",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:324",
+    "feature": "pg-session-statements",
+    "toSql": "BEGIN;\nSELECT 2",
+    "statements": 2
+  },
+  {
+    "query": "DEALLOCATE qwp_stmt",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressDdlExecTest.java:296",
+    "feature": "pg-session-statements",
+    "toSql": "DEALLOCATE qwp_stmt"
+  },
+  {
+    "query": "SET TIME ZONE 'UTC'",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:3357",
+    "feature": "pg-session-statements",
+    "toSql": "SET TIME ZONE 'UTC'"
+  },
+  {
+    "query": "SET x TO y, z",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/SqlCompilerImplTest.java:3330",
+    "feature": "pg-session-statements",
+    "toSql": "SET x TO y, z"
+  },
+  {
+    "query": "SET application_name = 'qwp'",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/qwp/QwpEgressDdlExecTest.java:291",
+    "feature": "pg-session-statements",
+    "toSql": "SET application_name = 'qwp'"
+  },
+  {
+    "query": "DISCARD ALL",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:860",
+    "feature": "pg-session-statements",
+    "toSql": "DISCARD ALL"
+  },
+  {
+    "query": "CLOSE ALL;UNLISTEN *;RESET ALL;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/pgwire/PGMultiStatementMessageTest.java:103",
+    "feature": "pg-session-statements",
+    "toSql": "CLOSE ALL;\nUNLISTEN *;\nRESET ALL",
+    "statements": 3
+  },
+  {
+    "query": "DROP ALL",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/DdlListenerTest.java:173",
+    "feature": "misc-statements",
+    "toSql": "DROP ALL TABLES"
+  },
+  {
+    "query": "drop all;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/mv/MatViewTest.java:3561",
+    "feature": "misc-statements",
+    "toSql": "DROP ALL TABLES"
+  },
+  {
+    "query": "update tblx as xx set tt = 1 from tbly y where xx.x = y and x > 10",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserUpdateTest.java:392",
+    "feature": "misc-statements",
+    "toSql": "UPDATE tblx xx SET tt = 1 FROM tbly AS y WHERE xx.x = y AND x > 10"
+  },
+  {
+    "query": "update tblx as xx set tt = 1 from (tbly LIMIT 10) y where xx.x = y and x > 10",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/SqlParserUpdateTest.java:446",
+    "feature": "misc-statements",
+    "toSql": "UPDATE tblx xx SET tt = 1 FROM (tbly LIMIT 10) AS y WHERE xx.x = y AND x > 10"
+  },
+  {
+    "query": "vacuum partitions tbl",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/o3/O3PartitionPurgeTest.java:1293",
+    "feature": "misc-statements",
+    "toSql": "VACUUM TABLE tbl"
+  },
+  {
+    "query": "VACUUM partitions \"таблица\";",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/VacuumTablePartitionTest.java:43",
+    "feature": "misc-statements",
+    "toSql": "VACUUM TABLE таблица"
+  },
+  {
+    "query": "ALTER TABLE x ALTER COLUMN e SET PARQUET(BYTE_STREAM_SPLIT)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/AlterTableAlterColumnTest.java:881",
+    "feature": "option-names",
+    "toSql": "ALTER TABLE x ALTER COLUMN e SET PARQUET(byte_stream_split)"
+  },
+  {
+    "query": "SELECT count() c FROM j WHERE json_extract(text,'$.a')::real = 0.1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/json/JsonExtractCastScenariosTest.java:393",
+    "feature": "option-names",
+    "toSql": "SELECT count() AS c FROM j WHERE json_extract(text, '$.a')::REAL = 0.1"
+  },
+  {
+    "query": "select cast(a as string)::regclass b, a from tab",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/cast/CastTest.java:5588",
+    "feature": "option-names",
+    "toSql": "SELECT CAST(a AS STRING)::REGCLASS AS b, a FROM tab"
+  },
+  {
+    "query": "select * from tab where a <> all('{abc,xyz}'::text[])",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/bool/AllNotEqStrFunctionFactoryTest.java:60",
+    "feature": "option-names",
+    "toSql": "SELECT * FROM tab WHERE a <> ALL ('{abc,xyz}'::TEXT[])"
+  },
+  {
+    "query": "SELECT * FROM checkpoint_status();",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/SqlValidationTest.java:117",
+    "feature": "functions-list",
+    "toSql": "SELECT * FROM checkpoint_status()"
+  },
+  {
+    "query": "select worker_id, username, start_time, phase, export_path, request_source, export_sql, message from export_activity()",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/functions/activity/ExportActivityFunctionFactoryTest.java:68",
+    "feature": "functions-list",
+    "toSql": "SELECT worker_id, username, start_time, phase, export_path, request_source, export_sql, message FROM export_activity()"
+  },
+  {
+    "query": "CREATE TABLE tango (left DOUBLE[][], right DOUBLE[][])",
+    "source": "questdb:core/src/test/java/io/questdb/test/cairo/ArrayTest.java:1020",
+    "feature": "reserved-words",
+    "toSql": "CREATE TABLE tango (\"left\" DOUBLE[][], \"right\" DOUBLE[][])"
+  },
+  {
+    "query": "SELECT typeOf(f) ft, typeOf(l) lt FROM a4b LIMIT 1",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/CompiledFilterRegressionTest.java:8501",
+    "feature": "reserved-words",
+    "toSql": "SELECT typeOf(f) AS ft, typeOf(l) AS \"lt\" FROM a4b LIMIT 1"
+  },
+  {
+    "query": "CREATE TABLE payload (k INT, b BOOLEAN, by BYTE, sh SHORT, ch CHAR, i INT, l LONG, d DATE, ts TIMESTAMP, ns TIMESTAMP_NS, f FLOAT, dbl DOUBLE, s SYMBOL, unused STRING)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/join/HashJoinBuildFramesTest.java:75",
+    "feature": "reserved-words",
+    "toSql": "CREATE TABLE payload (k INT, b BOOLEAN, \"by\" BYTE, sh SHORT, ch CHAR, i INT, l LONG, d DATE, ts TIMESTAMP, ns TIMESTAMP_NS, f FLOAT, dbl DOUBLE, s SYMBOL, unused STRING)"
+  },
+  {
+    "query": "create table tab (value int, when long, ts timestamp) timestamp(ts) partition by day bypass wal;",
+    "source": "questdb:core/src/test/java/io/questdb/test/cutlass/http/IODispatcherTest.java:248",
+    "feature": "reserved-words",
+    "toSql": "CREATE TABLE tab (value INT, \"when\" LONG, ts TIMESTAMP) TIMESTAMP(ts) PARTITION BY DAY BYPASS WAL"
+  },
+  {
+    "query": "select when, version, temperature from forecasts latest on version partition by when",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/LatestByTest.java:2261",
+    "feature": "reserved-words",
+    "toSql": "SELECT \"when\", version, temperature FROM forecasts LATEST ON version PARTITION BY \"when\""
+  },
+  {
+    "query": "SELECT sum(x) OVER window FROM t WINDOW window AS (ORDER BY ts)",
+    "source": "questdb:core/src/test/java/io/questdb/test/griffin/engine/window/WindowFunctionTest.java:10011",
+    "feature": "reserved-words",
+    "toSql": "SELECT sum(x) OVER window FROM t WINDOW window AS (ORDER BY ts)"
+  },
+  {
+    "query": "CREATE RESOURCE GROUP analytics WITH (memory_limit = '8M', cpu_weight = 200)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:220",
+    "feature": "ent-resource-groups",
+    "toSql": "CREATE RESOURCE GROUP analytics WITH (memory_limit = '8M', cpu_weight = 200)"
+  },
+  {
+    "query": "CREATE RESOURCE GROUP IF NOT EXISTS analytics WITH (cpu_weight = 100)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:407",
+    "feature": "ent-resource-groups",
+    "toSql": "CREATE RESOURCE GROUP IF NOT EXISTS analytics WITH (cpu_weight = 100)"
+  },
+  {
+    "query": "ALTER RESOURCE GROUP DEFAULT SET (max_active_queries = 1, max_queued_queries = 2, queue_timeout = '30s', memory_limit = '8M')",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupHttpTest.java:931",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER RESOURCE GROUP DEFAULT SET (max_active_queries = 1, max_queued_queries = 2, queue_timeout = '30s', memory_limit = '8M')"
+  },
+  {
+    "query": "ALTER RESOURCE GROUP analytics RESET (memory_limit, cpu_weight)",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:251",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER RESOURCE GROUP analytics RESET (memory_limit, cpu_weight)"
+  },
+  {
+    "query": "ALTER RESOURCE GROUP analytics RENAME TO reporting",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupSqlCompilerTest.java:116",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER RESOURCE GROUP analytics RENAME TO reporting"
+  },
+  {
+    "query": "DROP RESOURCE GROUP IF EXISTS batch",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupCatalogRestartTest.java:159",
+    "feature": "ent-resource-groups",
+    "toSql": "DROP RESOURCE GROUP IF EXISTS batch"
+  },
+  {
+    "query": "ALTER GROUP a SET RESOURCE GROUP low MAPPING PRIORITY 20",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/security/ResourceGroupOwnershipTest.java:130",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER GROUP a SET RESOURCE GROUP low MAPPING PRIORITY 20"
+  },
+  {
+    "query": "ALTER SERVICE ACCOUNT svc SET RESOURCE GROUP rg",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1047",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER SERVICE ACCOUNT svc SET RESOURCE GROUP rg"
+  },
+  {
+    "query": "ALTER SERVICE ACCOUNT svc UNSET RESOURCE GROUP",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1048",
+    "feature": "ent-resource-groups",
+    "toSql": "ALTER SERVICE ACCOUNT svc UNSET RESOURCE GROUP"
+  },
+  {
+    "query": "CREATE VIEW v_audit_owned AS (SELECT ts, x FROM foo) WITH AUDIT OWNED BY 'group1'",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateViewTest.java:131",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE VIEW v_audit_owned AS (SELECT ts, x FROM foo) WITH AUDIT OWNED BY group1"
+  },
+  {
+    "query": "CREATE VIEW v_owned_audit AS (SELECT ts, x FROM foo) OWNED BY 'group1' WITH AUDIT;",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateViewTest.java:87",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE VIEW v_owned_audit AS (SELECT ts, x FROM foo) WITH AUDIT OWNED BY group1"
+  },
+  {
+    "query": "CREATE OR REPLACE VIEW v_audit AS (SELECT ts, x FROM foo WHERE x > 0) WITH AUDIT",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntShowCreateViewTest.java:58",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE OR REPLACE VIEW v_audit AS (SELECT ts, x FROM foo WHERE x > 0) WITH AUDIT"
+  },
+  {
+    "query": "CREATE VIEW view_c AS (SELECT ts, symbol, price FROM trades WHERE symbol = 'MSFT') WITH AUDIT",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/view/ViewAuditTest.java:674",
+    "feature": "ent-view-audit",
+    "toSql": "CREATE VIEW view_c AS (SELECT ts, symbol, price FROM trades WHERE symbol = 'MSFT') WITH AUDIT"
+  },
+  {
+    "query": "GRANT CANCEL ANY COPY TO canceller",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/lifecycle/CopyThroughDemoteTest.java:80",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT CANCEL ANY COPY TO canceller"
+  },
+  {
+    "query": "GRANT SET REFRESH LIMIT ON mv TO testUser",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/security/AlterPermissionTest.java:171",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT SET REFRESH LIMIT ON mv TO testUser"
+  },
+  {
+    "query": "GRANT SET MEMORY LIMIT TO granted_sa",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/security/AdminSecurityContextTest.java:139",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT SET MEMORY LIMIT TO granted_sa"
+  },
+  {
+    "query": "grant rename table on test to test_user",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/cairo/wal/transfer/ReplicationAclTest.java:260",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT rename table ON test TO test_user"
+  },
+  {
+    "query": "GRANT CANCEL ANY COPY ON my_table TO admin;",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/griffin/EntSqlParserTest.java:1269",
+    "feature": "ent-grant-revoke",
+    "toSql": "GRANT CANCEL ANY COPY ON my_table TO admin"
+  },
+  {
+    "query": "alter table trades add column value double owned by group11",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/HttpExternalGroupTest.java:396",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER TABLE trades ADD COLUMN value DOUBLE OWNED BY group11"
+  },
+  {
+    "query": "ALTER USER memory_user SET MEMORY LIMIT '64M'",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupHttpTest.java:1002",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER USER memory_user SET MEMORY LIMIT '64M'"
+  },
+  {
+    "query": "ALTER GROUP memory_low SET MEMORY LIMIT '1M'",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/resourcegroup/ResourceGroupHttpTest.java:1012",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER GROUP memory_low SET MEMORY LIMIT '1M'"
+  },
+  {
+    "query": "CREATE GROUP g1 WITH EXTERNAL ALIAS ext_g",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:717",
+    "feature": "ent-users-groups",
+    "toSql": "CREATE GROUP g1 WITH EXTERNAL ALIAS 'ext_g'"
+  },
+  {
+    "query": "ALTER GROUP g DROP EXTERNAL ALIAS ext_g",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/AclAuditLogTest.java:1039",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER GROUP g DROP EXTERNAL ALIAS 'ext_g'"
+  },
+  {
+    "query": "alter user minion with password null",
+    "source": "questdb-enterprise:questdb-ent/src/test/java/com/questdb/acl/HttpBasicDynamicAuthenticationTest.java:221",
+    "feature": "ent-users-groups",
+    "toSql": "ALTER USER minion WITH PASSWORD 'null'",
+    "skipAutocomplete": "password values are free text; NULL/TRUE/FALSE are deliberately not suggested there"
+  }
+]

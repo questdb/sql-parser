@@ -146,3 +146,72 @@ describe("docs corpus, capitalized", () => {
     },
   )
 })
+
+// PR #42 review: an unquoted password is case-sensitive text on the server
+// (EntSqlCompilerImpl.parsePassword), so capitalizing must not change it.
+describe("capitalize leaves unquoted password values alone", () => {
+  it.each([
+    "ALTER USER u WITH PASSWORD null",
+    "ALTER SERVICE ACCOUNT sa WITH PASSWORD select",
+    "alter user u with password abc",
+    "CREATE USER u WITH PASSWORD null",
+  ])("%s", (sql) => {
+    const out = format(sql, { capitalize: true })
+    const value = sql.split(/password /i)[1]
+    expect(out.endsWith(` ${value}`)).toBe(true)
+    expect(out).toMatch(/PASSWORD /)
+  })
+})
+
+// PR #42 review: IS / ILIKE / DECLARE used as column names are names, not
+// syntax, and keep their spelling under capitalize.
+describe("capitalize keeps keyword-named columns as written", () => {
+  it("CREATE TABLE", () => {
+    expect(
+      format("create table names (is int, ilike int, declare int)", {
+        capitalize: true,
+      }),
+    ).toBe("CREATE TABLE names (\n  is INT,\n  ilike INT,\n  declare INT\n)")
+  })
+
+  it("ALTER TABLE ADD COLUMN", () => {
+    expect(
+      format("alter table t add column ilike int", { capitalize: true }),
+    ).toBe("ALTER TABLE t\nADD COLUMN ilike INT")
+  })
+
+  it("still capitalizes the real operators", () => {
+    expect(
+      format("select a from t where a is null and b ilike 'x'", {
+        capitalize: true,
+      }),
+    ).toContain("WHERE a IS NULL AND b ILIKE 'x'")
+  })
+})
+
+// PR #42 review: one statement the parser does not support must not turn
+// capitalization off for the other statements of the script.
+describe("capitalize per statement", () => {
+  it("capitalizes the statements that parse", () => {
+    expect(
+      format("select 1; select .5m + 1; select 2", { capitalize: true }),
+    ).toBe("SELECT 1;\n\nselect .5m + 1;\n\nSELECT 2")
+  })
+
+  it("keeps semicolons inside strings and comments out of the split", () => {
+    const out = format(
+      "select ';' from t; select .5m + 1; /* ; */ select x from t",
+      { capitalize: true },
+    )
+    expect(out).toContain("SELECT ';'")
+    expect(out).toContain("FROM t;")
+    expect(out).toContain("select .5m + 1;")
+    expect(out).toMatch(/SELECT x\nFROM t$/)
+  })
+
+  it("still capitalizes a fully valid script in one pass", () => {
+    expect(format("select 1; select 2", { capitalize: true })).toBe(
+      "SELECT 1;\n\nSELECT 2",
+    )
+  })
+})

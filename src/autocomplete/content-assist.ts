@@ -2,9 +2,11 @@ import { type ILexingError, IToken, TokenType } from "chevrotain"
 import { parse as parseRaw } from "../parser/parser"
 import { visitor } from "../parser/visitor"
 import { QuestDBLexer } from "../parser/lexer"
+import { CLAUSE_IDENTIFIER_KEYWORD_NAMES } from "../parser/tokens"
 import type { Statement } from "../parser/ast"
 import {
   IDENTIFIER_KEYWORD_TOKENS,
+  IDENTIFIER_TOKENS,
   EXPRESSION_OPERATORS,
 } from "./token-classification"
 import {
@@ -36,6 +38,7 @@ const WORD_BOUNDARY_CHARS = new Set([
   "%",
   "'",
   '"',
+  "`",
   "|",
   "&",
   "^",
@@ -580,10 +583,18 @@ function extractTables(fullSql: string, tokens: IToken[]): ExtractResult {
 
       let alias: string | undefined
       let aliasStart = tableNameResult.nextIndex
-      if (tokens[aliasStart]?.tokenType.name === "As") {
+      const explicitAs = tokens[aliasStart]?.tokenType.name === "As"
+      if (explicitAs) {
         aliasStart++
       }
-      if (isIdentifierLike(tokens[aliasStart])) {
+      if (
+        isIdentifierLike(tokens[aliasStart]) &&
+        // `FROM t GROUP BY`, `FROM t LEFT JOIN`: clause words are no alias
+        (explicitAs ||
+          !CLAUSE_IDENTIFIER_KEYWORD_NAMES.has(
+            tokens[aliasStart].tokenType.name,
+          ))
+      ) {
         alias = tokenToNamePart(tokens[aliasStart])
       }
 
@@ -750,7 +761,9 @@ function classifyIdentifierPath(ruleStack: string[]): PositionKind {
   // columnRef without an enclosing expression rule = bare column-name reference.
   // E.g. ALTER TABLE x DROP COLUMN <name>, CREATE INDEX ON x(<name>).
   // Columns are valid; functions and other tables are not.
-  if (ruleStack.includes("columnRef")) return "columnReference"
+  // keyColumn = DEDUP KEYS / EXPIRE ROWS KEEP ... ON / PARTITION BY columns.
+  if (ruleStack.includes("columnRef") || ruleStack.includes("keyColumn"))
+    return "columnReference"
 
   if (ruleStack.includes("tableName")) {
     // tableSource = under fromClause / joinClause / tableRef (functions OK).
@@ -848,6 +861,8 @@ interface ComputeResult extends CategoryFlags {
   isConditionContext: boolean
   contextKeywords: string[]
   contextFunctions: string[]
+  /** Rule stack for columns bound to the object being created or altered. */
+  objectColumnRuleStack?: string[]
 }
 
 // SUBSAMPLE methods (questdb/questdb#7013). The grammar reads the method
@@ -872,6 +887,90 @@ function contextFunctionSuggestions(
   return inSubsample ? [...SUBSAMPLE_METHODS] : []
 }
 
+// Enterprise permission names (Permission.java namePermissionMap)
+export const PERMISSION_NAMES: readonly string[] = [
+  "ALL",
+  "SELECT",
+  "INSERT",
+  "UPDATE",
+  "CREATE TABLE",
+  "DROP TABLE",
+  "RENAME TABLE",
+  "TRUNCATE TABLE",
+  "ADD COLUMN",
+  "DROP COLUMN",
+  "RENAME COLUMN",
+  "ALTER COLUMN TYPE",
+  "ALTER COLUMN CACHE",
+  "ALTER SYMBOL CAPACITY",
+  "ADD INDEX",
+  "DROP INDEX",
+  "REINDEX",
+  "ATTACH PARTITION",
+  "DETACH PARTITION",
+  "DROP PARTITION",
+  "SET TABLE PARAM",
+  "SET TABLE TYPE",
+  "SET TABLE FORMAT",
+  "RESUME WAL",
+  "CREATE GROUP",
+  "DROP GROUP",
+  "CREATE USER",
+  "DROP USER",
+  "CREATE SERVICE ACCOUNT",
+  "DROP SERVICE ACCOUNT",
+  "ADD USER",
+  "REMOVE USER",
+  "CANCEL ANY COPY",
+  "BACKUP TABLE",
+  "BACKUP DATABASE",
+  "SNAPSHOT",
+  "VACUUM TABLE",
+  "ENABLE USER",
+  "DISABLE USER",
+  "ADD PASSWORD",
+  "REMOVE PASSWORD",
+  "ADD EXTERNAL ALIAS",
+  "REMOVE EXTERNAL ALIAS",
+  "CREATE JWK",
+  "DROP JWK",
+  "CREATE REST TOKEN",
+  "DROP REST TOKEN",
+  "LIST USERS",
+  "USER DETAILS",
+  "DEDUP ENABLE",
+  "DEDUP DISABLE",
+  "HTTP",
+  "PGWIRE",
+  "ILP",
+  "SQL ENGINE ADMIN",
+  "SYSTEM ADMIN",
+  "CREATE MATERIALIZED VIEW",
+  "DROP MATERIALIZED VIEW",
+  "REFRESH MATERIALIZED VIEW",
+  "SETTINGS",
+  "DATABASE ADMIN",
+  "AUDIT VIEW",
+  "CREATE VIEW",
+  "DROP VIEW",
+  "CREATE LIVE VIEW",
+  "DROP LIVE VIEW",
+  "COMPILE VIEW",
+  "ALTER VIEW",
+  "SET REFRESH LIMIT",
+  "SET REFRESH TYPE",
+  "CONVERT PARTITION TO PARQUET",
+  "CONVERT PARTITION TO NATIVE",
+  "SET PARQUET SETTINGS",
+  "SET STORAGE POLICY",
+  "REMOVE STORAGE POLICY",
+  "ENABLE STORAGE POLICY",
+  "DISABLE STORAGE POLICY",
+  "SWITCH ROLE",
+  "SET MEMORY LIMIT",
+  "RESOURCE GROUP ADMIN",
+]
+
 // Category names valid inside SHOW CREATE DATABASE (INCLUDE|EXCLUDE) ( ... ).
 // The grammar consumes these via `identifier` (they are non-reserved), so only
 // the explicit `ALL` token surfaces on its own; re-inject the rest.
@@ -887,6 +986,66 @@ const DATABASE_CATEGORY_KEYWORDS = [
   "SCHEMA",
   "ACL",
 ]
+
+/**
+ * Next words of every server permission name that extends the words typed so
+ * far in the current GRANT / REVOKE list item.
+ */
+function typedPermissionWords(tokens: IToken[]): string[] {
+  const words: string[] = []
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const name = tokens[i].tokenType.name
+    if (name === "Grant" || name === "Revoke" || name === "Comma") break
+    words.unshift(tokens[i].image.toUpperCase())
+  }
+  return words
+}
+
+function nextPermissionWords(tokens: IToken[]): Set<string> {
+  const words = typedPermissionWords(tokens)
+  const prefix = words.length > 0 ? words.join(" ") + " " : ""
+  const next = new Set<string>()
+  for (const perm of PERMISSION_NAMES) {
+    if (perm.startsWith(prefix)) next.add(perm.split(" ")[words.length])
+  }
+  return next
+}
+
+// Tokens that end a permission in the GRANT / REVOKE permission list.
+const PERMISSION_LIST_ENDERS = new Set(["On", "To", "From", "Comma"])
+
+/**
+ * GRANT / REVOKE permissions are parsed loosely (any 1-3 words), so content
+ * assist offers every word the grammar allows there. Keep only words that
+ * continue a real permission name, and offer ON / TO / FROM / `,` only once
+ * the typed words form a complete permission. Applies to the permission list
+ * only, not to what follows ON.
+ */
+function filterPermissionSuggestions(
+  tokens: IToken[],
+  suggestions: ContentAssistSuggestion[],
+): (s: ContentAssistSuggestion) => boolean {
+  if (!suggestions.some((s) => s.ruleStack.includes("permissionList"))) {
+    return () => true
+  }
+  const next = nextPermissionWords(tokens)
+  const complete = PERMISSION_NAMES.includes(
+    typedPermissionWords(tokens).join(" "),
+  )
+  return (s) => {
+    const name = s.nextTokenType.name
+    if (s.ruleStack.includes("permissionToken")) {
+      // Generic name tokens stay: they show no suggestion here, and the
+      // provider needs a grammar token to add the context keywords (the real
+      // next words from PERMISSION_NAMES). Explicit keywords must continue a
+      // permission name.
+      if (IDENTIFIER_TOKENS.has(name) || name === "StringLiteral") return true
+      return next.has(name.toUpperCase())
+    }
+    if (PERMISSION_LIST_ENDERS.has(name)) return complete
+    return true
+  }
+}
 
 /**
  * Re-inject the concrete keywords that the grammar only accepts through the
@@ -912,28 +1071,13 @@ function contextKeywordSuggestions(
     idKeywordStacks.some((stack) => stack.includes(r))
 
   const last = tokens[tokens.length - 1]?.tokenType.name
-  const prev = tokens[tokens.length - 2]?.tokenType.name
   const out = new Set<string>()
 
-  // GRANT / REVOKE permission phrases whose words route through `identifier`:
-  //   CONVERT PARTITION [TO PARQUET|NATIVE], SET TABLE FORMAT, SET TABLE TYPE,
-  //   SET STORAGE POLICY, REMOVE STORAGE POLICY.
-  // (SET / TABLE / TO / PARQUET / NATIVE at their spots are explicit CONSUMEs
-  // and already surface; we only add the identifier-path words.)
+  // GRANT / REVOKE permission phrases: the grammar takes any 1-3 words (most
+  // via `identifier`), so offer the next word of every server permission name
+  // that extends the words typed so far in the current list item.
   if (inRule("permissionToken")) {
-    if (last === "Grant" || last === "Revoke") {
-      out.add("CONVERT")
-      out.add("REMOVE")
-    } else if (last === "Convert") {
-      out.add("PARTITION")
-    } else if (last === "Set" || last === "Remove") {
-      out.add("STORAGE")
-    } else if (last === "Table" && prev === "Set") {
-      out.add("FORMAT")
-      out.add("TYPE")
-    } else if (last === "Storage" && (prev === "Set" || prev === "Remove")) {
-      out.add("POLICY")
-    }
+    for (const word of nextPermissionWords(tokens)) out.add(word)
   }
 
   // ALTER TABLE ... CONVERT PARTITION TO { PARQUET | NATIVE }: the target is
@@ -949,6 +1093,92 @@ function contextKeywordSuggestions(
   }
 
   return [...out]
+}
+
+// Types the server only accepts as cast targets (SqlUtil.toPersistedType
+// rejects them as column types): offered after `::` / CAST, not in DDL.
+const CAST_ONLY_TYPE_TOKENS: ReadonlySet<string> = new Set([
+  "Regclass",
+  "Regprocedure",
+])
+
+/** Key of the resource group option whose value is being typed (`key =`). */
+function resourceGroupOptionKey(tokens: IToken[]): string | undefined {
+  for (let i = tokens.length - 1; i > 0; i--) {
+    const name = tokens[i].tokenType.name
+    if (name === "Equals") return tokens[i - 1].image.toLowerCase()
+    if (name === "Comma" || name === "LParen") return undefined
+  }
+  return undefined
+}
+
+const QUIET_EXPRESSION_ANCHORS = [
+  "sampleByClause",
+  "alignToClause",
+  "fillValue",
+]
+// Literal / variable / punctuation tokens stay valid there (no keyword noise)
+const QUIET_EXPRESSION_KEPT_TOKENS = new Set([
+  "DurationLiteral",
+  "NumberLiteral",
+  "LongLiteral",
+  "DecimalLiteral",
+  "FloatLiteral",
+  "StringLiteral",
+  "EscapeStringLiteral",
+  "VariableReference",
+  "BindVariable",
+  "Minus",
+  "LParen",
+])
+
+/**
+ * If the ruleStack is at the top level of the expression directly under
+ * SAMPLE BY, ALIGN TO (TIME ZONE / WITH OFFSET) or a FILL value, return that
+ * anchor rule. Nested expressions (function arguments, parentheses) are not
+ * top level.
+ */
+function quietExpressionAnchor(ruleStack: string[]): string | undefined {
+  for (let i = ruleStack.length - 2; i >= 0; i--) {
+    if (!QUIET_EXPRESSION_ANCHORS.includes(ruleStack[i])) continue
+    if (ruleStack[i + 1] !== "expression") return undefined
+    const nested = ruleStack
+      .slice(i + 2)
+      .some((r) => r === "expression" || r === "selectStatement")
+    return nested ? undefined : ruleStack[i]
+  }
+  return undefined
+}
+
+/** A policy expression binds to view output; a SELECT nested in it has its own scope. */
+function isExpiryPredicatePath(ruleStack: string[]): boolean {
+  const expiry = ruleStack.lastIndexOf("expireRowsClause")
+  if (
+    expiry < 0 ||
+    !ruleStack.slice(expiry + 1).includes("identifierExpression")
+  )
+    return false
+  return !ruleStack
+    .slice(expiry + 1)
+    .some(
+      (rule) =>
+        rule === "selectStatement" || rule === "implicitSelectStatement",
+    )
+}
+
+/** Materialized-view storage policies are parsed for compatibility, but no longer supported. */
+function isMatViewStorageSuggestion(s: ContentAssistSuggestion): boolean {
+  const inAlter = s.ruleStack.includes("alterMaterializedViewAction")
+  if (!inAlter && !s.ruleStack.includes("createMaterializedViewBody"))
+    return false
+  if (s.ruleStack.includes("storagePolicy")) return true
+  // DROP / ENABLE / DISABLE STORAGE POLICY consume their tokens directly in
+  // the action rule. Table actions use a separate rule and stay unaffected.
+  return (
+    inAlter &&
+    s.ruleStack[s.ruleStack.length - 1] === "alterMaterializedViewAction" &&
+    ["Enable", "Disable", "Storage", "Policy"].includes(s.nextTokenType.name)
+  )
 }
 
 /**
@@ -973,8 +1203,94 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
     : "statement"
   // Budgeted: aborts after a fixed number of path-exploration steps.
   // The budget keeps autocomplete responsive and falls back to empty suggestions when hit.
-  const { suggestions } = computeContentAssistBudgeted(ruleName, tokens)
-  const result = suggestions.map((s) => s.nextTokenType)
+  const { suggestions: rawSuggestions } = computeContentAssistBudgeted(
+    ruleName,
+    tokens,
+  )
+  // timestampWithTimeZoneLiteral opens with explicit TIMESTAMP / TIMESTAMP_NS
+  // tokens. Content assist ignores its GATE, so without this filter those two
+  // keywords would be offered wherever an expression can start. Only the
+  // rule's first token is dropped; WITH TIME ZONE after `timestamp` stays.
+  // Same for doublePrecisionLiteral's leading DOUBLE.
+  // columnDefinition only takes DOUBLE PRECISION in CREATE TABLE (a rule
+  // argument gates it); ALTER TABLE ADD COLUMN shares the rule, so drop
+  // PRECISION there as well.
+  // SAMPLE BY / FILL / ALIGN TO ... TIME ZONE / WITH OFFSET take any
+  // expression on the server, but at the top level of those expressions we
+  // keep the short lists offered before (nothing for SAMPLE BY and ALIGN TO,
+  // NULL / PREV / LINEAR / NONE for FILL) instead of every column, function
+  // and operator.
+  let fillOperandStart = false
+  const suggestions = rawSuggestions.filter((s) => {
+    const quiet = quietExpressionAnchor(s.ruleStack)
+    if (quiet === "fillValue" && s.nextTokenType.name === "Null") {
+      fillOperandStart = true
+      return true
+    }
+    return !(
+      isMatViewStorageSuggestion(s) ||
+      (quiet && !QUIET_EXPRESSION_KEPT_TOKENS.has(s.nextTokenType.name)) ||
+      (s.ruleStack[s.ruleStack.length - 1] === "timestampWithTimeZoneLiteral" &&
+        (s.nextTokenType.name === "Timestamp" ||
+          s.nextTokenType.name === "TimestampNs")) ||
+      (s.ruleStack[s.ruleStack.length - 1] === "doublePrecisionLiteral" &&
+        s.nextTokenType.name === "Double") ||
+      (s.nextTokenType.name === "Precision" &&
+        (s.ruleStack.includes("alterTableAction") ||
+          s.ruleStack[s.ruleStack.length - 1] === "columnNullModifier")) ||
+      // SET <name> ... takes free-form tokens; only offer TO after the name
+      (s.ruleStack[s.ruleStack.length - 1] === "setStatement" &&
+        (s.nextTokenType.name !== "To" ||
+          tokens[tokens.length - 1]?.tokenType.name === "Set")) ||
+      // ARRAY is a constructor, not a bare type. Keep the lenient dataType
+      // grammar, but do not suggest it in casts or column definitions, or
+      // offer the constructor at every expression start.
+      (s.nextTokenType.name === "Array" &&
+        (s.ruleStack.includes("dataType") ||
+          s.ruleStack[s.ruleStack.length - 1] === "arrayLiteral")) ||
+      // IS / ILIKE / DECLARE are accepted as column names, not suggested
+      (s.ruleStack[s.ruleStack.length - 1] === "columnDefinition" &&
+        (s.nextTokenType.name === "Is" ||
+          s.nextTokenType.name === "Ilike" ||
+          s.nextTokenType.name === "Declare")) ||
+      // ANY only continues CANCEL in permission names (CANCEL ANY COPY)
+      (s.nextTokenType.name === "Any" &&
+        s.ruleStack[s.ruleStack.length - 1] === "permissionToken" &&
+        tokens[tokens.length - 1]?.tokenType.name !== "Cancel") ||
+      // INCREMENTAL is an obsolete synonym of IMMEDIATE in REFRESH modes
+      (s.nextTokenType.name === "Incremental" &&
+        s.ruleStack[s.ruleStack.length - 1] === "materializedViewRefresh") ||
+      // Cast-only types: the server cannot persist them as column types
+      (CAST_ONLY_TYPE_TOKENS.has(s.nextTokenType.name) &&
+        s.ruleStack.includes("dataType") &&
+        !s.ruleStack.includes("castDataType")) ||
+      // UNLIMITED is only a memory_limit value among resource group options
+      (s.nextTokenType.name === "Unlimited" &&
+        s.ruleStack.includes("resourceGroupOption") &&
+        resourceGroupOptionKey(tokens) !== "memory_limit")
+    )
+  })
+  const keepPermissionWord = filterPermissionSuggestions(tokens, suggestions)
+  const result = suggestions
+    .filter(keepPermissionWord)
+    .filter(
+      (s) =>
+        // permissionToken accepts LIMIT as a third word (SET REFRESH LIMIT,
+        // SET MEMORY LIMIT); only offer it where a permission continues so.
+        // A password is free text: don't offer NULL / TRUE / FALSE there.
+        !(
+          s.ruleStack[s.ruleStack.length - 1] === "passwordValue" &&
+          (s.nextTokenType.name === "Null" ||
+            s.nextTokenType.name === "True" ||
+            s.nextTokenType.name === "False")
+        ) &&
+        !(
+          s.nextTokenType.name === "Limit" &&
+          s.ruleStack[s.ruleStack.length - 1] === "permissionToken" &&
+          !nextPermissionWords(tokens).has("LIMIT")
+        ),
+    )
+    .map((s) => s.nextTokenType)
 
   // Walk every IdentifierKeyword path and union the category flags valid at
   // that position. Multiple paths may be alive simultaneously (Chevrotain
@@ -1028,7 +1344,14 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   )
 
   const contextKeywords = contextKeywordSuggestions(tokens, suggestions)
+  if (fillOperandStart) contextKeywords.push("PREV", "LINEAR", "NONE")
   const contextFunctions = contextFunctionSuggestions(tokens, suggestions)
+
+  const objectColumnRuleStack = suggestions.find(
+    (s) =>
+      s.nextTokenType.name === "IdentifierKeyword" &&
+      (s.ruleStack.includes("keyColumn") || isExpiryPredicatePath(s.ruleStack)),
+  )?.ruleStack
 
   return {
     nextTokenTypes: result,
@@ -1036,7 +1359,267 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
     isConditionContext,
     contextKeywords,
     contextFunctions,
+    objectColumnRuleStack,
   }
+}
+
+// Placeholder scope names for key-column slots (not valid table names)
+const DECLARED_COLUMNS_SCOPE = "<declared columns>"
+const VIEW_OUTPUT_SCOPE = "<view output>"
+/**
+ * Placeholder scopes of key-column slots. When one is in scope the slot's
+ * columns are known exactly, so the suggestion builder must not fall back to
+ * every schema column when they resolve to nothing.
+ */
+export const KEY_COLUMN_SCOPES: ReadonlySet<string> = new Set([
+  DECLARED_COLUMNS_SCOPE,
+  VIEW_OUTPUT_SCOPE,
+])
+
+function namePart(token: IToken): string {
+  if (
+    token.tokenType.name === "QuotedIdentifier" ||
+    token.tokenType.name === "StringLiteral"
+  ) {
+    const quote = token.image[0]
+    return token.image
+      .slice(1, -1)
+      .split(quote + quote)
+      .join(quote)
+  }
+  return token.image
+}
+
+/** Index of the `)` that closes the `(` at `open` (or tokens.length). */
+function matchingParen(tokens: IToken[], open: number): number {
+  let depth = 0
+  for (let i = open; i < tokens.length; i++) {
+    const name = tokens[i].tokenType.name
+    if (name === "LParen") depth++
+    else if (name === "RParen" && --depth === 0) return i
+  }
+  return tokens.length
+}
+
+/**
+ * Output columns of a query, as a scope for a key-column slot:
+ *  - named items (aliases, column names) become columns of the output;
+ *  - `*` expands every FROM / JOIN source, `t.*` only the source aliased or
+ *    named `t`;
+ *  - a source that is a sub-query or a CTE (from this query's WITH or an
+ *    enclosing one) expands to that query's output, recursively; a physical
+ *    table is returned as a table, whose columns come from the schema.
+ */
+function queryOutput(
+  query: Record<string, unknown>,
+  ctes: ReadonlyMap<string, Record<string, unknown>> = new Map(),
+  depth = 0,
+): { columns: { name: string; type: string }[]; tables: TableRef[] } {
+  const columns: { name: string; type: string }[] = []
+  const tables: TableRef[] = []
+  if (depth > 8) return { columns, tables }
+
+  // CTEs visible inside this query: its own WITH plus the enclosing ones
+  const env = new Map(ctes)
+  for (const cte of Array.isArray(query.with) ? query.with : []) {
+    const c = cte as { name?: unknown; query?: unknown }
+    if (typeof c.name === "string" && c.query && typeof c.query === "object") {
+      env.set(c.name.toLowerCase(), c.query as Record<string, unknown>)
+    }
+  }
+
+  // FROM / JOIN / comma sources with their aliases
+  type Source = { table: unknown; alias?: string }
+  const sources: Source[] = []
+  const addSource = (ref: unknown) => {
+    const r = ref as { table?: unknown; alias?: unknown } | undefined
+    if (!r) return
+    sources.push({
+      table: r.table,
+      alias: typeof r.alias === "string" ? r.alias : undefined,
+    })
+  }
+  for (const ref of Array.isArray(query.from) ? query.from : []) {
+    addSource(ref)
+    const joins = (ref as { joins?: { table?: unknown }[] }).joins ?? []
+    for (const join of joins) addSource(join.table) // join.table is a tableRef
+  }
+
+  const expand = (source: Source) => {
+    const src = source.table as Record<string, unknown> | undefined
+    if (!src) return
+    if (src.type === "select") {
+      const inner = queryOutput(src, env, depth + 1)
+      columns.push(...inner.columns)
+      tables.push(...inner.tables)
+      return
+    }
+    const name = normalizeTableName(src)
+    if (!name) return
+    const cte = env.get(name.toLowerCase())
+    if (cte) {
+      const inner = queryOutput(cte, env, depth + 1)
+      columns.push(...inner.columns)
+      tables.push(...inner.tables)
+    } else {
+      tables.push({ table: name })
+    }
+  }
+  const matches = (source: Source, qualifier: string) => {
+    const q = qualifier.toLowerCase()
+    if (source.alias) return source.alias.toLowerCase() === q
+    return normalizeTableName(source.table)?.toLowerCase() === q
+  }
+
+  for (const item of Array.isArray(query.columns) ? query.columns : []) {
+    const it = item as { type?: string; qualifier?: unknown } | null
+    if (it?.type === "star") {
+      sources.forEach(expand)
+    } else if (it?.type === "qualifiedStar") {
+      const parts = (it.qualifier as { parts?: string[] } | undefined)?.parts
+      const qualifier = parts?.[parts.length - 1]
+      if (qualifier)
+        sources.filter((s) => matches(s, qualifier)).forEach(expand)
+    } else {
+      columns.push(...extractCteColumnNames([item]))
+    }
+  }
+  return { columns, tables }
+}
+
+/** Scope for a key-column slot from the query text between `first` and `last`. */
+function queryOutputScope(
+  body: IToken[],
+  fullSql: string,
+  scopeName: string,
+):
+  | {
+      tables: TableRef[]
+      columns: Record<string, { name: string; type: string }[]>
+    }
+  | undefined {
+  if (body.length === 0) return undefined
+  const last = body[body.length - 1]
+  const sql = fullSql.substring(
+    body[0].startOffset,
+    last.startOffset + last.image.length,
+  )
+  let ast: Statement[]
+  try {
+    ast = visitor.visit(parseRaw(sql).cst) as Statement[]
+  } catch {
+    return undefined
+  }
+  const query = ast[0] as unknown as Record<string, unknown> | undefined
+  if (!query || query.type !== "select") return undefined
+  const out = queryOutput(query)
+  return {
+    tables: [{ table: scopeName }, ...out.tables],
+    columns: { [scopeName.toLowerCase()]: out.columns },
+  }
+}
+
+/**
+ * Scope for DEDUP keys and EXPIRE ROWS KEEP / WHEN columns. These name a
+ * column of the table or view being defined or altered (the server resolves
+ * them against the new table's columns / the query's output metadata):
+ *  - CREATE TABLE (cols ...): the column definitions of the statement;
+ *  - CREATE TABLE ... AS (query) and CREATE MATERIALIZED VIEW: the query's
+ *    output (see queryOutput);
+ *  - ALTER MATERIALIZED VIEW: the named target, even with an unfinished policy;
+ *  - ALTER TABLE: the target, already in scope.
+ * Returns undefined when the default scope applies.
+ */
+function objectColumnScope(
+  ruleStack: string[],
+  statementTokens: IToken[],
+  fullSql: string,
+):
+  | {
+      tables: TableRef[]
+      columns: Record<string, { name: string; type: string }[]>
+    }
+  | undefined {
+  // The query after AS: `AS ( query )` or an unparenthesized query that ends
+  // before the clause the slot belongs to.
+  const queryAfter = (as: number, stopAt: string): IToken[] => {
+    let start = as + 1
+    let end: number
+    if (statementTokens[start]?.tokenType.name === "LParen") {
+      end = matchingParen(statementTokens, start)
+      start++
+    } else {
+      end = statementTokens.findIndex(
+        (t, i) => i > as && t.tokenType.name === stopAt,
+      )
+      if (end < 0) end = statementTokens.length
+    }
+    return statementTokens.slice(start, end)
+  }
+
+  if (ruleStack.includes("createTableBody")) {
+    const table = statementTokens.findIndex((t) => t.tokenType.name === "Table")
+    // Whichever comes first after TABLE <name>: `(` (columns) or AS (CTAS)
+    const next = statementTokens.findIndex(
+      (t, i) =>
+        i > table &&
+        (t.tokenType.name === "LParen" || t.tokenType.name === "As"),
+    )
+    if (table < 0 || next < 0) return undefined
+    if (statementTokens[next].tokenType.name === "As") {
+      return queryOutputScope(
+        queryAfter(next, "Timestamp"),
+        fullSql,
+        DECLARED_COLUMNS_SCOPE,
+      )
+    }
+    const close = matchingParen(statementTokens, next)
+    const cols: { name: string; type: string }[] = []
+    let depth = 0
+    let expectName = true
+    for (let i = next + 1; i < close; i++) {
+      const name = statementTokens[i].tokenType.name
+      if (name === "LParen") depth++
+      else if (name === "RParen") depth--
+      else if (depth === 0 && name === "Comma") expectName = true
+      else if (depth === 0 && expectName) {
+        expectName = false
+        if (name === "Like") return undefined // CREATE TABLE t (LIKE x)
+        cols.push({ name: namePart(statementTokens[i]), type: "" })
+      }
+    }
+    if (cols.length === 0) return undefined
+    return {
+      tables: [{ table: DECLARED_COLUMNS_SCOPE }],
+      columns: { [DECLARED_COLUMNS_SCOPE.toLowerCase()]: cols },
+    }
+  }
+  if (ruleStack.includes("alterMaterializedViewStatement")) {
+    const view = statementTokens.findIndex((t) => t.tokenType.name === "View")
+    let target = view + 1
+    if (view < 0 || !statementTokens[target]) return undefined
+    while (statementTokens[target + 1]?.tokenType.name === "Dot") target += 2
+    if (!statementTokens[target]) return undefined
+    return {
+      // The placeholder also disables global fallback when schema metadata
+      // for the target is unavailable.
+      tables: [
+        { table: VIEW_OUTPUT_SCOPE },
+        { table: namePart(statementTokens[target]) },
+      ],
+      columns: { [VIEW_OUTPUT_SCOPE.toLowerCase()]: [] },
+    }
+  }
+  if (ruleStack.includes("createMaterializedViewBody")) {
+    const as = statementTokens.findIndex((t) => t.tokenType.name === "As")
+    if (as < 0) return undefined
+    return queryOutputScope(
+      queryAfter(as, "Expire"),
+      fullSql,
+      VIEW_OUTPUT_SCOPE,
+    )
+  }
+  return undefined
 }
 
 /**
@@ -1157,7 +1740,11 @@ export function getContentAssist(
   // problems than it solves (prefix filtering breaks, ambiguity with string values).
   const fullTokens = QuestDBLexer.tokenize(fullSql).tokens
   for (const token of fullTokens) {
-    if (token.tokenType.name !== "StringLiteral") continue
+    if (
+      token.tokenType.name !== "StringLiteral" &&
+      token.tokenType.name !== "EscapeStringLiteral"
+    )
+      continue
     const start = token.startOffset
     const end = token.startOffset + token.image.length
     if (cursorOffset > start && cursorOffset < end) {
@@ -1213,8 +1800,10 @@ export function getContentAssist(
   let isConditionContext = false
   let contextKeywords: string[] = []
   let contextFunctions: string[] = []
+  let objectColumnRuleStack: string[] | undefined
   try {
     const computed = computeSuggestions(tokensForAssist)
+    objectColumnRuleStack = computed.objectColumnRuleStack
     nextTokenTypes = computed.nextTokenTypes
     suggestColumns = computed.suggestColumns
     suggestTables = computed.suggestTables
@@ -1275,6 +1864,28 @@ export function getContentAssist(
           tablesInScope.push({ table: tableName })
         }
       }
+    }
+  }
+
+  // DEDUP keys and retention expressions bind against the object being
+  // defined or altered, rather than the defining SELECT's source tables.
+  if (objectColumnRuleStack) {
+    let start = 0
+    for (let j = 0; j < tokensForAssist.length; j++) {
+      if (tokensForAssist[j].tokenType.name === "Semicolon") start = j + 1
+    }
+    const scope = objectColumnScope(
+      objectColumnRuleStack,
+      tokensForAssist.slice(start),
+      fullSql,
+    )
+    if (scope) {
+      tablesInScope.splice(0, tablesInScope.length, ...scope.tables)
+      Object.assign(cteColumns, scope.columns)
+      // Policy expressions can suggest functions, but table names and the
+      // synthetic output scope are not operands. Nested SELECT paths retain
+      // their ordinary table suggestions.
+      if (isExpiryPredicatePath(objectColumnRuleStack)) suggestTables = false
     }
   }
 

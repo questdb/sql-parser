@@ -81,6 +81,7 @@ const updatePhrases: Phrase[] = [
 
 const createOptionPhrases: Phrase[] = clause(
   ["Dedup"],
+  ["Deduplicate"],
   ["Ttl"],
   ["Expire", "Rows"],
   ["Storage", "Policy"],
@@ -106,6 +107,7 @@ const alterActionPhrases: Phrase[] = action(
   ["Force", "Drop", "Partition", "List"],
   ["Force", "Reindex", "Parquet"],
   ["Dedup"],
+  ["Deduplicate"],
   ["Resume", "Wal"],
   ["Suspend", "Wal"],
   ["Rebase", "Wal"],

@@ -2,6 +2,7 @@ import { createToken, Lexer, TokenType } from "chevrotain"
 import {
   allTokens,
   BlockComment,
+  blockCommentEnd,
   LineComment,
   QuotedIdentifier,
   StringLiteral,
@@ -40,11 +41,22 @@ const FormatterLineComment = createToken({
   group: TRIVIA_GROUP,
 })
 
+// Nested like the parser's BlockComment; an unterminated one is tolerant.
+const matchClosedBlockComment = (
+  text: string,
+  offset: number,
+): [string] | null => {
+  if (!text.startsWith("/*", offset)) return null
+  const end = blockCommentEnd(text, offset)
+  return end === -1 ? null : [text.slice(offset, end)]
+}
+
 const FormatterBlockComment = createToken({
   name: "BlockComment",
-  pattern: /\/\*[\s\S]*?\*\//,
+  pattern: { exec: matchClosedBlockComment },
   group: TRIVIA_GROUP,
   line_breaks: true,
+  start_chars_hint: ["/"],
 })
 
 const matchUnterminatedQuoted =
@@ -70,7 +82,7 @@ const matchUnterminatedBlockComment = (
   offset: number,
 ): [string] | null => {
   if (!text.startsWith("/*", offset)) return null
-  if (text.indexOf("*/", offset + 2) !== -1) return null
+  if (blockCommentEnd(text, offset) !== -1) return null
   return [text.slice(offset)]
 }
 

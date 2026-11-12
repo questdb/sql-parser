@@ -15,6 +15,13 @@ export const IdentifierKeyword = createToken({
   pattern: Lexer.NA,
 })
 
+// Category of EVERY keyword token, reserved or not. Only the password value
+// slot uses it: the server reads any token there as the password text.
+export const AnyKeyword = createToken({
+  name: "AnyKeyword",
+  pattern: Lexer.NA,
+})
+
 // =============================================================================
 // Token Generation Utilities
 // =============================================================================
@@ -46,12 +53,13 @@ function toPascalCase(str: string): string {
  * identifiers. JavaScript's \b only considers ASCII \w characters, so
  * "in\b" would incorrectly match the "in" prefix of "inção" (since ç
  * is non-ASCII and not in \w). The lookahead ensures the keyword is not
- * followed by any valid identifier character, including Unicode.
+ * followed by any valid identifier character, including Unicode and `$`
+ * (`select$x` is one identifier, SqlParser.validateIdentifier).
  */
 function createKeywordToken(name: string, pattern: string): TokenType {
   return createToken({
     name,
-    pattern: new RegExp(`${pattern}(?![\\w\\u0080-\\uFFFF])`, "i"),
+    pattern: new RegExp(`${pattern}(?![\\w$\\u0080-\\uFFFF])`, "i"),
   })
 }
 
@@ -109,15 +117,57 @@ const allGeneratedTokens = new Map<string, TokenType>([
 // only ~61 keywords are reserved and everything else is non-reserved.
 //
 // Reserved keywords NOT included (would cause parsing ambiguity):
-//   Structural:  Select, From, Where, As, By, With, If, Exists, Into,
-//                Values, Set, For, Table, To, Declare, Rename
-//   Joins:       Join, Inner, Left, Right, Full, Outer, Cross,
-//                Asof, Lt, Splice, On
+//   Structural:  Select, From, Where, As, With, Exists, Into,
+//                Values, Set, Table, To, Declare, Rename
+//   Joins:       Join, Outer, On
 //   Operators:   And, Or, Not, In, Between, Like, Ilike, Is
-//   Expressions: Case, When, Then, Else, End, Cast, True, False, Null, NaN,
+//   Expressions: Case, End, Cast, True, False, Null, NaN,
 //                All, Any, Distinct, Over
-//   Clauses:     Group, Order, Asc, Desc, Limit, Sample, Window,
-//                Union, Intersect, Except, Pivot, Unpivot, Lock, Truncate
+//   Clauses:     Order, Asc, Desc, Limit, Sample,
+//                Union, Intersect, Except, Lock
+// (IS / ILIKE / DECLARE are still accepted as column names in columnDefinition;
+// join / clause words are in CLAUSE_IDENTIFIER_KEYWORD_NAMES.)
+
+/**
+ * Join / clause / statement words that the server does not reserve
+ * (SqlKeywords.KEYWORDS): usable as identifiers (`CREATE TABLE t (left INT,
+ * by BYTE, when LONG)`, `t.window`, `SELECT x lt FROM t`). Parser alias gates
+ * keep them from being taken as implicit aliases where they start a join /
+ * clause / statement. toSql still quotes them and the formatter does not treat
+ * them as operands (`THEN -1` keeps its unary minus).
+ */
+export const CLAUSE_IDENTIFIER_KEYWORD_NAMES: ReadonlySet<string> =
+  new globalThis.Set([
+    "Left",
+    "Right",
+    "Full",
+    "Inner",
+    "Cross",
+    "Asof",
+    "Lt",
+    "Splice",
+    "Horizon",
+    "Window",
+    "By",
+    "Group",
+    "When",
+    "Then",
+    "Else",
+    "Details",
+    "Repair",
+    "Unpivot",
+    "Pivot",
+    "Show",
+    "Copy",
+    "Truncate",
+    "Vacuum",
+    "Grant",
+    "Revoke",
+    "If",
+    "Include",
+    "Respect",
+    "For",
+  ])
 
 export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   // Data type keywords
@@ -214,6 +264,8 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Partitions",
   "PartitionBy",
   "Dedup",
+  "Deduplicate",
+  "Skip",
   "Wal",
   "Bypass",
   "Batch",
@@ -304,6 +356,7 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Nocache",
   "Observation",
   "Overridable",
+  "Audited",
   "Owned",
   "Period",
   "Reindex",
@@ -363,6 +416,7 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Unbounded",
   "Exclude",
   "Others",
+  "Ties",
   "Nulls",
   // SAMPLE BY keywords
   "Fill",
@@ -403,11 +457,31 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "Priority",
   "Resource",
   "Unset",
+  // CREATE VIEW ... WITH AUDIT (Enterprise)
+  "Audit",
+  // GRANT permission-name words (SQL ENGINE ADMIN, SETTINGS, ...)
+  "Admin",
+  "Engine",
+  "Settings",
+  "Sql",
   "Daily",
   "Expression",
   "Posting",
+  "PostingDelta",
+  "PostingEf",
   "Delta",
   "Ef",
+  "ByteStreamSplit",
+  // ARRAY constructor; still usable as an identifier
+  "Array",
+  // PG type aliases (ColumnType.nameTypeMap); not reserved on the server
+  "Bigint",
+  "Bytea",
+  "Real",
+  "Regclass",
+  "Regprocedure",
+  "Smallint",
+  "Text",
   "Bitmap",
   "Schema",
   "Acl",
@@ -416,7 +490,33 @@ export const IDENTIFIER_KEYWORD_NAMES = new globalThis.Set([
   "ServiceAccounts",
   // CREATE LIVE VIEW ... START FROM NOW (same word as the now() function)
   "Now",
+  // GROUP BY / SAMPLE BY grouping sets (questdb#6853). Not reserved on the
+  // server: grouping syntax only when `(` (ROLLUP/CUBE) or SETS (GROUPING)
+  // follows, so they stay usable as column/table names and grouping(x).
+  "Cube",
+  "Grouping",
+  "Rollup",
+  "Sets",
+  // <expr> AT TIME ZONE '<tz>' and DOUBLE PRECISION (ExpressionParser); not
+  // reserved on the server.
+  "At",
+  "Precision",
+  // PG session statements (BEGIN/COMMIT/ROLLBACK, DEALLOCATE, DISCARD/CLOSE/
+  // UNLISTEN/RESET): statement-start words on the server, not reserved.
+  "Begin",
+  "Close",
+  "Commit",
+  "Deallocate",
+  "Discard",
+  "Reset",
+  "Rollback",
+  "Unlisten",
+  ...CLAUSE_IDENTIFIER_KEYWORD_NAMES,
 ])
+
+for (const token of allGeneratedTokens.values()) {
+  token.CATEGORIES = [...(token.CATEGORIES ?? []), AnyKeyword]
+}
 
 for (const name of IDENTIFIER_KEYWORD_NAMES) {
   const token = allGeneratedTokens.get(name)
@@ -464,6 +564,14 @@ function getToken(name: string): TokenType {
 
 // Keywords (from grammar/keywords.ts)
 export const Abort = getToken("Abort")
+export const Begin = getToken("Begin")
+export const Close = getToken("Close")
+export const Commit = getToken("Commit")
+export const Deallocate = getToken("Deallocate")
+export const Discard = getToken("Discard")
+export const Reset = getToken("Reset")
+export const Rollback = getToken("Rollback")
+export const Unlisten = getToken("Unlisten")
 export const Account = getToken("Account")
 export const Accounts = getToken("Accounts")
 export const Add = getToken("Add")
@@ -473,6 +581,7 @@ export const All = getToken("All")
 export const Alter = getToken("Alter")
 export const And = getToken("And")
 export const Any = getToken("Any")
+export const ArrayType = getToken("Array")
 export const As = getToken("As")
 export const Asof = getToken("Asof")
 export const Assume = getToken("Assume")
@@ -513,6 +622,7 @@ export const Database = getToken("Database")
 export const Datestyle = getToken("Datestyle")
 export const Declare = getToken("Declare")
 export const Dedup = getToken("Dedup")
+export const Deduplicate = getToken("Deduplicate")
 export const Default = getToken("Default")
 export const DefaultTransactionReadOnly = getToken("DefaultTransactionReadOnly")
 export const Deferred = getToken("Deferred")
@@ -603,6 +713,7 @@ export const Others = getToken("Others")
 export const Outer = getToken("Outer")
 export const Over = getToken("Over")
 export const Overridable = getToken("Overridable")
+export const Audited = getToken("Audited")
 export const Owned = getToken("Owned")
 export const Param = getToken("Param")
 export const Parameters = getToken("Parameters")
@@ -664,6 +775,7 @@ export const System = getToken("System")
 export const Table = getToken("Table")
 export const Tables = getToken("Tables")
 export const Then = getToken("Then")
+export const Ties = getToken("Ties")
 export const Time = getToken("Time")
 export const To = getToken("To")
 export const Token = getToken("Token")
@@ -715,6 +827,16 @@ export const Policy = getToken("Policy")
 export const Local = getToken("Local")
 export const Remote = getToken("Remote")
 
+// GROUP BY / SAMPLE BY grouping sets
+export const Cube = getToken("Cube")
+export const Grouping = getToken("Grouping")
+export const Rollup = getToken("Rollup")
+export const Sets = getToken("Sets")
+
+// AT TIME ZONE, DOUBLE PRECISION
+export const At = getToken("At")
+export const Precision = getToken("Precision")
+
 // Data types (from grammar/dataTypes.ts)
 export const Binary = getToken("Binary")
 export const Boolean = getToken("Boolean")
@@ -739,6 +861,13 @@ export const Timestamp = getToken("Timestamp")
 export const TimestampNs = getToken("TimestampNs")
 export const Uuid = getToken("Uuid")
 export const Varchar = getToken("Varchar")
+export const Bigint = getToken("Bigint")
+export const Bytea = getToken("Bytea")
+export const Real = getToken("Real")
+export const Regclass = getToken("Regclass")
+export const Regprocedure = getToken("Regprocedure")
+export const Smallint = getToken("Smallint")
+export const Text = getToken("Text")
 
 // Constants (from grammar/constants.ts)
 export const True = getToken("True")
@@ -804,9 +933,22 @@ export const Anchor = getToken("Anchor")
 export const Beginning = getToken("Beginning")
 export const Now = getToken("Now")
 export const Memory = getToken("Memory")
+export const Resource = getToken("Resource")
+export const Unset = getToken("Unset")
+export const Audit = getToken("Audit")
+export const Mapping = getToken("Mapping")
+export const Priority = getToken("Priority")
+export const MemoryLimit = getToken("MemoryLimit")
+export const CpuWeight = getToken("CpuWeight")
+export const MaxActiveQueries = getToken("MaxActiveQueries")
+export const MaxQueuedQueries = getToken("MaxQueuedQueries")
+export const QueueTimeout = getToken("QueueTimeout")
 export const Daily = getToken("Daily")
 export const Expression = getToken("Expression")
 export const Posting = getToken("Posting")
+export const ByteStreamSplit = getToken("ByteStreamSplit")
+export const PostingDelta = getToken("PostingDelta")
+export const PostingEf = getToken("PostingEf")
 export const Delta = getToken("Delta")
 export const Ef = getToken("Ef")
 export const Bitmap = getToken("Bitmap")

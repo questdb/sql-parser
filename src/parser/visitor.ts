@@ -9,6 +9,7 @@ type CstChildrenRecord = Record<string, CstElement[] | undefined>
 
 import { parser } from "./parser"
 import * as AST from "./ast"
+import { expressionToSql } from "./toSql"
 import type {
   AddUserStatementCstChildren,
   AdditiveExpressionCstChildren,
@@ -22,6 +23,12 @@ import type {
   AlterTableForceActionCstChildren,
   AlterTableStatementCstChildren,
   AlterUserActionCstChildren,
+  PrincipalResourceGroupActionCstChildren,
+  CreateResourceGroupStatementCstChildren,
+  AlterResourceGroupStatementCstChildren,
+  DropResourceGroupStatementCstChildren,
+  ResourceGroupPolicyCstChildren,
+  ResourceGroupOptionCstChildren,
   AlterUserStatementCstChildren,
   AlterLiveViewStatementCstChildren,
   AlterViewStatementCstChildren,
@@ -70,6 +77,8 @@ import type {
   DeclareAssignmentCstChildren,
   DeclareClauseCstChildren,
   DedupClauseCstChildren,
+  DedupKeywordCstChildren,
+  DedupModeKeysCstChildren,
   DropGroupStatementCstChildren,
   DropMaterializedViewStatementCstChildren,
   DropServiceAccountStatementCstChildren,
@@ -97,6 +106,11 @@ import type {
   GrantStatementCstChildren,
   GrantTableTargetCstChildren,
   GroupByClauseCstChildren,
+  GroupingSetCstChildren,
+  GroupingKeyCstChildren,
+  GroupingSetsSpecCstChildren,
+  ExplicitGroupingSetsCstChildren,
+  RollupOrCubeSpecCstChildren,
   IdentifierCstChildren,
   IdentifierCstNode,
   IdentifierExpressionCstChildren,
@@ -108,8 +122,12 @@ import type {
   IntervalValueCstChildren,
   JoinClauseCstChildren,
   LatestOnClauseCstChildren,
+  LatestOnColumnCstChildren,
   LimitClauseCstChildren,
   LiteralCstChildren,
+  KeyColumnCstChildren,
+  TimestampWithTimeZoneLiteralCstChildren,
+  DoublePrecisionLiteralCstChildren,
   MaterializedViewPartitionCstChildren,
   MaterializedViewPeriodCstChildren,
   MaterializedViewRefreshCstChildren,
@@ -154,6 +172,10 @@ import type {
   SetExpressionCstChildren,
   SetOperationCstChildren,
   SetTypeStatementCstChildren,
+  SetStatementCstChildren,
+  TransactionStatementCstChildren,
+  DeallocateStatementCstChildren,
+  PgNoOpStatementCstChildren,
   ShowCreateDatabaseCategoryCstChildren,
   ShowStatementCstChildren,
   SimpleSelectCstChildren,
@@ -163,12 +185,19 @@ import type {
   StoragePolicyCstChildren,
   StoragePolicyTimeUnitCstChildren,
   StoragePolicyTtlCstChildren,
+  TtlClauseCstChildren,
+  SuspendWalWithCstChildren,
+  AlterTableAddColumnsCstChildren,
+  AddColumnItemCstChildren,
+  AlterColumnTypeIndexCstChildren,
   HorizonJoinCstChildren,
   HorizonOffsetCstChildren,
   StandardJoinCstChildren,
   StatementCstChildren,
   StatementsCstChildren,
   StringOrIdentifierCstChildren,
+  PasswordValueCstChildren,
+  StringOrIdentifierCstNode,
   StringOrQualifiedNameCstChildren,
   TableFunctionCallCstChildren,
   TableFunctionNameCstChildren,
@@ -183,6 +212,9 @@ import type {
   TimeZoneValueCstChildren,
   TruncateTableStatementCstChildren,
   TypeCastExpressionCstChildren,
+  CastDataTypeCstChildren,
+  TimestampWithTimeZoneTypeCstChildren,
+  DoublePrecisionTypeCstChildren,
   UnaryExpressionCstChildren,
   UnnestArgCstChildren,
   UnnestClauseCstChildren,
@@ -211,6 +243,11 @@ type ConvertPartitionTargetResult = {
   target: string
   where?: AST.Expression
   withParams?: AST.TableParam[]
+  listAfterTarget?: boolean
+}
+type GroupByClauseResult = {
+  groupBy?: AST.Expression[]
+  groupingSets?: AST.GroupingSets
 }
 type PivotBodyResult = {
   aggregations: AST.PivotAggregation[]
@@ -231,10 +268,51 @@ function tokenFloat(image: string): number {
   return parseFloat(image.replace(/_/g, ""))
 }
 
+// Value of a single-quoted SQL string token: strip the outer quotes and turn
+// the '' escape into '. toSql re-escapes with escapeString, so the SQL text
+// round-trips unchanged. Single-quoted NAMES printed back as "..." identifiers
+// (FROM 'x', stringOrQualifiedName, tableNameOrString, OWNED BY) deliberately
+// do not use this: the server's GenericLexer.unquote only strips the outer
+// quotes, so FROM 'it''s' names table it''s (questdb-ent
+// EntShowCreateSupportTest: CREATE USER 'o''brien' stores o''brien), which is
+// what "it''s" means too.
+function unquoteSingle(image: string): string {
+  return image.slice(1, -1).replace(/''/g, "'")
+}
+
+// Strip a QuotedIdentifier's quotes. "..." unescapes "" (as before); a
+// `...` identifier has no escapes (GenericLexer), its content is verbatim.
+function unquoteIdentifier(image: string): string {
+  const inner = image.slice(1, -1)
+  return image.startsWith("`") ? inner : inner.replace(/""/g, '"')
+}
+
 type StoragePolicyKind = "toParquet" | "toRemote" | "dropLocal" | "dropRemote"
+
+type DedupModeKeys = { mode: AST.DedupMode; keys: string[] }
 
 // Get the base visitor class from the parser
 const BaseVisitor = parser.getBaseCstVisitorConstructor()
+
+/** All tokens under a CST node, in source order. */
+function collectTokens(node: unknown): IToken[] {
+  const out: IToken[] = []
+  const walk = (n: unknown): void => {
+    if (n === null || typeof n !== "object") return
+    const t = n as IToken
+    if (t.tokenType !== undefined && t.image !== undefined) {
+      out.push(t)
+      return
+    }
+    const children = (n as { children?: Record<string, unknown[]> }).children
+    const values = children
+      ? Object.values(children)
+      : Object.values(n as Record<string, unknown[]>)
+    for (const list of values) if (Array.isArray(list)) list.forEach(walk)
+  }
+  walk(node)
+  return out.sort((a, b) => a.startOffset - b.startOffset)
+}
 
 class QuestDBVisitor extends BaseVisitor {
   constructor() {
@@ -356,6 +434,18 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.setTypeStatement) {
       return this.visit(ctx.setTypeStatement) as AST.SetTypeStatement
     }
+    if (ctx.setStatement) {
+      return this.visit(ctx.setStatement) as AST.SetStatement
+    }
+    if (ctx.transactionStatement) {
+      return this.visit(ctx.transactionStatement) as AST.TransactionStatement
+    }
+    if (ctx.deallocateStatement) {
+      return this.visit(ctx.deallocateStatement) as AST.DeallocateStatement
+    }
+    if (ctx.pgNoOpStatement) {
+      return this.visit(ctx.pgNoOpStatement) as AST.PgNoOpStatement
+    }
     if (ctx.reindexTableStatement) {
       return this.visit(ctx.reindexTableStatement) as AST.ReindexTableStatement
     }
@@ -396,6 +486,8 @@ class QuestDBVisitor extends BaseVisitor {
       inner = this.visit(ctx.updateStatement) as AST.UpdateStatement
     } else if (ctx.selectBody) {
       inner = this.visit(ctx.selectBody) as AST.SelectStatement
+    } else if (ctx.implicitSelectStatement) {
+      inner = this.visit(ctx.implicitSelectStatement) as AST.SelectStatement
     } else {
       throw new Error("withStatement: expected insert, update, or select")
     }
@@ -409,7 +501,11 @@ class QuestDBVisitor extends BaseVisitor {
   // ==========================================================================
 
   selectStatement(ctx: SelectStatementCstChildren): AST.SelectStatement {
-    const result = this.visit(ctx.selectBody) as AST.SelectStatement
+    const result = (
+      ctx.selectBody
+        ? this.visit(ctx.selectBody)
+        : this.visit(ctx.implicitSelectStatement!)
+    ) as AST.SelectStatement
 
     if (ctx.declareClause) {
       result.declare = this.visit(ctx.declareClause) as AST.DeclareClause
@@ -476,7 +572,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     if (ctx.groupByClause) {
-      result.groupBy = this.visit(ctx.groupByClause) as AST.Expression[]
+      const groupBy = this.visit(ctx.groupByClause) as GroupByClauseResult
+      if (groupBy.groupBy) result.groupBy = groupBy.groupBy
+      if (groupBy.groupingSets) result.groupingSets = groupBy.groupingSets
     }
 
     if (ctx.pivotBody) {
@@ -487,6 +585,7 @@ class QuestDBVisitor extends BaseVisitor {
         pivots: body.pivots,
         groupBy: body.groupBy,
       }
+      this.markPivotPosition(result, ctx)
     }
 
     if (ctx.windowClause) {
@@ -516,7 +615,9 @@ class QuestDBVisitor extends BaseVisitor {
 
     const select = ctx.simpleSelect
       ? (this.visit(ctx.simpleSelect) as AST.SelectStatement)
-      : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement)
+      : ctx.selectStatement
+        ? (this.visit(ctx.selectStatement) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement)
 
     const result: AST.SetOperation = {
       type: "setOperation",
@@ -670,14 +771,13 @@ class QuestDBVisitor extends BaseVisitor {
       type: "tableRef",
       table: unnest,
     }
-    const identifiers = ctx.identifier || []
-    if (identifiers.length > 0) {
-      result.alias = this.extractIdentifierName(identifiers[0].children)
+    if (ctx.unnestAlias) {
+      result.alias = this.extractIdentifierName(ctx.unnestAlias[0].children)
     }
-    if (identifiers.length > 1) {
-      result.columnAliases = identifiers
-        .slice(1)
-        .map((id: CstNode) => this.extractIdentifierName(id.children))
+    if (ctx.identifier && ctx.identifier.length > 0) {
+      result.columnAliases = ctx.identifier.map((id: CstNode) =>
+        this.extractIdentifierName(id.children),
+      )
     }
     return result
   }
@@ -701,7 +801,23 @@ class QuestDBVisitor extends BaseVisitor {
       result.latestOn = this.visitSafe(ctx.latestOnClause) as AST.LatestOnClause
     }
     if (ctx.groupByClause) {
-      result.groupBy = this.visitSafe(ctx.groupByClause) as AST.Expression[]
+      const groupBy = this.visitSafe(ctx.groupByClause) as
+        | GroupByClauseResult
+        | undefined
+      if (groupBy?.groupBy) result.groupBy = groupBy.groupBy
+      if (groupBy?.groupingSets) result.groupingSets = groupBy.groupingSets
+    }
+    if (ctx.pivotBody) {
+      const body = this.visitSafe(ctx.pivotBody) as PivotBodyResult | undefined
+      if (body) {
+        result.pivot = {
+          type: "pivotClause",
+          aggregations: body.aggregations,
+          pivots: body.pivots,
+          groupBy: body.groupBy,
+        }
+        this.markPivotPosition(result, ctx)
+      }
     }
     if (ctx.subsampleClause) {
       result.subsample = this.visitSafe(
@@ -744,7 +860,8 @@ class QuestDBVisitor extends BaseVisitor {
       const varImage = ctx.VariableReference[0].image // e.g. "@subquery"
       table = { type: "qualifiedName", parts: [varImage] } as AST.QualifiedName
     } else if (ctx.StringLiteral) {
-      // Single-quoted table name: FROM 'sys.copy_export_log'
+      // Single-quoted table name: FROM 'sys.copy_export_log'. Kept verbatim
+      // (no '' unescape), like the server's GenericLexer.unquote.
       table = {
         type: "qualifiedName",
         parts: [ctx.StringLiteral[0].image.slice(1, -1)],
@@ -787,8 +904,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.tableFunctionName) {
       const fnName = ctx.tableFunctionName[0]
       if (fnName.children?.identifier) {
-        const id = this.visit(fnName.children.identifier) as AST.QualifiedName
-        name = id.parts.join(".")
+        name = (fnName.children.identifier as CstNode[])
+          .map((i) => (this.visit(i) as AST.QualifiedName).parts.join("."))
+          .join(".")
       } else {
         name = "unknown"
       }
@@ -873,21 +991,7 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   horizonJoin(ctx: HorizonJoinCstChildren): AST.JoinClause {
-    // Build TableRef from tableName + alias
-    const tableRef: AST.TableRef = {
-      type: "tableRef",
-      table: this.visit(ctx.tableName) as AST.QualifiedName,
-    }
-    if (ctx.Identifier) {
-      // Implicit alias (bare identifier, not a keyword)
-      tableRef.alias = ctx.Identifier[0].image
-    } else if (ctx.identifier && ctx.identifier.length > 0) {
-      // Explicit alias (AS <id>): the FIRST identifier is the table alias.
-      // (The horizon alias, when present, is the last identifier.)
-      tableRef.alias = (
-        this.visit(ctx.identifier[0]) as AST.QualifiedName
-      ).parts[0]
-    }
+    const tableRef = this.visit(ctx.tableRef) as AST.TableRef
 
     const result: AST.JoinClause = {
       type: "join",
@@ -911,17 +1015,18 @@ class QuestDBVisitor extends BaseVisitor {
         (o) => this.visit(o) as string,
       )
     }
-    // Horizon alias (the trailing `AS <x>`) exists only with a RANGE/LIST clause,
-    // and is the LAST identifier. Non-last joins in a chain have none (#6881).
+    // Horizon alias (the trailing `AS <x>`) exists only with a RANGE/LIST
+    // clause. Non-last joins in a chain have none (#6881).
     if ((ctx.Range || ctx.List) && ctx.identifier) {
-      const lastId = ctx.identifier[ctx.identifier.length - 1]
-      result.horizonAlias = (this.visit(lastId) as AST.QualifiedName).parts[0]
+      result.horizonAlias = (
+        this.visit(ctx.identifier[0]) as AST.QualifiedName
+      ).parts[0]
     }
     return result
   }
 
   horizonOffset(ctx: HorizonOffsetCstChildren): string {
-    const sign = ctx.Minus ? "-" : ""
+    const sign = ctx.Minus ? "-" : ctx.Plus ? "+" : ""
     if (ctx.DurationLiteral) {
       return sign + ctx.DurationLiteral[0].image
     }
@@ -993,11 +1098,12 @@ class QuestDBVisitor extends BaseVisitor {
   sampleByClause(ctx: SampleByClauseCstChildren): AST.SampleByClause {
     const result: AST.SampleByClause = {
       type: "sampleBy",
-      duration: ctx.DurationLiteral
-        ? this.tokenImage(ctx.DurationLiteral[0])
-        : ctx.VariableReference
-          ? this.tokenImage(ctx.VariableReference[0])
-          : this.tokenImage(ctx.Identifier![0]),
+      duration: ctx.sampleByExpression
+        ? this.sampleByDuration(ctx.sampleByExpression[0], ctx.sampleByUnit)
+        : this.tokenImage(ctx.Identifier![0]),
+    }
+    if (ctx.groupingSetsSpec) {
+      result.groupingSets = this.visit(ctx.groupingSetsSpec) as AST.GroupingSets
     }
     if (ctx.fillClause) {
       result.fill = this.visit(ctx.fillClause) as string[]
@@ -1017,20 +1123,29 @@ class QuestDBVisitor extends BaseVisitor {
     return ctx.fillValue.map((v: CstNode) => this.visit(v) as string)
   }
 
+  /** SAMPLE BY text: the expression as SQL, plus the unit letter if any */
+  private sampleByDuration(node: CstNode, unit: IToken[] | undefined): string {
+    // A lone duration literal keeps its image (`1h`, `30m`, `1d`)
+    const bare = this.bareDurationLiteral(node)
+    const text = bare
+      ? String(bare.value)
+      : expressionToSql(this.visit(node) as AST.Expression)
+    return unit ? `${text} ${this.tokenImage(unit[0])}` : text
+  }
+
+  // FILL values: plain names (PREV, LINEAR, NONE, NULL) are upper-cased and
+  // PREV(...) keeps an upper-case name, as before; other values are printed
+  // as expressions (-1, @f, 1 + 2, '5').
   fillValue(ctx: FillValueCstChildren): string {
-    if (ctx.Null) return "NULL"
-    if (ctx.NumberLiteral) return this.tokenImage(ctx.NumberLiteral[0])
-    if (ctx.identifier) {
-      const name = this.extractIdentifierName(
-        ctx.identifier[0].children,
-      ).toUpperCase()
-      if (ctx.LParen && ctx.identifier[1]) {
-        const column = this.extractIdentifierName(ctx.identifier[1].children)
-        return `${name}(${column})`
-      }
-      return name
+    const expr = this.visit(ctx.expression) as AST.Expression
+    if (expr.type === "column" && expr.name.parts.length === 1) {
+      return expr.name.parts[0].toUpperCase()
     }
-    return ""
+    if (expr.type === "literal" && expr.literalType === "null") return "NULL"
+    if (expr.type === "function" && expr.name.toUpperCase() === "PREV") {
+      return expressionToSql({ ...expr, name: "PREV" })
+    }
+    return expressionToSql(expr)
   }
 
   alignToClause(ctx: AlignToClauseCstChildren): AST.AlignToClause {
@@ -1038,11 +1153,29 @@ class QuestDBVisitor extends BaseVisitor {
       type: "alignTo",
       mode: ctx.Calendar ? "calendar" : "firstObservation",
     }
-    if (ctx.Zone && ctx.timeZoneValue) {
-      result.timeZone = this.extractMaybeString(ctx.timeZoneValue[0])
+    // A string literal or plain name stays a string; anything else (@tz, $1,
+    // f(...)) is kept as an expression too.
+    const value = (
+      node: CstNode,
+    ): { text: string; expression?: AST.Expression } => {
+      const expr = this.visit(node) as AST.Expression
+      if (expr.type === "literal" && expr.literalType === "string") {
+        return { text: String(expr.value) }
+      }
+      if (expr.type === "column" && expr.name.parts.length === 1) {
+        return { text: expr.name.parts[0] }
+      }
+      return { text: expressionToSql(expr), expression: expr }
     }
-    if (ctx.Offset && ctx.stringOrIdentifier) {
-      result.offset = this.extractMaybeString(ctx.stringOrIdentifier[0])
+    if (ctx.timeZoneExpression) {
+      const v = value(ctx.timeZoneExpression[0])
+      result.timeZone = v.text
+      if (v.expression) result.timeZoneExpression = v.expression
+    }
+    if (ctx.offsetExpression) {
+      const v = value(ctx.offsetExpression[0])
+      result.offset = v.text
+      if (v.expression) result.offsetExpression = v.expression
     }
     return result
   }
@@ -1060,23 +1193,55 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   latestOnClause(ctx: LatestOnClauseCstChildren): AST.LatestOnClause {
-    const columnRefs = ctx.columnRef!.map(
-      (c: CstNode) => this.visit(c) as AST.ColumnRef,
+    const names = (ctx.latestOnColumn ?? []).map(
+      (c: CstNode) => this.visit(c) as AST.QualifiedName,
     )
 
     if (ctx.On) {
       // LATEST ON timestamp PARTITION BY col1, col2, ...
       return {
         type: "latestOn",
-        timestamp: columnRefs[0].name,
-        partitionBy: columnRefs.slice(1).map((c: AST.ColumnRef) => c.name),
+        timestamp: names[0],
+        partitionBy: names.slice(1),
       }
     }
     // LATEST BY col1, col2, ...
     return {
       type: "latestOn",
-      partitionBy: columnRefs.map((c: AST.ColumnRef) => c.name),
+      partitionBy: names,
     }
+  }
+
+  // Column or @variable; a variable is kept as a one-part name "@var"
+  latestOnColumn(ctx: LatestOnColumnCstChildren): AST.QualifiedName {
+    if (ctx.VariableReference) {
+      return {
+        type: "qualifiedName",
+        parts: [ctx.VariableReference[0].image],
+      }
+    }
+    return (this.visit(ctx.columnRef!) as AST.ColumnRef).name
+  }
+
+  /**
+   * Records the PIVOT alias and a PIVOT written before SAMPLE BY / GROUP BY
+   * (server order).
+   */
+  private markPivotPosition(
+    result: AST.SelectStatement,
+    ctx: SimpleSelectCstChildren | ImplicitSelectBodyCstChildren,
+  ): void {
+    if (ctx.pivotAlias && result.pivot) {
+      result.pivot.alias = this.extractIdentifierName(
+        ctx.pivotAlias[0].children,
+      )
+    }
+    const pivotOffset = ctx.Pivot?.[0]?.startOffset
+    if (pivotOffset === undefined) return
+    const later = [ctx.sampleByClause?.[0], ctx.groupByClause?.[0]].some(
+      (c) => c !== undefined && this.getFirstTokenOffset(c) > pivotOffset,
+    )
+    if (later) result.pivotBeforeGroupBy = true
   }
 
   subsampleClause(ctx: SubsampleClauseCstChildren): AST.SubsampleClause {
@@ -1091,8 +1256,62 @@ class QuestDBVisitor extends BaseVisitor {
   // GROUP BY, HAVING, ORDER BY, LIMIT
   // ==========================================================================
 
-  groupByClause(ctx: GroupByClauseCstChildren): AST.Expression[] {
-    return ctx.expression.map((e: CstNode) => this.visit(e) as AST.Expression)
+  groupByClause(ctx: GroupByClauseCstChildren): GroupByClauseResult {
+    const result: GroupByClauseResult = {}
+    if (!ctx.expression && !ctx.groupingSetsSpec) {
+      // Only reachable from error recovery (`GROUP BY;`): no key at all.
+      throw new Error("GROUP BY key expected")
+    }
+    if (ctx.expression) {
+      result.groupBy = ctx.expression.map(
+        (e: CstNode) => this.visit(e) as AST.Expression,
+      )
+    }
+    if (ctx.groupingSetsSpec) {
+      result.groupingSets = this.visit(ctx.groupingSetsSpec) as AST.GroupingSets
+    } else if (ctx.rollupOrCubeSpec) {
+      result.groupingSets = this.visit(ctx.rollupOrCubeSpec) as AST.GroupingSets
+    }
+    return result
+  }
+
+  groupingSetsSpec(ctx: GroupingSetsSpecCstChildren): AST.GroupingSets {
+    return this.visit(
+      (ctx.rollupOrCubeSpec ?? ctx.explicitGroupingSets)!,
+    ) as AST.GroupingSets
+  }
+
+  rollupOrCubeSpec(ctx: RollupOrCubeSpecCstChildren): AST.GroupingSets {
+    return {
+      type: "groupingSets",
+      kind: ctx.Cube ? "cube" : "rollup",
+      columns: ctx.groupingKey.map(
+        (c: CstNode) => this.visit(c) as AST.GroupingKey,
+      ),
+    }
+  }
+
+  groupingKey(ctx: GroupingKeyCstChildren): AST.GroupingKey {
+    if (ctx.groupingKey) return this.visit(ctx.groupingKey) as AST.GroupingKey
+    if (ctx.VariableReference)
+      return { type: "variable", name: ctx.VariableReference[0].image.slice(1) }
+    return this.visit(ctx.columnRef!) as AST.ColumnRef
+  }
+
+  explicitGroupingSets(ctx: ExplicitGroupingSetsCstChildren): AST.GroupingSets {
+    return {
+      type: "groupingSets",
+      kind: "groupingSets",
+      sets: ctx.groupingSet.map(
+        (g: CstNode) => this.visit(g) as AST.GroupingKey[],
+      ),
+    }
+  }
+
+  groupingSet(ctx: GroupingSetCstChildren): AST.GroupingKey[] {
+    return (ctx.groupingKey ?? []).map(
+      (c: CstNode) => this.visit(c) as AST.GroupingKey,
+    )
   }
 
   orderByClause(ctx: OrderByClauseCstChildren): AST.OrderByItem[] {
@@ -1114,9 +1333,22 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   limitClause(ctx: LimitClauseCstChildren): AST.LimitClause {
+    if (!ctx.expression) {
+      // Only reachable from error recovery (`LIMIT;`)
+      throw new Error("LIMIT expression expected")
+    }
     const expressions = ctx.expression.map(
       (e: CstNode) => this.visit(e) as AST.Expression,
     )
+    // `LIMIT ,5`: the server defaults the missing lower bound to 0
+    if (ctx.openLowerBound) {
+      expressions.unshift({
+        type: "literal",
+        value: 0,
+        literalType: "number",
+        raw: "0",
+      })
+    }
 
     const result: AST.LimitClause = {
       type: "limit",
@@ -1180,7 +1412,7 @@ class QuestDBVisitor extends BaseVisitor {
     const o3MaxLag =
       ctx.DurationLiteral?.[0]?.image ??
       (ctx.StringLiteral?.[0]?.image
-        ? ctx.StringLiteral[0].image.slice(1, -1)
+        ? unquoteSingle(ctx.StringLiteral[0].image)
         : undefined)
     return {
       size: tokenInt(ctx.NumberLiteral[0].image),
@@ -1247,9 +1479,14 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.DeclareAssignment = {
       type: "declareAssignment",
       name: image.substring(1), // strip leading @
-      value: this.visit(ctx.expression) as AST.Expression,
+      // A bare duration stays a duration: the variable may be substituted
+      // into SAMPLE BY (`DECLARE @unit := 1m ... SAMPLE BY @unit`).
+      value:
+        this.bareDurationLiteral(ctx.expression[0]) ??
+        (this.visit(ctx.expression) as AST.Expression),
     }
     if (ctx.Overridable) result.overridable = true
+    if (ctx.Audited) result.audited = true
     return result
   }
 
@@ -1282,6 +1519,11 @@ class QuestDBVisitor extends BaseVisitor {
       return this.visit(
         ctx.createServiceAccountStatement,
       ) as AST.CreateServiceAccountStatement
+    }
+    if (ctx.createResourceGroupStatement) {
+      return this.visit(
+        ctx.createResourceGroupStatement,
+      ) as AST.CreateResourceGroupStatement
     }
     throw new Error("Unknown create statement type")
   }
@@ -1322,6 +1564,10 @@ class QuestDBVisitor extends BaseVisitor {
       result.asSelect = this.visit(
         ctx.selectStatement[0],
       ) as AST.SelectStatement
+    } else if (ctx.implicitSelectStatement) {
+      result.asSelect = this.visit(
+        ctx.implicitSelectStatement[0],
+      ) as AST.SelectStatement
     }
 
     if (ctx.castDefinition) {
@@ -1358,8 +1604,8 @@ class QuestDBVisitor extends BaseVisitor {
       result.wal = true
     }
 
-    if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
-      result.ttl = this.extractTtl(ctx)
+    if (ctx.ttlClause) {
+      result.ttl = this.visit(ctx.ttlClause) as AST.CreateTableStatement["ttl"]
     }
 
     if (ctx.optionalStoragePolicy) {
@@ -1384,7 +1630,7 @@ class QuestDBVisitor extends BaseVisitor {
         (t: IToken) => t.startOffset > volumeOffset,
       )
       result.volume = volumeStr
-        ? volumeStr.image.slice(1, -1)
+        ? unquoteSingle(volumeStr.image)
         : ctx.identifier?.length
           ? this.extractIdentifierName(
               ctx.identifier[ctx.identifier.length - 1].children,
@@ -1396,7 +1642,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
 
     if (ctx.dedupClause) {
-      result.dedupKeys = this.visit(ctx.dedupClause) as string[]
+      const dedup = this.visit(ctx.dedupClause) as DedupModeKeys
+      result.dedupKeys = dedup.keys
+      result.dedupMode = dedup.mode
     }
 
     // FORMAT { PARQUET | NATIVE } — accepted in three positions; take the
@@ -1429,8 +1677,10 @@ class QuestDBVisitor extends BaseVisitor {
   columnDefinition(ctx: ColumnDefinitionCstChildren): AST.ColumnDefinition {
     const result: AST.ColumnDefinition = {
       type: "columnDefinition",
-      name: this.extractIdentifierName(ctx.identifier[0].children),
-      dataType: this.visit(ctx.dataType) as string,
+      name: ctx.identifier
+        ? this.extractIdentifierName(ctx.identifier[0].children)
+        : (ctx.keywordName?.[0].image ?? ""),
+      dataType: this.visit(ctx.doublePrecisionType ?? ctx.dataType!) as string,
     }
 
     // Distinguish symbol CAPACITY (CONSUME) from index CAPACITY (CONSUME1) by position
@@ -1588,11 +1838,77 @@ class QuestDBVisitor extends BaseVisitor {
 
   castDefinition(ctx: CastDefinitionCstChildren): AST.CastDefinition {
     const colRef = this.visit(ctx.columnRef) as AST.ColumnRef
-    return {
+    const result: AST.CastDefinition = {
       type: "castDefinition",
       column: colRef.name ?? colRef,
-      dataType: this.visit(ctx.dataType) as string,
+      dataType: this.visit(ctx.doublePrecisionType ?? ctx.dataType!) as string,
     }
+    if (ctx.NumberLiteral) {
+      result.symbolCapacity = tokenInt(ctx.NumberLiteral[0].image)
+    }
+    if (ctx.Cache) result.cache = true
+    else if (ctx.Nocache) result.cache = false
+    return result
+  }
+
+  alterTableAddColumns(
+    ctx: AlterTableAddColumnsCstChildren,
+  ): AST.AddColumnAction {
+    const columns = ctx.addColumnItem.map(
+      (c) => this.visit(c) as AST.ColumnDefinition,
+    )
+    const result: AST.AddColumnAction = { actionType: "addColumn", columns }
+    if (ctx.stringOrIdentifier) {
+      result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
+    }
+    // IF NOT EXISTS on the first column is the action-level flag
+    if (columns[0].ifNotExists) {
+      delete columns[0].ifNotExists
+      result.ifNotExists = true
+    }
+    return result
+  }
+
+  addColumnItem(ctx: AddColumnItemCstChildren): AST.ColumnDefinition {
+    const col = this.visit(ctx.columnDefinition) as AST.ColumnDefinition
+    if (ctx.If) col.ifNotExists = true
+    return col
+  }
+
+  alterColumnTypeIndex(ctx: AlterColumnTypeIndexCstChildren):
+    | {
+        capacity?: number
+        indexType?: AST.AlterColumnAction["indexType"]
+        include?: string[]
+      }
+    | undefined {
+    if (!ctx.Index) return undefined
+    return ctx.indexTypeOptions
+      ? (this.visit(ctx.indexTypeOptions) as {
+          capacity?: number
+          indexType?: AST.AlterColumnAction["indexType"]
+          include?: string[]
+        })
+      : {}
+  }
+
+  suspendWalWith(ctx: SuspendWalWithCstChildren): {
+    code: number | string
+    message: string
+  } {
+    return {
+      code: ctx.NumberLiteral
+        ? tokenInt(ctx.NumberLiteral[0].image)
+        : unquoteSingle(ctx.StringLiteral[0].image),
+      message: unquoteSingle(
+        ctx.StringLiteral[ctx.StringLiteral.length - 1].image,
+      ),
+    }
+  }
+
+  // `[PRECISION] [NOT] NULL` is ignored (as on the server)
+  columnNullModifier(): undefined {
+    return undefined
   }
 
   indexDefinition(ctx: IndexDefinitionCstChildren): AST.IndexDefinition {
@@ -1631,6 +1947,10 @@ class QuestDBVisitor extends BaseVisitor {
           : ctx.Ef
             ? "posting_ef"
             : "posting"
+      } else if (ctx.PostingDelta) {
+        r.indexType = "posting_delta"
+      } else if (ctx.PostingEf) {
+        r.indexType = "posting_ef"
       } else if (ctx.Bitmap) {
         r.indexType = "bitmap"
       } else if (ctx.None) {
@@ -1663,9 +1983,40 @@ class QuestDBVisitor extends BaseVisitor {
       name,
     }
     if (ctx.expression) {
-      result.value = this.visit(ctx.expression) as AST.Expression
+      // o3MaxLag = 10m / 7d is a duration (SqlUtil.expectMicros), not a number
+      result.value =
+        this.bareDurationLiteral(ctx.expression[0]) ??
+        (this.visit(ctx.expression) as AST.Expression)
     }
     return result
+  }
+
+  /**
+   * If an expression CST is nothing but one DurationLiteral token, returns it
+   * as a duration literal. Used where a value is a duration (o3MaxLag, DECLARE
+   * values that may feed SAMPLE BY), since `literal` types `10m` / `7d` as
+   * numbers.
+   */
+  private bareDurationLiteral(node: CstNode): AST.Literal | undefined {
+    const tokens: IToken[] = []
+    const collect = (n: CstNode) => {
+      for (const children of Object.values(n.children)) {
+        for (const c of children) {
+          if ("image" in c) tokens.push(c)
+          else collect(c)
+          if (tokens.length > 1) return
+        }
+      }
+    }
+    collect(node)
+    if (tokens.length !== 1 || tokens[0].tokenType.name !== "DurationLiteral") {
+      return undefined
+    }
+    return {
+      type: "literal",
+      value: this.tokenImage(tokens[0]),
+      literalType: "duration",
+    }
   }
 
   createViewBody(ctx: CreateViewBodyCstChildren): AST.CreateViewStatement {
@@ -1674,7 +2025,7 @@ class QuestDBVisitor extends BaseVisitor {
       view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
       query: ctx.selectStatement
         ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
-        : (this.visit(ctx.implicitSelectBody!) as AST.SelectStatement),
+        : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement),
     }
     if (ctx.LParen) {
       result.asParens = true
@@ -1687,6 +2038,9 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
       result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
+    }
+    if (ctx.Audit) {
+      result.audit = true
     }
     return result
   }
@@ -1704,12 +2058,8 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.No) {
       result.noPassword = true
     }
-    if (ctx.Password) {
-      if (ctx.StringLiteral) {
-        result.password = ctx.StringLiteral[0].image.slice(1, -1)
-      } else if (ctx.identifier) {
-        result.password = this.extractIdentifierName(ctx.identifier[0].children)
-      }
+    if (ctx.Password && ctx.passwordValue) {
+      result.password = this.visit(ctx.passwordValue) as string
     }
     return result
   }
@@ -1722,8 +2072,8 @@ class QuestDBVisitor extends BaseVisitor {
       group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
       ifNotExists: !!ctx.If,
     }
-    if (ctx.StringLiteral) {
-      result.externalAlias = ctx.StringLiteral[0].image.slice(1, -1)
+    if (ctx.stringOrIdentifier) {
+      result.externalAlias = this.externalAliasValue(ctx.stringOrIdentifier[0])
     }
     return result
   }
@@ -1741,12 +2091,8 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.No) {
       result.noPassword = true
     }
-    if (ctx.Password && !ctx.No) {
-      if (ctx.StringLiteral) {
-        result.password = ctx.StringLiteral[0].image.slice(1, -1)
-      } else if (ctx.identifier) {
-        result.password = this.extractIdentifierName(ctx.identifier[0].children)
-      }
+    if (ctx.Password && !ctx.No && ctx.passwordValue) {
+      result.password = this.visit(ctx.passwordValue) as string
     }
     if (ctx.Owned && ctx.stringOrIdentifier) {
       result.ownedBy = this.visit(ctx.stringOrIdentifier) as string
@@ -1760,9 +2106,13 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.CreateMaterializedViewStatement = {
       type: "createMaterializedView",
       view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
-      query: this.visit(ctx.selectStatement[0]) as AST.SelectStatement,
+      query: ctx.selectStatement
+        ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement),
     }
-    if (ctx.LParen) {
+    // The body's "(" follows AS; TIMESTAMP(col) also consumes an LParen here.
+    const timestampOffset = ctx.Timestamp?.[0].startOffset ?? Infinity
+    if (ctx.LParen?.some((t) => t.startOffset < timestampOffset)) {
       result.asParens = true
     }
     if (ctx.If) {
@@ -1800,7 +2150,11 @@ class QuestDBVisitor extends BaseVisitor {
         ttl?: AST.CreateMaterializedViewStatement["ttl"]
       }
       if (partition.partitionBy) result.partitionBy = partition.partitionBy
-      if (partition.ttl) result.ttl = partition.ttl
+    }
+    if (ctx.ttlClause) {
+      result.ttl = this.visit(
+        ctx.ttlClause,
+      ) as AST.CreateMaterializedViewStatement["ttl"]
     }
     if (ctx.optionalStoragePolicy) {
       const sp = this.visit(ctx.optionalStoragePolicy) as
@@ -1817,7 +2171,7 @@ class QuestDBVisitor extends BaseVisitor {
         (t: IToken) => t.startOffset > volumeOffset,
       )
       result.volume = volumeStr
-        ? volumeStr.image.slice(1, -1)
+        ? unquoteSingle(volumeStr.image)
         : ctx.identifier?.length
           ? this.extractIdentifierName(
               ctx.identifier[ctx.identifier.length - 1].children,
@@ -1837,8 +2191,8 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   expireRowsClause(ctx: ExpireRowsClauseCstChildren): AST.ExpireRowsClause {
-    const idents = (ctx.identifier ?? []).map((id: IdentifierCstNode) =>
-      this.extractIdentifierName(id.children),
+    const idents = (ctx.keyColumn ?? []).map(
+      (c: CstNode) => this.visit(c) as string,
     )
     let clause: AST.ExpireRowsClause
     if (ctx.When) {
@@ -1883,7 +2237,8 @@ class QuestDBVisitor extends BaseVisitor {
     const result: AST.MaterializedViewRefresh = {
       type: "materializedViewRefresh",
     }
-    if (ctx.Immediate) result.mode = "immediate"
+    // INCREMENTAL is the obsolete name of IMMEDIATE
+    if (ctx.Immediate || ctx.Incremental) result.mode = "immediate"
     if (ctx.Manual) result.mode = "manual"
     if (ctx.intervalValue) {
       result.every = this.extractMaybeString(ctx.intervalValue[0])
@@ -1935,10 +2290,14 @@ class QuestDBVisitor extends BaseVisitor {
         | "DAY"
         | "HOUR"
     }
-    if (ctx.Ttl && (ctx.NumberLiteral || ctx.DurationLiteral)) {
-      result.ttl = this.extractTtl(ctx)
-    }
     return result
+  }
+
+  ttlClause(ctx: TtlClauseCstChildren): {
+    value: number
+    unit: "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+  } {
+    return this.extractTtl(ctx)
   }
 
   createLiveViewBody(
@@ -1964,7 +2323,7 @@ class QuestDBVisitor extends BaseVisitor {
       } else if (ctx.StringLiteral) {
         result.startFrom = {
           kind: "timestamp",
-          value: ctx.StringLiteral[0].image.slice(1, -1),
+          value: unquoteSingle(ctx.StringLiteral[0].image),
         }
       } else {
         result.startFrom = { kind: "now" }
@@ -2004,11 +2363,11 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.NumberLiteral) {
         result.code = tokenInt(ctx.NumberLiteral[0].image)
       } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-        result.code = ctx.StringLiteral[0].image.slice(1, -1)
+        result.code = unquoteSingle(ctx.StringLiteral[0].image)
       }
       const strings = ctx.StringLiteral || []
       if (strings.length > 0) {
-        result.message = strings[strings.length - 1].image.slice(1, -1)
+        result.message = unquoteSingle(strings[strings.length - 1].image)
       }
     }
     return result
@@ -2023,10 +2382,10 @@ class QuestDBVisitor extends BaseVisitor {
     }
     const result: AST.AnchorClause = {
       kind: "daily",
-      time: ctx.StringLiteral![0].image.slice(1, -1),
+      time: unquoteSingle(ctx.StringLiteral![0].image),
     }
     if (ctx.StringLiteral && ctx.StringLiteral.length > 1) {
-      result.timezone = ctx.StringLiteral[1].image.slice(1, -1)
+      result.timezone = unquoteSingle(ctx.StringLiteral[1].image)
     }
     return result
   }
@@ -2078,10 +2437,23 @@ class QuestDBVisitor extends BaseVisitor {
     return "DAYS"
   }
 
-  dedupClause(ctx: DedupClauseCstChildren): string[] {
-    return ctx.identifier.map((id: IdentifierCstNode) =>
-      this.extractIdentifierName(id.children),
-    )
+  dedupClause(ctx: DedupClauseCstChildren): DedupModeKeys {
+    return this.visit(ctx.dedupModeKeys) as DedupModeKeys
+  }
+
+  dedupKeyword(_ctx: DedupKeywordCstChildren): void {
+    // DEDUP | DEDUPLICATE carry no value; printed as DEDUP
+  }
+
+  keyColumn(ctx: KeyColumnCstChildren): string {
+    return this.extractIdentifierName(ctx.identifier[0].children)
+  }
+
+  dedupModeKeys(ctx: DedupModeKeysCstChildren): DedupModeKeys {
+    return {
+      mode: ctx.Skip ? "skip" : "upsert",
+      keys: ctx.keyColumn.map((c: CstNode) => this.visit(c) as string),
+    }
   }
 
   // ==========================================================================
@@ -2116,6 +2488,11 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.alterGroupStatement) {
       return this.visit(ctx.alterGroupStatement) as AST.AlterGroupStatement
     }
+    if (ctx.alterResourceGroupStatement) {
+      return this.visit(
+        ctx.alterResourceGroupStatement,
+      ) as AST.AlterResourceGroupStatement
+    }
     throw new Error("Unknown alter statement type")
   }
 
@@ -2125,7 +2502,9 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "alterView",
       view: this.visit(ctx.stringOrQualifiedName) as AST.QualifiedName,
-      query: this.visit(ctx.selectStatement![0]) as AST.SelectStatement,
+      query: ctx.selectStatement
+        ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.implicitSelectStatement!) as AST.SelectStatement),
     }
   }
 
@@ -2133,6 +2512,20 @@ class QuestDBVisitor extends BaseVisitor {
     ctx: AlterGroupStatementCstChildren,
   ): AST.AlterGroupStatement {
     const group = this.visit(ctx.qualifiedName) as AST.QualifiedName
+    if (ctx.principalResourceGroupAction) {
+      const a = this.visit(
+        ctx.principalResourceGroupAction,
+      ) as AST.AlterUserResourceGroupAction
+      return {
+        type: "alterGroup",
+        group,
+        action: a.actionType,
+        ...(a.resourceGroup && { resourceGroup: a.resourceGroup }),
+        ...(a.mappingPriority !== undefined && {
+          mappingPriority: a.mappingPriority,
+        }),
+      }
+    }
     if (ctx.memoryLimit) {
       return {
         type: "alterGroup",
@@ -2141,7 +2534,7 @@ class QuestDBVisitor extends BaseVisitor {
         memoryLimit: this.visit(ctx.memoryLimit) as string,
       }
     }
-    const alias = ctx.StringLiteral![0].image.slice(1, -1)
+    const alias = this.externalAliasValue(ctx.stringOrIdentifier![0])
     return {
       type: "alterGroup",
       group,
@@ -2267,9 +2660,21 @@ class QuestDBVisitor extends BaseVisitor {
       return result
     }
 
-    // SUSPEND WAL
+    // SUSPEND WAL [WITH code, 'message']
     if (ctx.Suspend) {
-      return { actionType: "suspendWal" }
+      const result: AST.AlterMaterializedViewSuspendWal = {
+        actionType: "suspendWal",
+      }
+      if (ctx.suspendWalWith) {
+        Object.assign(
+          result,
+          this.visit(ctx.suspendWalWith) as {
+            code: number | string
+            message: string
+          },
+        )
+      }
+      return result
     }
 
     // REBASE WAL [INTO '<targetDir>']
@@ -2278,7 +2683,7 @@ class QuestDBVisitor extends BaseVisitor {
         actionType: "rebaseWal",
       }
       if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+        result.targetDir = unquoteSingle(ctx.StringLiteral[0].image)
       }
       return result
     }
@@ -2316,7 +2721,97 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
+  principalResourceGroupAction(
+    ctx: PrincipalResourceGroupActionCstChildren,
+  ): AST.AlterUserResourceGroupAction {
+    if (ctx.Unset) return { actionType: "unsetResourceGroup" }
+    const result: AST.AlterUserResourceGroupAction = {
+      actionType: "setResourceGroup",
+      resourceGroup: this.visit(ctx.qualifiedName!) as AST.QualifiedName,
+    }
+    if (ctx.NumberLiteral) result.mappingPriority = ctx.NumberLiteral[0].image
+    return result
+  }
+
+  createResourceGroupStatement(
+    ctx: CreateResourceGroupStatementCstChildren,
+  ): AST.CreateResourceGroupStatement {
+    const result: AST.CreateResourceGroupStatement = {
+      type: "createResourceGroup",
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
+    if (ctx.If) result.ifNotExists = true
+    if (ctx.resourceGroupPolicy) {
+      result.options = this.visit(
+        ctx.resourceGroupPolicy,
+      ) as AST.ResourceGroupOption[]
+    }
+    return result
+  }
+
+  alterResourceGroupStatement(
+    ctx: AlterResourceGroupStatementCstChildren,
+  ): AST.AlterResourceGroupStatement {
+    const group = this.visit(ctx.qualifiedName[0]) as AST.QualifiedName
+    if (ctx.Rename) {
+      return {
+        type: "alterResourceGroup",
+        group,
+        action: "rename",
+        newName: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
+      }
+    }
+    return {
+      type: "alterResourceGroup",
+      group,
+      action: ctx.Reset ? "reset" : "set",
+      options: this.visit(
+        ctx.resourceGroupPolicy!,
+      ) as AST.ResourceGroupOption[],
+    }
+  }
+
+  dropResourceGroupStatement(
+    ctx: DropResourceGroupStatementCstChildren,
+  ): AST.DropResourceGroupStatement {
+    const result: AST.DropResourceGroupStatement = {
+      type: "dropResourceGroup",
+      group: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
+    if (ctx.If) result.ifExists = true
+    return result
+  }
+
+  resourceGroupPolicy(
+    ctx: ResourceGroupPolicyCstChildren,
+  ): AST.ResourceGroupOption[] {
+    return (ctx.resourceGroupOption ?? []).map(
+      (o) => this.visit(o) as AST.ResourceGroupOption,
+    )
+  }
+
+  resourceGroupOption(
+    ctx: ResourceGroupOptionCstChildren,
+  ): AST.ResourceGroupOption {
+    const key = (ctx.MemoryLimit ??
+      ctx.CpuWeight ??
+      ctx.MaxActiveQueries ??
+      ctx.MaxQueuedQueries ??
+      ctx.QueueTimeout)![0]
+    const result: AST.ResourceGroupOption = { name: key.image.toLowerCase() }
+    if (ctx.memoryLimit) {
+      result.value =
+        (ctx.Minus ? "-" : "") + (this.visit(ctx.memoryLimit) as string)
+    }
+    return result
+  }
+
   alterUserAction(ctx: AlterUserActionCstChildren): AST.AlterUserAction {
+    if (ctx.principalResourceGroupAction) {
+      return this.visit(
+        ctx.principalResourceGroupAction,
+      ) as AST.AlterUserResourceGroupAction
+    }
     if (ctx.memoryLimit) {
       return {
         actionType: "setMemoryLimit",
@@ -2330,10 +2825,13 @@ class QuestDBVisitor extends BaseVisitor {
       return { actionType: "disable" }
     }
     if (ctx.Password || ctx.No) {
+      const password = ctx.passwordValue
+        ? (this.visit(ctx.passwordValue) as string)
+        : undefined
       return {
         actionType: "password",
         noPassword: !!ctx.No,
-        password: ctx.StringLiteral?.[0]?.image?.slice(1, -1),
+        password,
       }
     }
     if (ctx.Create && ctx.Token) {
@@ -2341,7 +2839,7 @@ class QuestDBVisitor extends BaseVisitor {
       if (ctx.DurationLiteral) {
         ttl = ctx.DurationLiteral[0].image
       } else if (ctx.Ttl && ctx.StringLiteral) {
-        ttl = ctx.StringLiteral[0].image.slice(1, -1)
+        ttl = unquoteSingle(ctx.StringLiteral[0].image)
       }
       const result: AST.AlterUserCreateTokenAction = {
         actionType: "createToken",
@@ -2355,8 +2853,8 @@ class QuestDBVisitor extends BaseVisitor {
       // JWK public key: WITH PUBLIC KEY X '...' Y '...'
       if (ctx.Public && ctx.Key && ctx.Identifier) {
         // In JWK path, StringLiteral[0] and [1] are the public key values
-        result.publicKeyX = ctx.StringLiteral![0].image.slice(1, -1)
-        result.publicKeyY = ctx.StringLiteral![1].image.slice(1, -1)
+        result.publicKeyX = unquoteSingle(ctx.StringLiteral![0].image)
+        result.publicKeyY = unquoteSingle(ctx.StringLiteral![1].image)
       }
       return result
     }
@@ -2365,11 +2863,14 @@ class QuestDBVisitor extends BaseVisitor {
       tokenType: ctx.Jwk ? "JWK" : "REST",
       token:
         ctx.Identifier?.[0]?.image ??
-        ctx.StringLiteral?.[0]?.image?.slice(1, -1),
+        (ctx.StringLiteral
+          ? unquoteSingle(ctx.StringLiteral[0].image)
+          : undefined),
     }
   }
 
   memoryLimit(ctx: MemoryLimitCstChildren): string {
+    if (ctx.StringLiteral) return ctx.StringLiteral[0].image
     if (ctx.Unlimited) return "UNLIMITED"
     if (ctx.DurationLiteral) return ctx.DurationLiteral[0].image
     return ctx.NumberLiteral![0].image + (ctx.Identifier?.[0]?.image ?? "")
@@ -2379,7 +2880,7 @@ class QuestDBVisitor extends BaseVisitor {
     ctx: AlterTableForceActionCstChildren,
   ): AST.ForceDropPartitionAction | AST.ForceReindexParquetAction {
     const partitions = (ctx.StringLiteral ?? []).map((s: IToken) =>
-      s.image.slice(1, -1),
+      unquoteSingle(s.image),
     )
     if (ctx.Drop) {
       return { actionType: "forceDropPartition", partitions }
@@ -2421,18 +2922,9 @@ class QuestDBVisitor extends BaseVisitor {
       return { actionType: "disableStoragePolicy" }
     }
 
-    // ADD COLUMN
-    if (ctx.Add && ctx.columnDefinition) {
-      const result: AST.AddColumnAction = {
-        actionType: "addColumn",
-        columns: ctx.columnDefinition.map(
-          (c: CstNode) => this.visit(c) as AST.ColumnDefinition,
-        ),
-      }
-      if (ctx.If) {
-        result.ifNotExists = true
-      }
-      return result
+    // ADD [COLUMN]
+    if (ctx.alterTableAddColumns) {
+      return this.visit(ctx.alterTableAddColumns) as AST.AddColumnAction
     }
 
     // DROP COLUMN (when Drop token exists but no Partition and no Alter — Alter + Drop = ALTER COLUMN DROP INDEX)
@@ -2451,11 +2943,23 @@ class QuestDBVisitor extends BaseVisitor {
       const oldRef = this.visit(ctx.columnRef![0]) as AST.ColumnRef
       const oldName = oldRef.name.parts[oldRef.name.parts.length - 1]
       const newName = this.extractIdentifierName(ctx.identifier![0].children)
-      return {
+      const result: AST.RenameColumnAction = {
         actionType: "renameColumn",
         oldName,
         newName,
       }
+      if (ctx.columnRef!.length > 1) {
+        result.additionalRenames = ctx.columnRef!.slice(1).map((c, i) => {
+          const ref = this.visit(c) as AST.ColumnRef
+          return {
+            oldName: ref.name.parts[ref.name.parts.length - 1],
+            newName: this.extractIdentifierName(
+              ctx.identifier![i + 1].children,
+            ),
+          }
+        })
+      }
+      return result
     }
 
     // ALTER COLUMN
@@ -2529,6 +3033,21 @@ class QuestDBVisitor extends BaseVisitor {
       if (alterType === "type") {
         if (ctx.Cache) result.cache = true
         else if (ctx.Nocache) result.cache = false
+        const idx = ctx.alterColumnTypeIndex
+          ? (this.visit(ctx.alterColumnTypeIndex) as
+              | {
+                  capacity?: number
+                  indexType?: AST.AlterColumnAction["indexType"]
+                  include?: string[]
+                }
+              | undefined)
+          : undefined
+        if (idx) {
+          result.indexed = true
+          if (idx.indexType) result.indexType = idx.indexType
+          if (idx.include) result.indexInclude = idx.include
+          if (idx.capacity !== undefined) result.indexCapacity = idx.capacity
+        }
       }
       return result
     }
@@ -2540,7 +3059,7 @@ class QuestDBVisitor extends BaseVisitor {
       }
       if (ctx.StringLiteral) {
         result.partitions = ctx.StringLiteral.map((s: IToken) =>
-          s.image.slice(1, -1),
+          unquoteSingle(s.image),
         )
       }
       if (ctx.Where && ctx.expression) {
@@ -2553,7 +3072,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Attach) {
       return {
         actionType: "attachPartition",
-        partitions: ctx.StringLiteral!.map((s: IToken) => s.image.slice(1, -1)),
+        partitions: ctx.StringLiteral!.map((s: IToken) =>
+          unquoteSingle(s.image),
+        ),
       }
     }
 
@@ -2564,7 +3085,7 @@ class QuestDBVisitor extends BaseVisitor {
       }
       if (ctx.StringLiteral) {
         result.partitions = ctx.StringLiteral.map((s: IToken) =>
-          s.image.slice(1, -1),
+          unquoteSingle(s.image),
         )
       }
       if (ctx.Where && ctx.expression) {
@@ -2603,18 +3124,18 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
-    if (ctx.Dedup && ctx.Disable) {
+    if (ctx.dedupKeyword && ctx.Disable) {
       return {
         actionType: "dedupDisable",
       }
     }
 
-    if (ctx.Dedup && ctx.Enable) {
+    if (ctx.dedupKeyword && ctx.dedupModeKeys) {
+      const dedup = this.visit(ctx.dedupModeKeys) as DedupModeKeys
       return {
         actionType: "dedupEnable",
-        keys: ctx.identifier!.map((id: IdentifierCstNode) =>
-          this.extractIdentifierName(id.children),
-        ),
+        keys: dedup.keys,
+        dedupMode: dedup.mode,
       }
     }
 
@@ -2626,12 +3147,12 @@ class QuestDBVisitor extends BaseVisitor {
         if (ctx.NumberLiteral) {
           result.code = tokenInt(ctx.NumberLiteral[0].image)
         } else if (ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-          result.code = ctx.StringLiteral[0].image.slice(1, -1)
+          result.code = unquoteSingle(ctx.StringLiteral[0].image)
         }
         // Message is the last StringLiteral
         const strings = ctx.StringLiteral || []
         if (strings.length > 0) {
-          result.message = strings[strings.length - 1].image.slice(1, -1)
+          result.message = unquoteSingle(strings[strings.length - 1].image)
         }
       }
       return result
@@ -2655,7 +3176,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Rebase) {
       const result: AST.RebaseWalAction = { actionType: "rebaseWal" }
       if (ctx.Into && ctx.StringLiteral && ctx.StringLiteral.length > 0) {
-        result.targetDir = ctx.StringLiteral[0].image.slice(1, -1)
+        result.targetDir = unquoteSingle(ctx.StringLiteral[0].image)
       }
       return result
     }
@@ -2706,6 +3227,11 @@ class QuestDBVisitor extends BaseVisitor {
     }
     if (ctx.dropGroupStatement) {
       return this.visit(ctx.dropGroupStatement) as AST.DropGroupStatement
+    }
+    if (ctx.dropResourceGroupStatement) {
+      return this.visit(
+        ctx.dropResourceGroupStatement,
+      ) as AST.DropResourceGroupStatement
     }
     if (ctx.dropServiceAccountStatement) {
       return this.visit(
@@ -2875,7 +3401,9 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.NumberLiteral?.[0] ?? ctx.Identifier?.[0] ?? ctx.StringLiteral?.[0]
     return {
       type: "cancelQuery",
-      queryId: token?.image?.replace(/^'|'$/g, "") ?? "",
+      queryId: ctx.StringLiteral
+        ? unquoteSingle(ctx.StringLiteral[0].image)
+        : (token?.image ?? ""),
     }
   }
 
@@ -3075,8 +3603,9 @@ class QuestDBVisitor extends BaseVisitor {
       type: "explain",
       statement: this.visit(ctx.statement) as AST.Statement,
     }
-    if (ctx.Format && ctx.Identifier) {
-      result.format = ctx.Identifier[0].image.toUpperCase()
+    const formatToken = ctx.Identifier?.[0] ?? ctx.Text?.[0]
+    if (ctx.Format && formatToken) {
+      result.format = formatToken.image.toUpperCase()
     }
     return result
   }
@@ -3101,7 +3630,7 @@ class QuestDBVisitor extends BaseVisitor {
   copyCancel(ctx: CopyCancelCstChildren): AST.CopyCancelStatement {
     let id = ""
     if (ctx.StringLiteral) {
-      id = ctx.StringLiteral[0].image.slice(1, -1)
+      id = unquoteSingle(ctx.StringLiteral[0].image)
     } else if (ctx.NumberLiteral) {
       id = ctx.NumberLiteral[0].image
     } else if (ctx.Identifier) {
@@ -3138,7 +3667,9 @@ class QuestDBVisitor extends BaseVisitor {
   copyTo(ctx: CopyToCstChildren): AST.CopyToStatement {
     const source = ctx.selectStatement
       ? (this.visit(ctx.selectStatement[0]) as AST.SelectStatement)
-      : (this.visit(ctx.tableName!) as AST.QualifiedName)
+      : ctx.implicitSelectStatement
+        ? (this.visit(ctx.implicitSelectStatement[0]) as AST.SelectStatement)
+        : (this.visit(ctx.tableName!) as AST.QualifiedName)
     const result: AST.CopyToStatement = {
       type: "copyTo",
       source,
@@ -3194,11 +3725,18 @@ class QuestDBVisitor extends BaseVisitor {
         result.quoted = true
       }
     } else if (ctx.StringLiteral) {
-      result.value = ctx.StringLiteral[0].image.slice(1, -1)
+      result.value = unquoteSingle(ctx.StringLiteral[0].image)
       result.quoted = true
     } else if (ctx.expression) {
       const expr = this.visit(ctx.expression) as AST.Expression
-      if (expr?.type === "literal" && expr.literalType === "number") {
+      if (
+        expr?.type === "literal" &&
+        expr.literalType === "number" &&
+        /[mMdD]$/.test(expr.raw ?? "")
+      ) {
+        // keep a suffixed number (3d, 1m) verbatim; it used to be a duration
+        result.value = expr.raw!
+      } else if (expr?.type === "literal" && expr.literalType === "number") {
         result.value = expr.value as number
       } else if (expr?.type === "literal" && expr.literalType === "string") {
         result.value = expr.value as string
@@ -3218,7 +3756,8 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.Zstd ||
       ctx.Lz4Raw ||
       ctx.Brotli ||
-      ctx.Lzo
+      ctx.Lzo ||
+      ctx.Default
     ) {
       const codecToken =
         ctx.Uncompressed?.[0] ??
@@ -3228,7 +3767,8 @@ class QuestDBVisitor extends BaseVisitor {
         ctx.Zstd?.[0] ??
         ctx.Lz4Raw?.[0] ??
         ctx.Brotli?.[0] ??
-        ctx.Lzo?.[0]
+        ctx.Lzo?.[0] ??
+        ctx.Default?.[0]
       result.value = codecToken?.image
     } else if (ctx.partitionPeriod && (ctx.Partition || ctx.PartitionBy)) {
       result.value = this.visit(ctx.partitionPeriod) as
@@ -3330,8 +3870,15 @@ class QuestDBVisitor extends BaseVisitor {
     // Optional LIST of partition names
     if (ctx.StringLiteral) {
       result.partitions = ctx.StringLiteral.map((s: IToken) =>
-        s.image.slice(1, -1),
+        unquoteSingle(s.image),
       )
+      if (
+        ctx.List &&
+        ctx.To &&
+        ctx.List[0].startOffset > ctx.To[0].startOffset
+      ) {
+        result.listAfterTarget = true
+      }
     }
 
     // Target: TABLE or identifier (e.g., Parquet, NATIVE)
@@ -3391,6 +3938,9 @@ class QuestDBVisitor extends BaseVisitor {
       type: "revoke",
       permissions: this.visit(ctx.permissionList) as string[],
       from: this.visit(ctx.qualifiedName) as AST.QualifiedName,
+    }
+    if (ctx.Verification) {
+      result.verification = true
     }
     if (ctx.On) {
       if (ctx.All && ctx.Tables) {
@@ -3464,22 +4014,34 @@ class QuestDBVisitor extends BaseVisitor {
   grantAssumeServiceAccountStatement(
     ctx: GrantAssumeServiceAccountStatementCstChildren,
   ): AST.GrantAssumeServiceAccountStatement {
-    return {
+    const result: AST.GrantAssumeServiceAccountStatement = {
       type: "grantAssumeServiceAccount",
       account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
       to: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
       grantOption: !!ctx.Option,
     }
+    if (ctx.qualifiedName.length > 2) {
+      result.toList = ctx.qualifiedName
+        .slice(1)
+        .map((n) => this.visit(n) as AST.QualifiedName)
+    }
+    return result
   }
 
   revokeAssumeServiceAccountStatement(
     ctx: RevokeAssumeServiceAccountStatementCstChildren,
   ): AST.RevokeAssumeServiceAccountStatement {
-    return {
+    const result: AST.RevokeAssumeServiceAccountStatement = {
       type: "revokeAssumeServiceAccount",
       account: this.visit(ctx.qualifiedName[0]) as AST.QualifiedName,
       from: this.visit(ctx.qualifiedName[1]) as AST.QualifiedName,
     }
+    if (ctx.qualifiedName.length > 2) {
+      result.fromList = ctx.qualifiedName
+        .slice(1)
+        .map((n) => this.visit(n) as AST.QualifiedName)
+    }
+    return result
   }
 
   // ==========================================================================
@@ -3518,6 +4080,68 @@ class QuestDBVisitor extends BaseVisitor {
     }
   }
 
+  setStatement(ctx: SetStatementCstChildren): AST.SetStatement {
+    const tokens: IToken[] = []
+    const collect = (children: Record<string, unknown>) => {
+      for (const [key, value] of Object.entries(children)) {
+        if (key === "Set") continue
+        for (const el of value as (IToken | CstNode)[]) {
+          if ("image" in el) tokens.push(el)
+          else collect(el.children)
+        }
+      }
+    }
+    collect(ctx as unknown as Record<string, unknown>)
+    tokens.sort((a, b) => a.startOffset - b.startOffset)
+    return { type: "set", args: tokens.map((t) => t.image) }
+  }
+
+  transactionStatement(
+    ctx: TransactionStatementCstChildren,
+  ): AST.TransactionStatement {
+    const result: AST.TransactionStatement = {
+      type: "transaction",
+      action: ctx.Begin ? "begin" : ctx.Commit ? "commit" : "rollback",
+    }
+    if (ctx.Transaction) result.transaction = true
+    return result
+  }
+
+  deallocateStatement(
+    ctx: DeallocateStatementCstChildren,
+  ): AST.DeallocateStatement {
+    const id = ctx.identifier[0].children
+    const token = [
+      ...(id.Identifier ?? []),
+      ...(id.QuotedIdentifier ?? []),
+      ...(id.StringLiteral ?? []),
+      ...(id.IdentifierKeyword ?? []),
+    ][0]
+    return { type: "deallocate", name: token.image }
+  }
+
+  pgNoOpStatement(ctx: PgNoOpStatementCstChildren): AST.PgNoOpStatement {
+    const keyword = ctx.Discard
+      ? "discard"
+      : ctx.Close
+        ? "close"
+        : ctx.Unlisten
+          ? "unlisten"
+          : "reset"
+    let argument = "ALL"
+    if (ctx.Star) argument = "*"
+    else if (ctx.identifier) {
+      const id = ctx.identifier[0].children
+      argument = [
+        ...(id.Identifier ?? []),
+        ...(id.QuotedIdentifier ?? []),
+        ...(id.StringLiteral ?? []),
+        ...(id.IdentifierKeyword ?? []),
+      ][0].image
+    }
+    return { type: "pgNoOp", keyword, argument }
+  }
+
   reindexTableStatement(
     ctx: ReindexTableStatementCstChildren,
   ): AST.ReindexTableStatement {
@@ -3531,8 +4155,12 @@ class QuestDBVisitor extends BaseVisitor {
       )
     }
     if (ctx.Partition && ctx.stringOrIdentifier) {
-      result.partitions = ctx.stringOrIdentifier.map(
-        (s: CstNode) => this.visit(s) as string,
+      // Partition names are values (printed back single-quoted), unlike the
+      // OWNED BY name that stringOrIdentifier() returns verbatim.
+      result.partitions = ctx.stringOrIdentifier.map((s: CstNode) =>
+        s.children.StringLiteral
+          ? unquoteSingle((s.children.StringLiteral[0] as IToken).image)
+          : (this.visit(s) as string),
       )
     }
     if (ctx.Exclusive) {
@@ -3640,7 +4268,7 @@ class QuestDBVisitor extends BaseVisitor {
   pivotForClause(ctx: PivotForClauseCstChildren): AST.PivotForClause {
     const result: AST.PivotForClause = {
       type: "pivotFor",
-      expression: this.visit(ctx.columnRef) as AST.ColumnRef,
+      expression: this.visit(ctx.bitOrExpression) as AST.Expression,
       in: {
         type: "pivotIn",
       },
@@ -3660,7 +4288,7 @@ class QuestDBVisitor extends BaseVisitor {
       type: "pivotInValue",
       expression: this.visit(ctx.expression) as AST.Expression,
     }
-    if (ctx.As && ctx.identifier) {
+    if (ctx.identifier) {
       result.alias = this.extractIdentifierName(ctx.identifier[0].children)
     }
     return result
@@ -3709,10 +4337,11 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   notExpression(ctx: NotExpressionCstChildren): AST.Expression {
-    const inner = this.visit(ctx.equalityExpression) as AST.Expression
+    let inner = this.visit(ctx.equalityExpression) as AST.Expression
 
-    if (ctx.Not) {
-      return {
+    // `NOT NOT x`: one unary node per NOT
+    for (let i = 0; i < (ctx.Not?.length ?? 0); i++) {
+      inner = {
         type: "unary",
         operator: "NOT",
         operand: inner,
@@ -3723,58 +4352,105 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   equalityExpression(ctx: EqualityExpressionCstChildren): AST.Expression {
-    const left = this.visit(ctx.relationalExpression[0]) as AST.Expression
+    let result = this.visit(ctx.relationalExpression[0]) as AST.Expression
 
-    if (ctx.relationalExpression && ctx.relationalExpression.length > 1) {
-      let operator = ""
-      if (ctx.Equals) operator = "="
-      else if (ctx.NotEquals) operator = "!="
-      else if (ctx.Like) operator = "LIKE"
-      else if (ctx.Ilike) operator = "ILIKE"
-      else if (ctx.RegexMatch) operator = "~"
-      else if (ctx.RegexNotMatch) operator = "!~"
-      else if (ctx.RegexNotEquals) operator = "~="
+    // Operators and right operands, both in source order (left-associative
+    // chain: `a = 1 = true`). A right operand is either a relational
+    // expression or `NOT <notExpression>`.
+    const ops = [
+      ...(ctx.Equals ?? []).map((t) => ({ t, op: "=" })),
+      ...(ctx.NotEquals ?? []).map((t) => ({ t, op: "!=" })),
+      ...(ctx.Like ?? []).map((t) => ({ t, op: "LIKE" })),
+      ...(ctx.Ilike ?? []).map((t) => ({ t, op: "ILIKE" })),
+      ...(ctx.RegexMatch ?? []).map((t) => ({ t, op: "~" })),
+      ...(ctx.RegexNotMatch ?? []).map((t) => ({ t, op: "!~" })),
+      ...(ctx.RegexNotEquals ?? []).map((t) => ({ t, op: "~=" })),
+    ].sort((a, b) => a.t.startOffset - b.t.startOffset)
+    const operands = [
+      ...ctx.relationalExpression.slice(1).map((node) => ({
+        offset: this.getFirstTokenOffset(node),
+        build: () => this.visit(node) as AST.Expression,
+      })),
+      ...(ctx.notOperand ?? []).map((node, i) => ({
+        offset: ctx.Not![i].startOffset,
+        build: (): AST.Expression => ({
+          type: "unary",
+          operator: "NOT",
+          operand: this.visit(node) as AST.Expression,
+        }),
+      })),
+    ].sort((a, b) => a.offset - b.offset)
 
-      return {
+    ops.forEach(({ t, op }, i) => {
+      const operand = operands[i]
+      let operator = op
+      if (op === "!=") {
+        // `<> ALL` / `!= ALL` keeps the operator as written
+        const all = ctx.All?.some(
+          (a) =>
+            a.startOffset > t.startOffset && a.startOffset < operand.offset,
+        )
+        if (all) operator = `${t.image} ALL`
+      }
+      result = {
         type: "binary",
         operator,
-        left,
-        right: this.visit(ctx.relationalExpression[1]) as AST.Expression,
+        left: result,
+        right: operand.build(),
       }
-    }
+    })
 
-    return left
+    return result
   }
 
   relationalExpression(ctx: RelationalExpressionCstChildren): AST.Expression {
-    const left = this.visit(ctx.setExpression[0]) as AST.Expression
+    let result = this.visit(ctx.setExpression[0]) as AST.Expression
 
-    // Check for IS [NOT] NULL
-    if (ctx.Is) {
-      return {
-        type: "isNull",
-        expression: left,
-        not: !!ctx.Not,
+    // Left-associative chain of `< <= > >=` and IS [NOT] NULL|TRUE|FALSE,
+    // in source order.
+    const ops = [
+      ...(ctx.LessThan ?? []).map((t) => ({ t, op: "<" })),
+      ...(ctx.LessThanOrEqual ?? []).map((t) => ({ t, op: "<=" })),
+      ...(ctx.GreaterThan ?? []).map((t) => ({ t, op: ">" })),
+      ...(ctx.GreaterThanOrEqual ?? []).map((t) => ({ t, op: ">=" })),
+      ...(ctx.Is ?? []).map((t) => ({ t, op: "IS" })),
+    ].sort((a, b) => a.t.startOffset - b.t.startOffset)
+    const isValues = [
+      ...(ctx.Null ?? []).map((t) => ({ t, v: "NULL" })),
+      ...(ctx.True ?? []).map((t) => ({ t, v: "TRUE" })),
+      ...(ctx.False ?? []).map((t) => ({ t, v: "FALSE" })),
+    ].sort((a, b) => a.t.startOffset - b.t.startOffset)
+    let operandIdx = 1
+    let isIdx = 0
+
+    for (const { t, op } of ops) {
+      if (op === "IS") {
+        const value = isValues[isIdx++]
+        const not = !!ctx.Not?.some(
+          (n) =>
+            n.startOffset > t.startOffset &&
+            n.startOffset < value.t.startOffset,
+        )
+        result =
+          value.v === "NULL"
+            ? { type: "isNull", expression: result, not }
+            : {
+                type: "isBoolean",
+                expression: result,
+                value: value.v === "TRUE",
+                not,
+              }
+      } else {
+        result = {
+          type: "binary",
+          operator: op,
+          left: result,
+          right: this.visit(ctx.setExpression[operandIdx++]) as AST.Expression,
+        }
       }
     }
 
-    // Check for relational operators (<, <=, >, >=)
-    if (ctx.setExpression && ctx.setExpression.length > 1) {
-      let operator = ""
-      if (ctx.LessThan) operator = "<"
-      else if (ctx.LessThanOrEqual) operator = "<="
-      else if (ctx.GreaterThan) operator = ">"
-      else if (ctx.GreaterThanOrEqual) operator = ">="
-
-      return {
-        type: "binary",
-        operator,
-        left,
-        right: this.visit(ctx.setExpression[1]) as AST.Expression,
-      }
-    }
-
-    return left
+    return result
   }
 
   setExpression(ctx: SetExpressionCstChildren): AST.Expression {
@@ -3814,13 +4490,15 @@ class QuestDBVisitor extends BaseVisitor {
 
     // Check for WITHIN
     if (ctx.Within) {
-      return {
+      const result: AST.WithinExpression = {
         type: "within",
         expression: left,
         values: ctx.expression!.map(
           (e: CstNode) => this.visit(e) as AST.Expression,
         ),
       }
+      if (ctx.Not) result.not = true
+      return result
     }
 
     // Check for NOT LIKE / NOT ILIKE
@@ -3995,20 +4673,17 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   unaryExpression(ctx: UnaryExpressionCstChildren): AST.Expression {
-    const inner = this.visit(ctx.typeCastExpression) as AST.Expression
+    let inner = this.visit(ctx.typeCastExpression) as AST.Expression
 
-    if (ctx.Minus) {
-      return {
+    // Stacked prefix operators (`- -a`, `~-a`): innermost is the last one
+    const ops = [
+      ...(ctx.Minus ?? []).map((t) => ({ t, op: "-" })),
+      ...(ctx.RegexMatch ?? []).map((t) => ({ t, op: "~" })), // bitwise complement
+    ].sort((a, b) => b.t.startOffset - a.t.startOffset)
+    for (const { op } of ops) {
+      inner = {
         type: "unary",
-        operator: "-",
-        operand: inner,
-      }
-    }
-
-    if (ctx.RegexMatch) {
-      return {
-        type: "unary",
-        operator: "~",
+        operator: op,
         operand: inner,
       }
     }
@@ -4018,6 +4693,15 @@ class QuestDBVisitor extends BaseVisitor {
 
   typeCastExpression(ctx: TypeCastExpressionCstChildren): AST.Expression {
     let inner = this.visit(ctx.primaryExpression) as AST.Expression
+
+    // Member access on a parenthesised value: `(x).a`
+    for (const member of ctx.member ?? []) {
+      inner = {
+        type: "memberAccess",
+        expression: inner,
+        member: this.extractIdentifierName(member.children),
+      }
+    }
 
     // Handle array subscripts: expr[i], expr[i:j], expr[i, j]
     // Group subscripts by their enclosing bracket pair so that
@@ -4046,13 +4730,24 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
 
-    if (ctx.DoubleColon && ctx.dataType) {
+    if (ctx.DoubleColon && ctx.castDataType) {
       for (let i = 0; i < ctx.DoubleColon.length; i++) {
         inner = {
           type: "typeCast",
           expression: inner,
-          dataType: this.visit(ctx.dataType[i]) as string,
+          dataType: this.visit(ctx.castDataType[i]) as string,
         }
+      }
+    }
+
+    if (ctx.At) {
+      inner = {
+        type: "atTimeZone",
+        expression: inner,
+        timeZone: this.typedLiteralString(
+          ctx.StringLiteral,
+          ctx.EscapeStringLiteral,
+        ),
       }
     }
 
@@ -4142,6 +4837,12 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.functionCall) {
       return this.visit(ctx.functionCall) as AST.FunctionCall
     }
+    if (ctx.timestampWithTimeZoneLiteral) {
+      return this.visit(ctx.timestampWithTimeZoneLiteral) as AST.Literal
+    }
+    if (ctx.doublePrecisionLiteral) {
+      return this.visit(ctx.doublePrecisionLiteral) as AST.Literal
+    }
     if (ctx.literal) {
       return this.visit(ctx.literal) as AST.Literal
     }
@@ -4150,6 +4851,12 @@ class QuestDBVisitor extends BaseVisitor {
       return {
         type: "variable",
         name: image.substring(1), // strip leading @
+      }
+    }
+    if (ctx.BindVariable) {
+      return {
+        type: "bindVariable",
+        name: ctx.BindVariable[0].image, // "$1" or ":name"
       }
     }
     if (ctx.identifierExpression) {
@@ -4208,8 +4915,26 @@ class QuestDBVisitor extends BaseVisitor {
     return {
       type: "cast",
       expression: this.visit(ctx.expression) as AST.Expression,
-      dataType: this.visit(ctx.dataType) as string,
+      dataType: this.visit(ctx.castDataType) as string,
     }
+  }
+
+  castDataType(ctx: CastDataTypeCstChildren): string {
+    if (ctx.timestampWithTimeZoneType) {
+      return this.visit(ctx.timestampWithTimeZoneType) as string
+    }
+    if (ctx.doublePrecisionType) {
+      return this.visit(ctx.doublePrecisionType) as string
+    }
+    return this.visit(ctx.dataType!) as string
+  }
+
+  timestampWithTimeZoneType(ctx: TimestampWithTimeZoneTypeCstChildren): string {
+    return `${ctx.TimestampNs ? "TIMESTAMP_NS" : "TIMESTAMP"} WITH TIME ZONE`
+  }
+
+  doublePrecisionType(ctx: DoublePrecisionTypeCstChildren): string {
+    return "DOUBLE PRECISION" + "[]".repeat(ctx.LBracket?.length ?? 0)
   }
 
   dataType(ctx: DataTypeCstChildren): string {
@@ -4359,6 +5084,14 @@ class QuestDBVisitor extends BaseVisitor {
       ctx.qualifiedName,
     ) as AST.QualifiedName
 
+    // Typed literal: timestamp '2020-01-01'
+    if (ctx.StringLiteral || ctx.EscapeStringLiteral) {
+      return {
+        ...this.typedLiteralString(ctx.StringLiteral, ctx.EscapeStringLiteral),
+        typeName: qualName.parts[0].toUpperCase(),
+      }
+    }
+
     if (ctx.LParen) {
       // Function call (possibly schema-qualified)
       const result: AST.FunctionCall = {
@@ -4491,6 +5224,7 @@ class QuestDBVisitor extends BaseVisitor {
     let mode: string
     if (ctx.Rows) mode = "rows"
     else if (ctx.Range) mode = "range"
+    else if (ctx.Groups) mode = "groups"
     else mode = "cumulative"
 
     const result: AST.WindowFrame = {
@@ -4508,6 +5242,10 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.Exclude) {
       if (ctx.Current && ctx.Row) {
         result.exclude = "currentRow"
+      } else if (ctx.Group) {
+        result.exclude = "group"
+      } else if (ctx.Ties) {
+        result.exclude = "ties"
       } else if (ctx.No && ctx.Others) {
         result.exclude = "noOthers"
       }
@@ -4566,7 +5304,7 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.StringLiteral) {
       const raw = this.tokenImage(ctx.StringLiteral[0])
       // Remove outer quotes and unescape '' to '
-      const value = raw.slice(1, -1).replace(/''/g, "'")
+      const value = unquoteSingle(raw)
       return {
         type: "literal",
         value,
@@ -4597,7 +5335,7 @@ class QuestDBVisitor extends BaseVisitor {
       const image = this.tokenImage(ctx.DecimalLiteral[0])
       return {
         type: "literal",
-        value: parseFloat(image.replace(/[m_]/g, "")),
+        value: parseFloat(image.replace(/[mM_]/g, "")),
         literalType: "number",
         raw: image,
       }
@@ -4617,9 +5355,22 @@ class QuestDBVisitor extends BaseVisitor {
       }
     }
     if (ctx.DurationLiteral) {
+      const image = this.tokenImage(ctx.DurationLiteral[0])
+      // In an expression the server types `99m` / `1.5M` as DECIMAL and
+      // `1d` / `1.5D` as DOUBLE (FunctionParser.createConstant: parseDouble
+      // skips a d/D suffix, a trailing m/M means decimal). Other units
+      // (1h, 30s, 1ms, ...) are not numbers there and stay durations.
+      if (/[mMdD]$/.test(image)) {
+        return {
+          type: "literal",
+          value: parseFloat(image.slice(0, -1).replace(/_/g, "")),
+          literalType: "number",
+          raw: image,
+        }
+      }
       return {
         type: "literal",
-        value: this.tokenImage(ctx.DurationLiteral[0]),
+        value: image,
         literalType: "duration",
       }
     }
@@ -4630,11 +5381,92 @@ class QuestDBVisitor extends BaseVisitor {
         literalType: "number",
       }
     }
+    if (ctx.HexLiteral) {
+      // Long256 hex constant; keep the text (it does not fit a JS number)
+      const image = this.tokenImage(ctx.HexLiteral[0])
+      return {
+        type: "literal",
+        value: image,
+        literalType: "number",
+        raw: image,
+      }
+    }
+    if (ctx.FloatLiteral) {
+      const image = this.tokenImage(ctx.FloatLiteral[0])
+      return {
+        type: "literal",
+        value: parseFloat(image.replace(/[_fFdD]/g, "")),
+        literalType: "number",
+        raw: image,
+      }
+    }
+    if (ctx.EscapeStringLiteral) {
+      return this.escapeStringLiteral(ctx.EscapeStringLiteral[0])
+    }
     throw new Error("Unknown literal type")
+  }
+
+  doublePrecisionLiteral(ctx: DoublePrecisionLiteralCstChildren): AST.Literal {
+    return {
+      ...this.typedLiteralString(ctx.StringLiteral, ctx.EscapeStringLiteral),
+      typeName: "DOUBLE",
+    }
+  }
+
+  timestampWithTimeZoneLiteral(
+    ctx: TimestampWithTimeZoneLiteralCstChildren,
+  ): AST.Literal {
+    const type = ctx.TimestampNs ? "TIMESTAMP_NS" : "TIMESTAMP"
+    return {
+      ...this.typedLiteralString(ctx.StringLiteral, ctx.EscapeStringLiteral),
+      typeName: `${type} WITH TIME ZONE`,
+    }
+  }
+
+  private typedLiteralString(
+    stringToken: IToken[] | undefined,
+    escapeToken: IToken[] | undefined,
+  ): AST.Literal {
+    if (escapeToken) return this.escapeStringLiteral(escapeToken[0])
+    return {
+      type: "literal",
+      value: unquoteSingle(this.tokenImage(stringToken![0])),
+      literalType: "string",
+    }
+  }
+
+  private escapeStringLiteral(token: IToken): AST.Literal {
+    // E'abc' -> value abc; the server does not process backslashes, so only ''
+    const raw = this.tokenImage(token)
+    return {
+      type: "literal",
+      value: raw.slice(2, -1).replace(/''/g, "'"),
+      literalType: "string",
+      raw,
+    }
   }
 
   booleanLiteral(ctx: BooleanLiteralCstChildren): boolean {
     return !!ctx.True
+  }
+
+  // Names (OWNED BY): a single-quoted name keeps its inner text verbatim, as
+  // the server's GenericLexer.unquote does (see unquoteSingle).
+  // EXTERNAL ALIAS 'cn=o''brien' | ext_g — unescapes '' (unlike stringOrIdentifier)
+  private externalAliasValue(node: StringOrIdentifierCstNode): string {
+    const str = node.children.StringLiteral
+    if (str) return unquoteSingle(str[0].image)
+    return this.visit(node) as string
+  }
+
+  passwordValue(ctx: PasswordValueCstChildren): string {
+    const tokens = collectTokens(ctx)
+    if (tokens.length === 1 && ctx.StringLiteral)
+      return unquoteSingle(ctx.StringLiteral[0].image)
+    if (tokens.length === 1 && ctx.identifier)
+      return this.extractIdentifierName(ctx.identifier[0].children)
+    // Raw text of the (possibly lexer-split) token, e.g. 1G, 1h, true
+    return tokens.map((t) => t.image).join("")
   }
 
   stringOrIdentifier(ctx: StringOrIdentifierCstChildren): string {
@@ -4650,6 +5482,7 @@ class QuestDBVisitor extends BaseVisitor {
   stringOrQualifiedName(
     ctx: StringOrQualifiedNameCstChildren,
   ): AST.QualifiedName {
+    // Name kept verbatim (no '' unescape), see unquoteSingle.
     if (ctx.StringLiteral) {
       return {
         type: "qualifiedName",
@@ -4681,6 +5514,7 @@ class QuestDBVisitor extends BaseVisitor {
   }
 
   tableNameOrString(ctx: TableNameOrStringCstChildren): AST.QualifiedName {
+    // Name kept verbatim (no '' unescape), see unquoteSingle.
     if (ctx.StringLiteral) {
       return {
         type: "qualifiedName",
@@ -4707,8 +5541,7 @@ class QuestDBVisitor extends BaseVisitor {
     const ctx: CstChildrenRecord =
       "name" in node && "children" in node ? (node as CstNode).children : node
     if (ctx.StringLiteral) {
-      const raw = this.tokenImage(ctx.StringLiteral[0] as IToken)
-      return raw.slice(1, -1)
+      return unquoteSingle(this.tokenImage(ctx.StringLiteral[0] as IToken))
     }
     if (ctx.NumberLiteral) {
       return this.tokenImage(ctx.NumberLiteral[0] as IToken)
@@ -4720,8 +5553,9 @@ class QuestDBVisitor extends BaseVisitor {
       return this.tokenImage(ctx.Identifier[0] as IToken)
     }
     if (ctx.QuotedIdentifier) {
-      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
-      return raw.slice(1, -1).replace(/""/g, '"')
+      return unquoteIdentifier(
+        this.tokenImage(ctx.QuotedIdentifier[0] as IToken),
+      )
     }
     if (ctx.IdentifierKeyword) {
       return this.tokenImage(ctx.IdentifierKeyword[0] as IToken)
@@ -4785,6 +5619,20 @@ class QuestDBVisitor extends BaseVisitor {
       unit = this.visit(ctx.timeUnit as CstNode[]) as typeof unit
     } else if (ctx.storagePolicyTimeUnit) {
       unit = this.visit(ctx.storagePolicyTimeUnit as CstNode[]) as typeof unit
+    } else if (ctx.Identifier) {
+      // single-letter unit: TTL 2 h
+      const LETTER_UNITS: Record<
+        string,
+        "HOURS" | "DAYS" | "WEEKS" | "MONTHS" | "YEARS"
+      > = {
+        h: "HOURS",
+        d: "DAYS",
+        w: "WEEKS",
+        m: "MONTHS",
+        y: "YEARS",
+      }
+      unit =
+        LETTER_UNITS[(ctx.Identifier[0] as IToken).image.toLowerCase()] ?? unit
       // Check plural forms first (TTL units) before singular (which may be PARTITION BY units)
     } else if (ctx.Hours) unit = "HOURS"
     else if (ctx.Days) unit = "DAYS"
@@ -4805,13 +5653,13 @@ class QuestDBVisitor extends BaseVisitor {
       return this.tokenImage(ctx.Identifier[0] as IToken)
     }
     if (ctx.QuotedIdentifier) {
-      const raw = this.tokenImage(ctx.QuotedIdentifier[0] as IToken)
-      return raw.slice(1, -1).replace(/""/g, '"')
+      return unquoteIdentifier(
+        this.tokenImage(ctx.QuotedIdentifier[0] as IToken),
+      )
     }
     // QuestDB accepts single-quoted strings in identifier positions
     if (ctx.StringLiteral) {
-      const raw = this.tokenImage(ctx.StringLiteral[0] as IToken)
-      return raw.slice(1, -1).replace(/''/g, "'")
+      return unquoteSingle(this.tokenImage(ctx.StringLiteral[0] as IToken))
     }
     // Handle keyword tokens used as identifiers
     // Find the first token in the context

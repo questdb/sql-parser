@@ -1196,19 +1196,22 @@ describe("CREATE TABLE autocomplete", () => {
         assertSuggestionsWalkthrough(provider, [
           {
             typed: "ALTER MATERIALIZED VIEW v ",
-            expects: ["SET", "DROP", "ENABLE", "DISABLE"],
+            expects: ["SET", "DROP", "RESUME", "SUSPEND"],
+            rejects: ["ENABLE", "DISABLE"],
           },
           {
             typed: "ALTER MATERIALIZED VIEW v SET ",
-            expects: ["STORAGE", "TTL", "REFRESH"],
+            expects: ["TTL", "REFRESH", "EXPIRE"],
+            rejects: ["STORAGE"],
           },
           {
-            typed: "ALTER MATERIALIZED VIEW v SET STORAGE ",
-            expects: ["POLICY"],
+            typed: "ALTER MATERIALIZED VIEW v SET EXPIRE ROWS ",
+            expects: ["WHEN", "KEEP"],
           },
           {
             typed: "ALTER MATERIALIZED VIEW v DROP ",
-            expects: ["STORAGE"],
+            expects: ["EXPIRE"],
+            rejects: ["STORAGE"],
           },
         ])
       })
@@ -1242,18 +1245,19 @@ describe("CREATE TABLE autocomplete", () => {
       })
     })
 
-    describe("CREATE MATERIALIZED VIEW walkthrough — inline STORAGE POLICY", () => {
+    describe("CREATE MATERIALIZED VIEW walkthrough — inline retention", () => {
       it("should provide correct suggestions at each word boundary", () => {
         assertSuggestionsWalkthrough(provider, [
           {
             typed:
               "CREATE MATERIALIZED VIEW v AS (SELECT ts FROM trades) PARTITION BY DAY ",
-            expects: ["TTL", "STORAGE"],
+            expects: ["TTL", "EXPIRE"],
+            rejects: ["STORAGE"],
           },
           {
             typed:
-              "CREATE MATERIALIZED VIEW v AS (SELECT ts FROM trades) PARTITION BY DAY STORAGE POLICY(",
-            expects: ["TO", "DROP"],
+              "CREATE MATERIALIZED VIEW v AS (SELECT ts FROM trades) PARTITION BY DAY EXPIRE ROWS ",
+            expects: ["WHEN", "KEEP"],
           },
         ])
       })

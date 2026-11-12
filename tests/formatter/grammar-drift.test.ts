@@ -68,7 +68,7 @@ const NON_CLAUSE_RULES = new Set([
 const INLINE_BY_DESIGN: Record<Kind, string[]> = {
   select: ["Distinct"],
   insert: ["Into", "Atomic", "Batch"],
-  update: [],
+  update: ["As"],
   createTable: [
     "Table",
     "Atomic",
@@ -102,6 +102,10 @@ const INLINE_BY_DESIGN: Record<Kind, string[]> = {
     "Start",
     "Limit",
     "Time Zone",
+    // The query after AS, with or without parentheses.
+    "Select",
+    "Declare",
+    "With",
   ],
   createLiveView: [
     "Live View",
