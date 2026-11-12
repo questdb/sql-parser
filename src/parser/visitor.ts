@@ -127,6 +127,7 @@ import type {
   LiteralCstChildren,
   KeyColumnCstChildren,
   TimestampWithTimeZoneLiteralCstChildren,
+  DoublePrecisionLiteralCstChildren,
   MaterializedViewPartitionCstChildren,
   MaterializedViewPeriodCstChildren,
   MaterializedViewRefreshCstChildren,
@@ -4839,6 +4840,9 @@ class QuestDBVisitor extends BaseVisitor {
     if (ctx.timestampWithTimeZoneLiteral) {
       return this.visit(ctx.timestampWithTimeZoneLiteral) as AST.Literal
     }
+    if (ctx.doublePrecisionLiteral) {
+      return this.visit(ctx.doublePrecisionLiteral) as AST.Literal
+    }
     if (ctx.literal) {
       return this.visit(ctx.literal) as AST.Literal
     }
@@ -5400,6 +5404,13 @@ class QuestDBVisitor extends BaseVisitor {
       return this.escapeStringLiteral(ctx.EscapeStringLiteral[0])
     }
     throw new Error("Unknown literal type")
+  }
+
+  doublePrecisionLiteral(ctx: DoublePrecisionLiteralCstChildren): AST.Literal {
+    return {
+      ...this.typedLiteralString(ctx.StringLiteral, ctx.EscapeStringLiteral),
+      typeName: "DOUBLE",
+    }
   }
 
   timestampWithTimeZoneLiteral(

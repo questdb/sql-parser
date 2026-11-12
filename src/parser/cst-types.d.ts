@@ -2956,6 +2956,7 @@ export type PrimaryExpressionCstChildren = {
   castExpression?: CastExpressionCstNode[];
   caseExpression?: CaseExpressionCstNode[];
   timestampWithTimeZoneLiteral?: TimestampWithTimeZoneLiteralCstNode[];
+  doublePrecisionLiteral?: DoublePrecisionLiteralCstNode[];
   arrayLiteral?: ArrayLiteralCstNode[];
   functionCall?: FunctionCallCstNode[];
   literal?: LiteralCstNode[];
@@ -3141,6 +3142,18 @@ export type FunctionCallCstChildren = {
   Respect?: IToken[];
   Nulls?: IToken[];
   overClause?: OverClauseCstNode[];
+};
+
+export interface DoublePrecisionLiteralCstNode extends CstNode {
+  name: "doublePrecisionLiteral";
+  children: DoublePrecisionLiteralCstChildren;
+}
+
+export type DoublePrecisionLiteralCstChildren = {
+  Double: IToken[];
+  Precision: IToken[];
+  StringLiteral?: IToken[];
+  EscapeStringLiteral?: IToken[];
 };
 
 export interface TimestampWithTimeZoneLiteralCstNode extends CstNode {
@@ -3633,6 +3646,7 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   caseExpression(children: CaseExpressionCstChildren, param?: IN): OUT;
   functionName(children: FunctionNameCstChildren, param?: IN): OUT;
   functionCall(children: FunctionCallCstChildren, param?: IN): OUT;
+  doublePrecisionLiteral(children: DoublePrecisionLiteralCstChildren, param?: IN): OUT;
   timestampWithTimeZoneLiteral(children: TimestampWithTimeZoneLiteralCstChildren, param?: IN): OUT;
   identifierExpression(children: IdentifierExpressionCstChildren, param?: IN): OUT;
   overClause(children: OverClauseCstChildren, param?: IN): OUT;

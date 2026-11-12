@@ -267,3 +267,73 @@ describe("formatter keeps literals intact", () => {
     )
   })
 })
+
+// The server skips PRECISION after DOUBLE inside an expression
+// (ExpressionParser: "ignore 'precision' keyword after 'double'"), so
+// `double precision '1'` is the typed literal `double '1'`. Before, it was
+// read as `double` + alias `precision`, then `'1'` as a new statement.
+describe("double precision typed literal", () => {
+  it.each([
+    "SELECT double precision '1'",
+    "SELECT double precision '1' + 1",
+    "SELECT * FROM t WHERE x > double precision '1.5'",
+    "SELECT DOUBLE PRECISION E'2'",
+  ])("%s is one statement", (sql) => {
+    const result = parseToAst(sql)
+    expect(result.errors).toEqual([])
+    expect(result.ast).toHaveLength(1)
+    expect(parseToAst(toSql(result.ast)).errors).toEqual([])
+  })
+
+  it("is a double typed literal", () => {
+    const sql = "SELECT double precision '1'"
+    const item = (parseToAst(sql).ast[0] as AST.SelectStatement).columns[0]
+    expect(item).toMatchObject({
+      expression: { type: "literal", value: "1", typeName: "DOUBLE" },
+    })
+  })
+
+  it("keeps FROM after a column named double aliased precision", () => {
+    const p = createAutocompleteProvider({
+      tables: [{ name: "t" }],
+      columns: {},
+    })
+    const sql = "SELECT double precision "
+    expect(p.getSuggestions(sql, sql.length).map((s) => s.label)).toContain(
+      "FROM",
+    )
+  })
+
+  it("keeps column + alias forms", () => {
+    expect(roundTrip("SELECT double precision FROM t")).toBe(
+      "SELECT double AS precision FROM t",
+    )
+    expect(roundTrip("SELECT double FROM t")).toBe("SELECT double FROM t")
+  })
+
+  it("formats and autocompletes after it", () => {
+    expect(format("select double precision '1' + 1 from t")).toBe(
+      "select double precision '1' + 1\nfrom t",
+    )
+    expect(
+      format("select double precision '1' + 1 from t", { capitalize: true }),
+    ).toBe("SELECT DOUBLE PRECISION '1' + 1\nFROM t")
+    const p = createAutocompleteProvider({
+      tables: [{ name: "t" }],
+      columns: {},
+    })
+    const sql = "SELECT double precision '1' + 1 FROM "
+    expect(p.getSuggestions(sql, sql.length).map((s) => s.label)).toContain("t")
+  })
+
+  it("does not offer DOUBLE PRECISION where a value starts, nor PRECISION after a column", () => {
+    const p = createAutocompleteProvider({
+      tables: [{ name: "t" }],
+      columns: { t: [{ name: "x", type: "DOUBLE" }] },
+    })
+    for (const sql of ["SELECT * FROM t WHERE x > ", "SELECT x "]) {
+      const labels = p.getSuggestions(sql, sql.length).map((s) => s.label)
+      expect(labels, sql).not.toContain("PRECISION")
+    }
+  })
+})

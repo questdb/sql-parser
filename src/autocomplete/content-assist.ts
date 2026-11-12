@@ -1212,6 +1212,7 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
   // tokens. Content assist ignores its GATE, so without this filter those two
   // keywords would be offered wherever an expression can start. Only the
   // rule's first token is dropped; WITH TIME ZONE after `timestamp` stays.
+  // Same for doublePrecisionLiteral's leading DOUBLE.
   // columnDefinition only takes DOUBLE PRECISION in CREATE TABLE (a rule
   // argument gates it); ALTER TABLE ADD COLUMN shares the rule, so drop
   // PRECISION there as well.
@@ -1233,6 +1234,8 @@ function computeSuggestions(tokens: IToken[]): ComputeResult {
       (s.ruleStack[s.ruleStack.length - 1] === "timestampWithTimeZoneLiteral" &&
         (s.nextTokenType.name === "Timestamp" ||
           s.nextTokenType.name === "TimestampNs")) ||
+      (s.ruleStack[s.ruleStack.length - 1] === "doublePrecisionLiteral" &&
+        s.nextTokenType.name === "Double") ||
       (s.nextTokenType.name === "Precision" &&
         (s.ruleStack.includes("alterTableAction") ||
           s.ruleStack[s.ruleStack.length - 1] === "columnNullModifier")) ||

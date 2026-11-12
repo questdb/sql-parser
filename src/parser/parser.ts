@@ -5679,6 +5679,16 @@ class QuestDBParser extends CstParser {
     ])
   })
 
+  // double precision '1' (ExpressionParser skips PRECISION after DOUBLE)
+  private isDoublePrecisionLiteral(): boolean {
+    const t3 = this.LA(3).tokenType
+    return (
+      this.LA(1).tokenType === Double &&
+      this.LA(2).tokenType === Precision &&
+      (t3 === StringLiteral || t3 === EscapeStringLiteral)
+    )
+  }
+
   private isTimestampWithTimeZoneLiteral(): boolean {
     const t1 = this.LA(1).tokenType
     const t5 = this.LA(5).tokenType
@@ -5725,7 +5735,19 @@ class QuestDBParser extends CstParser {
       },
       // Bind variable: $1 or :name
       { ALT: () => this.CONSUME(BindVariable) },
-      { ALT: () => this.SUBRULE(this.identifierExpression) },
+      {
+        GATE: () => !this.isDoublePrecisionLiteral(),
+        ALT: () => this.SUBRULE(this.identifierExpression),
+      },
+      {
+        // double precision '...' — like the WITH TIME ZONE form, kept out of
+        // identifierExpression so PRECISION is not offered after every column.
+        // Listed after identifierExpression (whose GATE yields to it): content
+        // assist prunes later alternatives once an earlier one completes, so
+        // `SELECT double precision ` keeps the column + alias suggestions.
+        GATE: () => this.isDoublePrecisionLiteral(),
+        ALT: () => this.SUBRULE(this.doublePrecisionLiteral),
+      },
       {
         ALT: () => {
           this.CONSUME(LParen)
@@ -6004,6 +6026,15 @@ class QuestDBParser extends CstParser {
   // timestamp with time zone '2020-12-31 15:15:51.663+00:00'
   // (ExpressionParser: the literal branch accepts WITH TIME ZONE after a
   // timestamp type name, then processPgTimestampCast casts the string)
+  private doublePrecisionLiteral = this.RULE("doublePrecisionLiteral", () => {
+    this.CONSUME(Double)
+    this.CONSUME(Precision)
+    this.OR([
+      { ALT: () => this.CONSUME(StringLiteral) },
+      { ALT: () => this.CONSUME(EscapeStringLiteral) },
+    ])
+  })
+
   private timestampWithTimeZoneLiteral = this.RULE(
     "timestampWithTimeZoneLiteral",
     () => {
